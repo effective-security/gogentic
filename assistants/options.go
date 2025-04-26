@@ -93,6 +93,11 @@ func NewConfig(opts ...Option) *Config {
 func WithMode(mode encoding.Mode) Option {
 	return func(o *Config) {
 		o.Mode = mode
+		if mode == encoding.ModeJSON || mode == encoding.ModeJSONStrict || mode == encoding.ModeJSONSchema {
+			o.JSONMode = true
+		} else {
+			o.JSONMode = false
+		}
 	}
 }
 

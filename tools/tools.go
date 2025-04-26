@@ -4,6 +4,8 @@ import (
 	"context"
 )
 
+//go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools
+
 // ITool is a tool for the llm agent to interact with different applications.
 type ITool interface {
 	// Name returns the name of the Tool.

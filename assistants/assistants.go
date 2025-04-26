@@ -15,6 +15,9 @@ import (
 	"github.com/tmc/langchaingo/prompts"
 )
 
+//go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/tmc/langchaingo/llms  Model
+//go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
+
 type IAssistant interface {
 	// Name returns the name of the Agent.
 	Name() string
