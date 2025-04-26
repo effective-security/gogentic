@@ -1,0 +1,23 @@
+/.coverage
+/*.out
+
+bin/
+.gopath
+.idea/
+.tmp/
+.docker/
+.DS_Store
+.vscode/
+.aider*
+change_log.txt
+test_log.txt
+build_log.txt
+
+__debug_bin
+__debug_bin*
+debug
+debug.test
+
+
+# generated
+mocks/

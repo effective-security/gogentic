@@ -1,0 +1,127 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - release-*
+    tags:
+      - "v*"
+  pull_request:
+
+env:
+  GO_CACHE_BUSTER: 5
+  ITEST_IMAGE_TAG: rc-${{ github.event.number }}
+  COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+  RUN_ID: ${{ github.run_id }}
+  # A unique number for each run of a particular workflow in a repository.
+  # This number begins at 1 for the workflow's first run, and increments with each new run.
+  # This number does not change if you re-run the workflow run.
+  RUN_NUMBER: ${{ github.run_number }}
+  PULL_NUMBER: ${{ github.event.pull_request.number }}
+  MIN_TESTCOV: 80
+
+jobs:
+  detect-noop:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.noop.outputs.should_skip }}
+      paths_result: ${{ steps.noop.outputs.paths_result }}
+    steps:
+      - name: Detect No-op Changes
+        # https://github.com/fkirc/skip-duplicate-actions
+        id: noop
+        uses: fkirc/skip-duplicate-actions@v4.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          paths_ignore: '["**.md", "**.png", "**.jpg", "**/Documentation/**"]'
+          do_not_skip: '["push","schedule","release"]'
+          concurrent_skipping: false
+          paths_filter: |
+            go:
+              paths:
+                - '**/*.go'
+            version:
+              paths:
+                - '.VERSION'
+   
+  UnitTest:
+    needs:
+      - detect-noop
+    #- GoCache
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create code coverage status for the current commit
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && needs.detect-noop.outputs.should_skip != 'true'
+        run: |
+          curl "https://${GIT_USER}:${GIT_TOKEN}@api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${COMMIT_SHA}" -d "{\"state\": \"pending\",\"target_url\": \"https://github.com/${GITHUB_REPOSITORY}/pull/${PULL_NUMBER}/checks?check_run_id=${RUN_ID}\",\"description\": \"in progress — This check has started... \",\"context\": \"code cov\"}"
+        env:
+          GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_USER: ${{ github.actor }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fetch History
+        run: git fetch --prune --unshallow
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+     
+      - name: Go tools
+        shell: bash
+        run: |
+          make tools
+
+      - name: Prepare
+        run: make vars generate
+
+      - name: UnitTest
+        run: |
+          make covtest
+
+      - name: Generate covarege Status
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && needs.detect-noop.outputs.should_skip != 'true'
+        run: |
+          set -x
+          PROJECT_NAME=${PROJECT_NAME}
+
+          total=`go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`
+          echo "total cov: $total"
+          (( $(echo "$total > ${MIN_TESTCOV}" | bc -l) )) && STATE=success || STATE=failure
+          curl "https://${GIT_USER}:${GIT_TOKEN}@api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${COMMIT_SHA}" -d "{\"state\": \"${STATE}\",\"target_url\": \"https://github.com/${GITHUB_REPOSITORY}/pull/${PULL_NUMBER}/checks?check_run_id=${RUN_ID}\",\"description\": \"${total}%\",\"context\": \"code cov\"}"
+        env:
+          GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_USER: ${{ github.actor }}
+
+      - name: Detect Version Changes
+        # https://github.com/fkirc/skip-duplicate-actions
+        id: version-changed
+        uses: fkirc/skip-duplicate-actions@v5.3.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          paths: '[".VERSION"]'
+          skip_after_successful_duplicate: false
+
+      - name: set-tag
+        run: |
+          VERSION=$(cat .VERSION).$(git rev-list --count HEAD)
+          echo "VERSION: ${VERSION}"
+          echo "DIST_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "git tag ${VERSION}"
+          echo "should_skip: ${{steps.version-changed.outputs.should_skip}}"
+
+      - name: Create Tag
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.version-changed.outputs.should_skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {DIST_VERSION} = process.env          
+            github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${DIST_VERSION}`,
+                sha: context.sha
+            })
