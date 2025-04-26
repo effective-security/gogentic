@@ -6,7 +6,6 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/bububa/ljson v1.0.1
-	github.com/bububa/mdencoder v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diverged/tavily-go v1.0.0
 	github.com/effective-security/x v0.12.53
@@ -17,6 +16,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tmc/langchaingo v0.1.13
+	go.uber.org/mock v0.5.1
+	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -65,7 +66,6 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35

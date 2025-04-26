@@ -82,7 +82,7 @@ jobs:
         run: |
           make covtest
 
-      - name: Generate covarege Status
+      - name: Generate coverage Status
         if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && needs.detect-noop.outputs.should_skip != 'true'
         run: |
           set -x
