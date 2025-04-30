@@ -69,6 +69,16 @@ func GetChatContext(ctx context.Context) ChatContext {
 	return nil
 }
 
+// GetChatID retrieves the chat ID from the provided context.
+// If the context does not contain a ChatContext, it returns an empty string.
+func GetChatID(ctx context.Context) string {
+	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+		return v.GetChatID()
+	}
+	return ""
+}
+
+// NewChatID generates a new chat ID using the flake ID generator.
 func NewChatID() string {
 	return strconv.FormatUint(flake.DefaultIDGenerator.NextID(), 10)
 }

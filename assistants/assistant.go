@@ -128,14 +128,11 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 }
 
 func (a *Assistant[O]) MessageHistory(ctx context.Context) []llms.ChatMessage {
-	if a.Store == nil {
+	chatID := chatmodel.GetChatID(ctx)
+	if a.Store == nil || chatID == "" {
 		return nil
 	}
-	chatCtx := chatmodel.GetChatContext(ctx)
-	if chatCtx == nil {
-		return nil
-	}
-	chatID := chatCtx.GetChatID()
+
 	return a.Store.Messages(chatID)
 }
 
