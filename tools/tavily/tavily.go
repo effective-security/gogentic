@@ -21,6 +21,8 @@ import (
 
 const ToolName = "WebSearch"
 
+var DefaultAPIKeyEnvName = "TAVILY_API_KEY"
+
 // SearchRequest represents the tool input.
 type SearchRequest struct {
 	Query string `json:"Query" yaml:"Query" jsonschema:"title=Query,description=The query to search web."`
@@ -45,27 +47,31 @@ type Tool struct {
 	name        string
 	description string
 	funcParams  any
-
-	baseURL    string
-	httpClient *http.Client
+	apikey      string
+	baseURL     string
+	httpClient  *http.Client
 }
 
 // ensure WebSearchTool implements the llm.Function interface
 var _ tools.Tool[SearchRequest, SearchResult] = (*Tool)(nil)
 
 func New() (*Tool, error) {
-	apikey := os.Getenv("TAVILY_API_KEY")
+	apikey := os.Getenv(DefaultAPIKeyEnvName)
 	if apikey == "" {
 		return nil, errors.Errorf("TAVILY_API_KEY is not set")
 	}
+	return NewWithAPIKey(apikey)
+}
 
-	sc, err := schema.New(reflect.TypeOf(SearchResult{}))
+func NewWithAPIKey(apikey string) (*Tool, error) {
+	sc, err := schema.New(reflect.TypeOf(SearchRequest{}))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create schema")
 	}
 	tool := &Tool{
 		name:        ToolName,
 		description: "A tool that provides a web search functionality.",
+		apikey:      apikey,
 		//baseURL:     "https://api.tavily.com/search",
 		httpClient: http.DefaultClient,
 		funcParams: sc.Functions[0].Parameters,
@@ -92,8 +98,7 @@ func (t *Tool) Description() string {
 }
 
 func (t *Tool) Parameters() any {
-	schema, _ := schema.New(reflect.TypeOf(SearchRequest{}))
-	return schema.Functions[0].Parameters
+	return t.funcParams
 }
 
 func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, error) {
@@ -101,13 +106,8 @@ func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, erro
 		return nil, errors.New("invalid request: empty query")
 	}
 
-	apikey := os.Getenv("TAVILY_API_KEY")
-	if apikey == "" {
-		return nil, errors.Errorf("TAVILY_API_KEY is not set")
-	}
-
 	// Create a new Tavily client
-	client := tavilygo.NewClient(apikey)
+	client := tavilygo.NewClient(t.apikey)
 	if t.baseURL != "" {
 		client.BaseURL = t.baseURL
 	}
@@ -148,11 +148,7 @@ func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	bs, err := json.Marshal(out)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to marshal output")
-	}
-	return string(bs), nil
+	return out.GetContent(), nil
 }
 
 func (r *SearchResult) String() string {

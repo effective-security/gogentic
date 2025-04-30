@@ -8,10 +8,10 @@ import (
 
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
-	"github.com/effective-security/gogentic/model"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
@@ -148,13 +148,13 @@ func Test_Assistant(t *testing.T) {
 		}).AnyTimes()
 
 	var buf strings.Builder
-	ag := assistants.NewAssistant[model.Output](mockLLM, systemPrompt, acfg...).
-		WithCallback(assistants.NewLogHandler(&buf)).
+	ag := assistants.NewAssistant[chatmodel.Output](mockLLM, systemPrompt, acfg...).
+		WithCallback(assistants.NewPrinterCallback(&buf)).
 		WithTools(mockTool)
 
-	ctx := model.WithChatContext(context.Background(), model.NewChatContext(model.NewChatID(), nil))
+	ctx := chatmodel.WithChatContext(context.Background(), chatmodel.NewChatContext(chatmodel.NewChatID(), nil))
 
-	var output model.Output
+	var output chatmodel.Output
 	apiResp, err := ag.Run(ctx, "What is a capital of largest country in Europe?", nil, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)

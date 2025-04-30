@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"fmt"
+	"strings"
 )
 
 //go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools
@@ -28,4 +30,12 @@ type Callback interface {
 type Tool[I any, O any] interface {
 	ITool
 	Run(context.Context, *I) (*O, error)
+}
+
+func GetDescriptions(list ...ITool) string {
+	var ts strings.Builder
+	for _, item := range list {
+		ts.WriteString(fmt.Sprintf("- `%s`: %s\n", item.Name(), item.Description()))
+	}
+	return ts.String()
 }

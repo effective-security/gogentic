@@ -15,56 +15,11 @@ func Test_JSON_Encoding(t *testing.T) {
 	exp := `
 Respond with JSON in the following JSON schema:
 ` + "```json" + `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/effective-security/gogentic/encoding_test/13315799960601602837",
-  "$ref": "#/$defs/13315799960601602837",
-  "$defs": {
-    "13315799960601602837": {
-      "properties": {
-        "topic": {
-          "type": "string",
-          "title": "Topic",
-          "description": "Topic of the search",
-          "examples": [
-            "golang"
-          ]
-        },
-        "query": {
-          "type": "string",
-          "title": "Query",
-          "description": "Query to search for relevant content",
-          "examples": [
-            "what is golang"
-          ]
-        },
-        "type": {
-          "type": "string",
-          "enum": [
-            "web",
-            "image",
-            "video"
-          ],
-          "title": "Type",
-          "description": "Type of search",
-          "default": "web"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "topic",
-        "query",
-        "type"
-      ]
-    }
-  }
-}
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/effective-security/gogentic/encoding_test/13315799960601602837","$ref":"#/$defs/13315799960601602837","$defs":{"13315799960601602837":{"properties":{"topic":{"type":"string","title":"Topic","description":"Topic of the search","examples":["golang"]},"query":{"type":"string","title":"Query","description":"Query to search for relevant content","examples":["what is golang"]},"type":{"type":"string","enum":["web","image","video"],"title":"Type","description":"Type of search","default":"web"}},"additionalProperties":false,"type":"object","required":["topic","query","type"]}}}
 ` + "```" + `
 Make sure to return an instance of the JSON, not the schema itself.
 `
-
-	assert.Equal(t, exp, string(e.GetFormatInstructions()))
+	assert.Equal(t, exp, e.GetFormatInstructions())
 }
 
 func Test_YAML_Encoding(t *testing.T) {
@@ -81,7 +36,7 @@ type: web
 Make sure to return an instance of the YAML, not the schema itself.
 `
 
-	assert.Equal(t, exp, string(e.GetFormatInstructions()))
+	assert.Equal(t, exp, e.GetFormatInstructions())
 }
 
 func Test_TOML_Encoding(t *testing.T) {
@@ -98,7 +53,7 @@ Type = "web"
 Make sure to return an instance of the TOML, not the schema itself.
 `
 
-	assert.Equal(t, exp, string(e.GetFormatInstructions()))
+	assert.Equal(t, exp, e.GetFormatInstructions())
 }
 
 type SearchType string

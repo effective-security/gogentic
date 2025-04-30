@@ -1,4 +1,4 @@
-package model
+package chatmodel
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 // ChatContext is the context for the chat agent,
 // It contains the user ID, org ID, cloud ID, and batch ID
 type ChatContext interface {
-	ChatID() string
+	GetChatID() string
 	// AppData returns immutable app data
 	AppData() any
 	// GetMetadata retrieves metadata by key
@@ -27,7 +27,7 @@ type chatContext struct {
 	appData  any
 }
 
-func (c *chatContext) ChatID() string {
+func (c *chatContext) GetChatID() string {
 	return c.chatID
 }
 

@@ -60,10 +60,10 @@ I need more information about the tool
 `
 	assert.Equal(t, exp, utils.ToolClarificationComment("tool1", "I need more information about the tool"))
 
-	exp2 := `<!-- @type=Agent @name=agent2 @reason=clarification -->
+	exp2 := `<!-- @type=Assistant @name=agent2 @reason=clarification -->
 I need more information about the tool
 `
-	assert.Equal(t, exp2, utils.AgentClarificationComment("agent2", "I need more information about the tool"))
+	assert.Equal(t, exp2, utils.AssistantClarificationComment("agent2", "I need more information about the tool"))
 }
 
 func Test_ErrorComment(t *testing.T) {
@@ -72,8 +72,8 @@ I need more information about the tool
 `
 	assert.Equal(t, exp, utils.ToolErrorComment("tool1", "I need more information about the tool"))
 
-	exp2 := `<!-- @type=Agent @name=agent2 @reason=error -->
+	exp2 := `<!-- @type=Assistant @name=agent2 @reason=error -->
 I need more information about the tool
 `
-	assert.Equal(t, exp2, utils.AgentErrorComment("agent2", "I need more information about the tool"))
+	assert.Equal(t, exp2, utils.AssistantErrorComment("agent2", "I need more information about the tool"))
 }
