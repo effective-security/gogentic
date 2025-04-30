@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/factory"
-	"github.com/effective-security/gogentic/model"
+	"github.com/effective-security/gogentic/llmfactory"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/xlog"
 	"github.com/stretchr/testify/assert"
@@ -19,12 +19,12 @@ import (
 	"github.com/tmc/langchaingo/prompts"
 )
 
-func loadOpenAIConfigOrSkipRealTest(t *testing.T) *factory.Config {
+func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 	// Uncommend to see logs, or change to DEBUG
 	xlog.SetFormatter(xlog.NewStringFormatter(os.Stdout))
 	xlog.SetGlobalLogLevel(xlog.ERROR)
 
-	cfg, err := factory.LoadConfig("../factory/testdata/llm.yaml")
+	cfg, err := llmfactory.LoadConfig("../llmfactory/testdata/llm.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
 
@@ -44,7 +44,7 @@ func Test_Real_Assistant(t *testing.T) {
 	provCfg := cfg.Providers[0]
 	require.NotEmpty(t, provCfg.Token)
 
-	f := factory.New(cfg)
+	f := llmfactory.New(cfg)
 	llmModel, err := f.DefaultModel()
 	require.NoError(t, err)
 
@@ -56,8 +56,8 @@ func Test_Real_Assistant(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	ag := assistants.NewAssistant[model.Output](llmModel, systemPrompt, acfg...).
-		WithCallback(assistants.NewLogHandler(&buf))
+	ag := assistants.NewAssistant[chatmodel.Output](llmModel, systemPrompt, acfg...).
+		WithCallback(assistants.NewPrinterCallback(&buf))
 
 	apikey := os.Getenv("TAVILY_API_KEY")
 	if apikey != "" {
@@ -67,15 +67,15 @@ func Test_Real_Assistant(t *testing.T) {
 		ag = ag.WithTools(websearch)
 	}
 
-	ctx := model.WithChatContext(context.Background(), model.NewChatContext(model.NewChatID(), nil))
+	ctx := chatmodel.WithChatContext(context.Background(), chatmodel.NewChatContext(chatmodel.NewChatID(), nil))
 
-	var output model.Output
-	apiResp, err := ag.Run(ctx, "What is a capital of largest country in Europe?", nil, &output)
+	var output chatmodel.Output
+	apiResp, err := assistants.Run(ctx, ag, "What is a capital of largest country in Europe?", nil, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	apiResp, err = ag.Run(ctx, "Search for weather there.", nil, &output)
+	apiResp, err = assistants.Run(ctx, ag, "Search for weather there.", nil, &output)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, output.Content)

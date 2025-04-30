@@ -1,4 +1,4 @@
-package factory
+package llmfactory
 
 import (
 	"strings"
@@ -9,7 +9,7 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "factory")
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")
 
 type Factory interface {
 	DefaultModel() (*openai.LLM, error)
@@ -17,8 +17,8 @@ type Factory interface {
 	ModelByName(name string) (*openai.LLM, error)
 }
 
-// LoadFactory returns OpenAI factory
-func LoadFactory(location string) (Factory, error) {
+// Load returns OpenAI factory
+func Load(location string) (Factory, error) {
 	cfg, err := LoadConfig(location)
 	if err != nil {
 		return nil, err

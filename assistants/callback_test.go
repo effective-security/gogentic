@@ -9,11 +9,12 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/stretchr/testify/assert"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/prompts"
 )
 
 func TestCallback(t *testing.T) {
 	var buf bytes.Buffer
-	cb := assistants.NewLogHandler(&buf)
+	cb := assistants.NewPrinterCallback(&buf)
 
 	ast := &fakeAssistant{name: "test-assistant"}
 	tool := &fakeTool{name: "test-tool"}
@@ -50,6 +51,18 @@ func (f *fakeAssistant) Name() string {
 }
 func (f *fakeAssistant) Description() string {
 	return "useful assistant"
+}
+
+func (f *fakeAssistant) FormatPrompt(values map[string]any) (llms.PromptValue, error) {
+	return prompts.NewPromptTemplate("You are a helpful assistant.", []string{}).FormatPrompt(values)
+}
+
+func (f *fakeAssistant) GetPromptInputVariables() []string {
+	return []string{}
+}
+
+func (f *fakeAssistant) Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error) {
+	return nil, nil
 }
 
 type fakeTool struct {

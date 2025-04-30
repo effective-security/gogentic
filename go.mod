@@ -8,7 +8,7 @@ require (
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/effective-security/x v0.12.53
+	github.com/effective-security/x v0.12.54
 	github.com/effective-security/xdb v0.22.103
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0
@@ -16,8 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tmc/langchaingo v0.1.13
-	go.uber.org/mock v0.5.1
-	gopkg.in/yaml.v2 v2.4.0
+	go.uber.org/mock v0.5.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -66,6 +65,7 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35

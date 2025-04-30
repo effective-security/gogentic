@@ -56,8 +56,7 @@ func New(t reflect.Type) (*Schema, error) {
 
 func buildSchema(t reflect.Type) (*Schema, error) {
 	schema := JSONSchema(t)
-
-	str, err := json.MarshalIndent(schema, "", "  ")
+	str, err := json.Marshal(schema)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to marshal schema for %s", t.Name())
 	}

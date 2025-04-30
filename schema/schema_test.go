@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ const (
 )
 
 type Search struct {
-	Topic string     `json:"topic" jsonschema:"title=Topic,description=Topic of the search,example=golang"`
+	Topic string     `json:"topic,omitempty" jsonschema:"title=Topic,description=Topic of the search,example=golang"`
 	Query string     `json:"query" jsonschema:"title=Query,description=Query to search for relevant content,example=what is golang"`
 	Type  SearchType `json:"type"  jsonschema:"title=Type,description=Type of search,default=web,enum=web,enum=image,enum=video"`
 }
@@ -28,7 +29,11 @@ func TestSchema(t *testing.T) {
 	s, err := schema.New(reflect.TypeOf(Search{}))
 	require.NoError(t, err)
 
-	exp := `{
+	exp := `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/effective-security/gogentic/schema_test/909492315013507688","$ref":"#/$defs/909492315013507688","$defs":{"909492315013507688":{"properties":{"topic":{"type":"string","title":"Topic","description":"Topic of the search","examples":["golang"]},"query":{"type":"string","title":"Query","description":"Query to search for relevant content","examples":["what is golang"]},"type":{"type":"string","enum":["web","image","video"],"title":"Type","description":"Type of search","default":"web"}},"additionalProperties":false,"type":"object","required":["query","type"]}}}`
+	assert.Equal(t, exp, s.String)
+	assert.Equal(t, 1, len(s.Functions))
+
+	exp2 := `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/effective-security/gogentic/schema_test/909492315013507688",
   "$ref": "#/$defs/909492315013507688",
@@ -66,15 +71,13 @@ func TestSchema(t *testing.T) {
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "topic",
         "query",
         "type"
       ]
     }
   }
 }`
-	assert.Equal(t, exp, s.String)
-	assert.Equal(t, 1, len(s.Functions))
+	assert.Equal(t, exp2, utils.JSONIndent(s.String))
 
 	s2, err := schema.New(reflect.TypeOf(Search{}))
 	require.NoError(t, err)
@@ -118,7 +121,6 @@ func TestSchema(t *testing.T) {
       },
       "type": "object",
       "required": [
-        "topic",
         "query",
         "type"
       ]

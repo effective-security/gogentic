@@ -3,8 +3,8 @@ package assistants
 import (
 	"context"
 
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/model"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -74,7 +74,7 @@ type Config struct {
 	StreamingFunc func(ctx context.Context, chunk []byte) error
 
 	PromptInput map[string]any
-	Examples    model.FewShotExamples
+	Examples    chatmodel.FewShotExamples
 	Mode        encoding.Mode
 }
 
@@ -102,7 +102,7 @@ func WithMode(mode encoding.Mode) Option {
 }
 
 // WithExamples is an option that allows to specify the few-shot examples for the system prompt.
-func WithExamples(examples model.FewShotExamples) Option {
+func WithExamples(examples chatmodel.FewShotExamples) Option {
 	return func(o *Config) {
 		o.Examples = examples
 	}

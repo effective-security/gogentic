@@ -1,18 +1,18 @@
-package factory_test
+package llmfactory_test
 
 import (
 	"testing"
 
-	"github.com/effective-security/gogentic/factory"
+	"github.com/effective-security/gogentic/llmfactory"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Factory(t *testing.T) {
-	cfg, err := factory.LoadConfig("testdata/llm.yaml")
+	cfg, err := llmfactory.LoadConfig("testdata/llm.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
 
-	f := factory.New(cfg)
+	f := llmfactory.New(cfg)
 	model, err := f.DefaultModel()
 	require.NoError(t, err)
 	require.NotEmpty(t, model)

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/tmc/langchaingo/llms"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // CleanJSON returns JSON by trimming prefixes and postfixes,
@@ -120,20 +120,31 @@ func ToolClarificationComment(tool, clarification string) string {
 	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=clarification -->\n%s\n", tool, clarification)
 }
 
-func AgentClarificationComment(agent, clarification string) string {
-	return fmt.Sprintf("<!-- @type=Agent @name=%s @reason=clarification -->\n%s\n", agent, clarification)
+func AssistantClarificationComment(agent, clarification string) string {
+	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=clarification -->\n%s\n", agent, clarification)
 }
 
 func ToolErrorComment(tool, err string) string {
 	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=error -->\n%s\n", tool, err)
 }
 
-func AgentErrorComment(agent, err string) string {
-	return fmt.Sprintf("<!-- @type=Agent @name=%s @reason=error -->\n%s\n", agent, err)
+func AssistantErrorComment(agent, err string) string {
+	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=error -->\n%s\n", agent, err)
+}
+
+func JSONIndent(body string) string {
+	var buf bytes.Buffer
+	_ = json.Indent(&buf, []byte(body), "", "  ")
+	return buf.String()
 }
 
 func ToJSON(val any) string {
 	js, _ := json.Marshal(val)
+	return string(js)
+}
+
+func ToJSONIndent(val any) string {
+	js, _ := json.MarshalIndent(val, "", "\t")
 	return string(js)
 }
 

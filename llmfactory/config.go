@@ -1,4 +1,4 @@
-package factory
+package llmfactory
 
 import (
 	"github.com/effective-security/x/configloader"

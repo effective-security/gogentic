@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/tmc/langchaingo/llms"
 )
@@ -60,7 +60,7 @@ func Test_ChainCallOptions(t *testing.T) {
 			},
 		}),
 		assistants.WithToolChoice("tool1"),
-		assistants.WithExamples(model.FewShotExamples{
+		assistants.WithExamples(chatmodel.FewShotExamples{
 			{
 				Prompt:     "example prompt",
 				Completion: "example answer",

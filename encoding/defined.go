@@ -3,7 +3,7 @@ package encoding
 import (
 	"fmt"
 
-	"github.com/effective-security/gogentic/model"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 )
@@ -17,7 +17,7 @@ type TypedOutputParser[T any] struct {
 	validate bool
 }
 
-var _ model.OutputParser[any] = (*TypedOutputParser[any])(nil)
+var _ chatmodel.OutputParser[any] = (*TypedOutputParser[any])(nil)
 
 // NewTypedOutputParser creates an output parser that structures data according to
 // a given schema, as defined by struct field names and types. Tagging the
