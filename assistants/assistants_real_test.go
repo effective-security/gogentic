@@ -67,7 +67,8 @@ func Test_Real_Assistant(t *testing.T) {
 		ag = ag.WithTools(websearch)
 	}
 
-	ctx := chatmodel.WithChatContext(context.Background(), chatmodel.NewChatContext(chatmodel.NewChatID(), nil))
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	var output chatmodel.Output
 	apiResp, err := assistants.Run(ctx, ag, "What is a capital of largest country in Europe?", nil, &output)

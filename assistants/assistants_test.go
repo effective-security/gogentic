@@ -12,6 +12,7 @@ import (
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
+	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
@@ -150,9 +151,11 @@ func Test_Assistant(t *testing.T) {
 	var buf strings.Builder
 	ag := assistants.NewAssistant[chatmodel.Output](mockLLM, systemPrompt, acfg...).
 		WithCallback(assistants.NewPrinterCallback(&buf)).
-		WithTools(mockTool)
+		WithTools(mockTool).
+		WithMessageStore(store.NewMemoryStore())
 
-	ctx := chatmodel.WithChatContext(context.Background(), chatmodel.NewChatContext(chatmodel.NewChatID(), nil))
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	var output chatmodel.Output
 	apiResp, err := ag.Run(ctx, "What is a capital of largest country in Europe?", nil, &output)

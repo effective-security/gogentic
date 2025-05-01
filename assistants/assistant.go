@@ -10,6 +10,8 @@ import (
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/utils"
+	"github.com/effective-security/x/slices"
+	"github.com/effective-security/xlog"
 	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/prompts"
@@ -43,8 +45,9 @@ func NewAssistant[O chatmodel.ContentProvider](
 	sysprompt prompts.FormatPrompter,
 	options ...Option) *Assistant[O] {
 	ret := &Assistant[O]{
-		Config:      *NewConfig(options...),
-		Store:       store.NewMemoryStore(),
+		Config: *NewConfig(options...),
+		// By default no store is used.
+		//Store:       store.NewMemoryStore(),
 		LLM:         llmModel,
 		sysprompt:   sysprompt,
 		callback:    NewNoopCallback(),
@@ -128,12 +131,10 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 }
 
 func (a *Assistant[O]) MessageHistory(ctx context.Context) []llms.ChatMessage {
-	chatID := chatmodel.GetChatID(ctx)
-	if a.Store == nil || chatID == "" {
+	if a.Store == nil {
 		return nil
 	}
-
-	return a.Store.Messages(chatID)
+	return a.Store.Messages(ctx)
 }
 
 func (a *Assistant[O]) FormatPrompt(promptInputs map[string]any) (llms.PromptValue, error) {
@@ -151,11 +152,10 @@ func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[
 
 // Run runs the chat agent with the given user input synchronously.
 func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O) (*llms.ContentResponse, error) {
-	chatCtx := chatmodel.GetChatContext(ctx)
-	if chatCtx == nil {
-		return nil, errors.New("invalid context")
+	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
+	if err != nil {
+		return nil, errors.New("invalid chat context")
 	}
-	chatID := chatCtx.GetChatID()
 
 	promptValue, err := a.FormatPrompt(promptInputs)
 	if err != nil {
@@ -178,7 +178,12 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 		messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, example.Completion))
 	}
 	if a.Store != nil {
-		for _, msg := range a.Store.Messages(chatID) {
+		prevMessages := a.MessageHistory(ctx)
+		logger.ContextKV(ctx, xlog.DEBUG,
+			"assistant", a.name,
+			"chat_id", chatID,
+			"message_history", len(prevMessages))
+		for _, msg := range prevMessages {
 			messageHistory = append(messageHistory, llms.TextParts(msg.GetType(), msg.GetContent()))
 		}
 	}
@@ -231,9 +236,17 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 		}
 	}
 
-	if a.Store != nil {
-		_ = a.Store.Add(chatID, &llms.HumanChatMessage{Content: input})
-		_ = a.Store.Add(chatID, &llms.AIChatMessage{Content: result})
+	if a.Store != nil && !a.SkipMessageHistory {
+		_ = a.Store.Add(ctx, &llms.HumanChatMessage{Content: input})
+		_ = a.Store.Add(ctx, &llms.AIChatMessage{Content: result})
+
+		logger.ContextKV(ctx, xlog.DEBUG,
+			"assistant", a.name,
+			"chat_id", chatID,
+			"status", "added_message_history",
+			"human", slices.StringUpto(input, 32),
+			"ai", slices.StringUpto(result, 32),
+		)
 	}
 
 	return resp, nil

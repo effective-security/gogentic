@@ -2,16 +2,18 @@ package chatmodel
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 
-	"github.com/effective-security/x/values"
 	"github.com/effective-security/xdb/pkg/flake"
 )
 
 // ChatContext is the context for the chat agent,
-// It contains the user ID, org ID, cloud ID, and batch ID
 type ChatContext interface {
+	// GetTenantID retrieves the tenant ID from the context
+	GetTenantID() string
+	// GetChatID retrieves the chat ID from the context
 	GetChatID() string
 	// AppData returns immutable app data
 	AppData() any
@@ -22,9 +24,14 @@ type ChatContext interface {
 }
 
 type chatContext struct {
+	tenantID string
 	chatID   string
 	metadata sync.Map
 	appData  any
+}
+
+func (c *chatContext) GetTenantID() string {
+	return c.tenantID
 }
 
 func (c *chatContext) GetChatID() string {
@@ -42,9 +49,16 @@ func (c *chatContext) SetMetadata(key string, value any) {
 	c.metadata.Store(key, value)
 }
 
-func NewChatContext(chatID string, appData any) ChatContext {
+func NewChatContext(tenantID, chatID string, appData any) ChatContext {
+	if tenantID == "" {
+		tenantID = NewChatID()
+	}
+	if chatID == "" {
+		chatID = NewChatID()
+	}
 	return &chatContext{
-		chatID:   values.StringsCoalesce(chatID, NewChatID()),
+		tenantID: tenantID,
+		chatID:   chatID,
 		appData:  appData,
 		metadata: sync.Map{},
 	}
@@ -69,13 +83,13 @@ func GetChatContext(ctx context.Context) ChatContext {
 	return nil
 }
 
-// GetChatID retrieves the chat ID from the provided context.
-// If the context does not contain a ChatContext, it returns an empty string.
-func GetChatID(ctx context.Context) string {
+// GetTenantAndChatID retrieves the tenant and chat ID from the provided context.
+// If the context does not contain a ChatContext, it returns error.
+func GetTenantAndChatID(ctx context.Context) (string, string, error) {
 	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
-		return v.GetChatID()
+		return v.GetTenantID(), v.GetChatID(), nil
 	}
-	return ""
+	return "", "", errors.New("invalid chat context")
 }
 
 // NewChatID generates a new chat ID using the flake ID generator.
