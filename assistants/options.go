@@ -73,9 +73,10 @@ type Config struct {
 	// Return an error to stop streaming early.
 	StreamingFunc func(ctx context.Context, chunk []byte) error
 
-	PromptInput map[string]any
-	Examples    chatmodel.FewShotExamples
-	Mode        encoding.Mode
+	PromptInput        map[string]any
+	Examples           chatmodel.FewShotExamples
+	Mode               encoding.Mode
+	SkipMessageHistory bool
 }
 
 func NewConfig(opts ...Option) *Config {
@@ -105,6 +106,13 @@ func WithMode(mode encoding.Mode) Option {
 func WithExamples(examples chatmodel.FewShotExamples) Option {
 	return func(o *Config) {
 		o.Examples = examples
+	}
+}
+
+// WithSkipMessageHistory is an option that allows to skip adding Assistant messages to History.
+func WithSkipMessageHistory(skip bool) Option {
+	return func(o *Config) {
+		o.SkipMessageHistory = skip
 	}
 }
 

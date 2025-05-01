@@ -7,8 +7,11 @@ import (
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/effective-security/xlog"
 	"github.com/tmc/langchaingo/llms"
 )
+
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "assistants")
 
 //go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/tmc/langchaingo/llms  Model
 //go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
