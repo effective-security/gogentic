@@ -20,12 +20,6 @@ type Faker interface {
 }
 
 var (
-	reflectorPool = sync.Pool{
-		New: func() any {
-			return new(jsonschema.Reflector)
-		},
-	}
-
 	cache   = make(map[reflect.Type]*Schema)
 	cacheMu sync.RWMutex
 )
@@ -101,8 +95,7 @@ func (s *Schema) NameFromRef() string {
 
 // JSONSchema return the json schema of the configuration
 func JSONSchema(t reflect.Type) *jsonschema.Schema {
-	r := reflectorPool.Get().(*jsonschema.Reflector)
-	defer reflectorPool.Put(r)
+	r := new(jsonschema.Reflector)
 
 	// The Struct name could be same, but the package name is different
 	// For example, all of the notification plugins have the same struct name - `NotifyConfig`
