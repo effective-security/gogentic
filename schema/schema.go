@@ -35,9 +35,11 @@ type Schema struct {
 func New(t reflect.Type) (*Schema, error) {
 	cacheMu.RLock()
 	defer cacheMu.RUnlock()
-	if s, ok := cache[t]; ok {
-		return s, nil
-	}
+
+	// TODO: better caching strategy
+	// if s, ok := cache[t]; ok {
+	// 	return s, nil
+	// }
 
 	s, err := buildSchema(t)
 	if err != nil {
