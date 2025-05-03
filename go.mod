@@ -13,6 +13,7 @@ require (
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/invopop/jsonschema v0.13.0
+	github.com/metoro-io/mcp-golang v0.11.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tmc/langchaingo v0.1.13
@@ -53,6 +54,10 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
@@ -69,3 +74,5 @@ require (
 )
 
 replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35
+
+replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250502152650-067841f1af42

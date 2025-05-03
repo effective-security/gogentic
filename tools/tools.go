@@ -4,9 +4,15 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	mcp "github.com/metoro-io/mcp-golang"
 )
 
 //go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools
+
+type McpServerRegistrator interface {
+	RegisterTool(name string, description string, handler any) error
+}
 
 // ITool is a tool for the llm agent to interact with different applications.
 type ITool interface {
@@ -30,6 +36,20 @@ type Callback interface {
 type Tool[I any, O any] interface {
 	ITool
 	Run(context.Context, *I) (*O, error)
+}
+
+// IMCPTool is an interface that extends ITool to include functionality for
+// registering the tool with an MCP server.
+// The RegisterMCP method allows the tool to be registered with a given
+// MCP Server.
+type IMCPTool interface {
+	ITool
+	RegisterMCP(registrator McpServerRegistrator) error
+}
+
+type MCPTool[I any] interface {
+	IMCPTool
+	RunMCP(context.Context, *I) (*mcp.ToolResponse, error)
 }
 
 func GetDescriptions(list ...ITool) string {

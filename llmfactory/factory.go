@@ -6,15 +6,16 @@ import (
 
 	"github.com/effective-security/xlog"
 	"github.com/pkg/errors"
+	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")
 
 type Factory interface {
-	DefaultModel() (*openai.LLM, error)
-	ModelByType(typ string) (*openai.LLM, error)
-	ModelByName(name string) (*openai.LLM, error)
+	DefaultModel() (llms.Model, error)
+	ModelByType(typ string) (llms.Model, error)
+	ModelByName(name string) (llms.Model, error)
 }
 
 // Load returns OpenAI factory
@@ -29,8 +30,8 @@ func Load(location string) (Factory, error) {
 type factory struct {
 	cfg *Config
 
-	byType map[string]*openai.LLM
-	byName map[string]*openai.LLM
+	byType map[string]llms.Model
+	byName map[string]llms.Model
 	lock   sync.Mutex
 }
 
@@ -38,13 +39,13 @@ type factory struct {
 func New(cfg *Config) Factory {
 	f := &factory{
 		cfg:    cfg,
-		byType: make(map[string]*openai.LLM),
-		byName: make(map[string]*openai.LLM),
+		byType: make(map[string]llms.Model),
+		byName: make(map[string]llms.Model),
 	}
 	return f
 }
 
-func NewLLM(cfg *ProviderConfig) (*openai.LLM, error) {
+func NewLLM(cfg *ProviderConfig) (llms.Model, error) {
 	var opts []openai.Option
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -72,14 +73,14 @@ func NewLLM(cfg *ProviderConfig) (*openai.LLM, error) {
 }
 
 // Default returns the default OpenAI client
-func (f *factory) DefaultModel() (*openai.LLM, error) {
+func (f *factory) DefaultModel() (llms.Model, error) {
 	if len(f.cfg.Providers) == 0 {
 		return nil, errors.New("no providers configured")
 	}
 	return f.ModelByName(f.cfg.Providers[0].Name)
 }
 
-func (f *factory) ModelByType(typ string) (*openai.LLM, error) {
+func (f *factory) ModelByType(typ string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
@@ -107,7 +108,7 @@ func (f *factory) ModelByType(typ string) (*openai.LLM, error) {
 	return nil, errors.Errorf("provider not found for type: %s", typ)
 }
 
-func (f *factory) ModelByName(name string) (*openai.LLM, error) {
+func (f *factory) ModelByName(name string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 

@@ -15,6 +15,7 @@ import (
 	"github.com/effective-security/gogentic/schema"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/utils"
+	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 )
@@ -54,6 +55,7 @@ type Tool struct {
 
 // ensure WebSearchTool implements the llm.Function interface
 var _ tools.Tool[SearchRequest, SearchResult] = (*Tool)(nil)
+var _ tools.MCPTool[SearchRequest] = (*Tool)(nil)
 
 func New() (*Tool, error) {
 	apikey := os.Getenv(DefaultAPIKeyEnvName)
@@ -99,6 +101,18 @@ func (t *Tool) Description() string {
 
 func (t *Tool) Parameters() any {
 	return t.funcParams
+}
+
+func (t *Tool) RegisterMCP(registrator tools.McpServerRegistrator) error {
+	return registrator.RegisterTool(t.name, t.description, t.RunMCP)
+}
+
+func (t *Tool) RunMCP(ctx context.Context, req *SearchRequest) (*mcp.ToolResponse, error) {
+	res, err := t.Run(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return mcp.NewToolResponse(mcp.NewTextContent(res.GetContent())), nil
 }
 
 func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, error) {
