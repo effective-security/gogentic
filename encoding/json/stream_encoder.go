@@ -60,7 +60,7 @@ func (e *StreamEncoder) Validate(req any) error {
 }
 
 func (e *StreamEncoder) Marshal(req any) ([]byte, error) {
-	return []byte(e.schema.String), nil
+	return []byte(e.schema.String()), nil
 }
 
 func (e *StreamEncoder) GetFormatInstructions() string {

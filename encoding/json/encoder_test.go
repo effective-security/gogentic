@@ -8,6 +8,7 @@ import (
 )
 
 func TestJson(t *testing.T) {
+	// Details provide additional information about a person
 	type Details struct {
 		Location string `yaml:"location" jsonschema:"description=location" fake:"Beijing"`
 		Gender   string `yaml:"gender" jsonschema:"description=gender" fake:"male"`
@@ -25,7 +26,65 @@ func TestJson(t *testing.T) {
 	exp := `
 Respond with JSON in the following JSON schema:
 ` + "```json" + `
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/effective-security/gogentic/encoding/json/10940084751679951558","$ref":"#/$defs/10940084751679951558","$defs":{"10940084751679951558":{"properties":{"Name":{"type":"string","description":"person name"},"Age":{"type":"integer","description":"Age of a person"},"Details":{"$ref":"#/$defs/8450669062540683315","description":"Details of a person"},"DetailList":{"items":{"$ref":"#/$defs/8450669062540683315"},"type":"array","description":"Details list of a person"}},"additionalProperties":false,"type":"object","required":["Name","Age","Details","DetailList"]},"8450669062540683315":{"properties":{"Location":{"type":"string","description":"location"},"Gender":{"type":"string","description":"gender"}},"additionalProperties":false,"type":"object","required":["Location","Gender"]}}}
+{
+	"properties": {
+		"Name": {
+			"type": "string",
+			"description": "person name"
+		},
+		"Age": {
+			"type": "integer",
+			"description": "Age of a person"
+		},
+		"Details": {
+			"properties": {
+				"Location": {
+					"type": "string",
+					"description": "location"
+				},
+				"Gender": {
+					"type": "string",
+					"description": "gender"
+				}
+			},
+			"additionalProperties": false,
+			"type": "object",
+			"required": [
+				"Location",
+				"Gender"
+			]
+		},
+		"DetailList": {
+			"items": {
+				"properties": {
+					"Location": {
+						"type": "string",
+						"description": "location"
+					},
+					"Gender": {
+						"type": "string",
+						"description": "gender"
+					}
+				},
+				"additionalProperties": false,
+				"type": "object",
+				"required": [
+					"Location",
+					"Gender"
+				]
+			},
+			"type": "array",
+			"description": "Details list of a person"
+		}
+	},
+	"type": "object",
+	"required": [
+		"Name",
+		"Age",
+		"Details",
+		"DetailList"
+	]
+}
 ` + "```" + `
 Make sure to return an instance of the JSON, not the schema itself.
 `

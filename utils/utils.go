@@ -134,7 +134,7 @@ func AssistantErrorComment(agent, err string) string {
 
 func JSONIndent(body string) string {
 	var buf bytes.Buffer
-	_ = json.Indent(&buf, []byte(body), "", "  ")
+	_ = json.Indent(&buf, []byte(body), "", "\t")
 	return buf.String()
 }
 
@@ -172,7 +172,7 @@ func Stringify(s any) string {
 	if v, ok := s.(string); ok {
 		return v
 	}
-	js, _ := json.MarshalIndent(s, "", "  ")
+	js, _ := json.MarshalIndent(s, "", "\t")
 	return BackticksJSON(string(js))
 }
 

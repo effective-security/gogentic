@@ -5,7 +5,6 @@ import (
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/pkg/errors"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // TypedOutputParser parses output from an LLM into Go structs.
@@ -55,9 +54,9 @@ func (p *TypedOutputParser[T]) Parse(text string) (*T, error) {
 }
 
 // ParseWithPrompt parses the output of an LLM call with the prompt used.
-func (p *TypedOutputParser[T]) ParseWithPrompt(text string, prompt llms.PromptValue) (*T, error) {
-	return p.Parse(text)
-}
+// func (p *TypedOutputParser[T]) ParseWithPrompt(text string, prompt llms.PromptValue) (*T, error) {
+// 	return p.Parse(text)
+// }
 
 // GetFormatInstructions returns a string describing the format of the output.
 func (p *TypedOutputParser[T]) GetFormatInstructions() string {

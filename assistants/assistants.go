@@ -26,6 +26,15 @@ type IAssistant interface {
 	FormatPrompt(values map[string]any) (llms.PromptValue, error)
 	GetPromptInputVariables() []string
 
+	/*
+		// MessageHistory returns the message history of the Assistant from the current store.
+		// This is used to store the conversation history for the Assistant,
+		// excluding the system prompt and tools executions.
+		MessageHistory(ctx context.Context) []llms.ChatMessage
+		// RunMessages returns all messages from the run, including the system prompt and tools
+		RunMessages() []llms.MessageContent
+	*/
+
 	Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error)
 }
 
