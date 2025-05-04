@@ -50,20 +50,19 @@ func Test_Tool(t *testing.T) {
 	assert.Equal(t, tavily.ToolName, tool.Name())
 	assert.Contains(t, tool.Description(), `web search`)
 
-	params, err := json.MarshalIndent(tool.Parameters(), "", "  ")
-	require.NoError(t, err)
+	params := utils.ToJSONIndent(tool.Parameters())
 	expParams := `{
-  "properties": {
-    "Query": {
-      "type": "string",
-      "title": "Query",
-      "description": "The query to search web."
-    }
-  },
-  "type": "object",
-  "required": [
-    "Query"
-  ]
+	"properties": {
+		"Query": {
+			"type": "string",
+			"title": "Search Query",
+			"description": "The query to search web."
+		}
+	},
+	"type": "object",
+	"required": [
+		"Query"
+	]
 }`
 
 	assert.Equal(t, expParams, string(params))

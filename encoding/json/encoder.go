@@ -44,7 +44,7 @@ func (e *Encoder) GetFormatInstructions() string {
 	var b bytes.Buffer
 	b.WriteString("\nRespond with JSON in the following JSON schema:\n")
 	b.WriteString("```json\n")
-	b.Write([]byte(e.schema.String))
+	b.Write([]byte(e.schema.String()))
 	b.WriteString("\n```")
 	b.WriteString("\nMake sure to return an instance of the JSON, not the schema itself.\n")
 	return b.String()

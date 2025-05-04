@@ -33,6 +33,7 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	description string
 	sysprompt   prompts.FormatPrompter
 	callback    Callback
+	runMessages []llms.MessageContent
 }
 
 var (
@@ -130,6 +131,10 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 	return a
 }
 
+func (a *Assistant[O]) RunMessages() []llms.MessageContent {
+	return a.runMessages
+}
+
 func (a *Assistant[O]) MessageHistory(ctx context.Context) []llms.ChatMessage {
 	if a.Store == nil {
 		return nil
@@ -146,8 +151,25 @@ func (a *Assistant[O]) GetPromptInputVariables() []string {
 }
 
 func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error) {
-	// Call the Run method with nil as the optionalOutputType
-	return a.Run(ctx, input, promptInputs, nil)
+	var output O
+	return a.Run(ctx, input, promptInputs, &output)
+}
+
+func (a *Assistant[O]) GetSystemPrompt(promptInputs map[string]any) (string, error) {
+	promptValue, err := a.FormatPrompt(promptInputs)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert the prompt value to a string.
+	systemPrompt := strings.TrimRight(promptValue.String(), "\n") // Ensure no trailing newline.
+	// Get the output schema instructions and trim any trailing newlines.
+	outputSchema := strings.TrimRight(a.OutputParser.GetFormatInstructions(), "\n")
+	if outputSchema != "" {
+		// Append the output schema to the system prompt with a separating newline.
+		systemPrompt = fmt.Sprintf("%s\n\n# OUTPUT SCHEMA\n%s", systemPrompt, outputSchema)
+	}
+	return systemPrompt, nil
 }
 
 // Run runs the chat agent with the given user input synchronously.
@@ -157,19 +179,11 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 		return nil, errors.New("invalid chat context")
 	}
 
-	promptValue, err := a.FormatPrompt(promptInputs)
+	systemPrompt, err := a.GetSystemPrompt(promptInputs)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "failed to format system prompt")
 	}
 
-	systemPrompt := promptValue.String()
-
-	if optionalOutputType != nil {
-		outputSchema := a.OutputParser.GetFormatInstructions()
-		if outputSchema != "" {
-			systemPrompt = fmt.Sprintf("%s\n\n#OUTPUT SCHEMA\n%s\n", systemPrompt, outputSchema)
-		}
-	}
 	messageHistory := []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
 	}
@@ -225,7 +239,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 	result := choices[0].Content
 
 	if optionalOutputType != nil {
-		finalOutput, err := a.OutputParser.ParseWithPrompt(result, promptValue)
+		finalOutput, err := a.OutputParser.Parse(result)
 		if err != nil {
 			return nil, err
 		}
@@ -235,6 +249,8 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 			result = prov.GetContent()
 		}
 	}
+
+	messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, result))
 
 	if a.Store != nil && !a.SkipMessageHistory {
 		_ = a.Store.Add(ctx, &llms.HumanChatMessage{Content: input})
@@ -248,6 +264,8 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 			"ai", slices.StringUpto(result, 32),
 		)
 	}
+
+	a.runMessages = messageHistory
 
 	return resp, nil
 }

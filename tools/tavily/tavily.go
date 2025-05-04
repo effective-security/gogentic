@@ -26,13 +26,13 @@ var DefaultAPIKeyEnvName = "TAVILY_API_KEY"
 
 // SearchRequest represents the tool input.
 type SearchRequest struct {
-	Query string `json:"Query" yaml:"Query" jsonschema:"title=Query,description=The query to search web."`
+	Query string `json:"Query" yaml:"Query" jsonschema:"title=Search Query,description=The query to search web."`
 }
 
 // SearchResult represents the structure for a search response
 type SearchResult struct {
-	Results []tavilyModels.SearchResult `json:"results" yaml:"Results" jsonschema:"title=results,description=The results from a web search."`
-	Answer  string                      `json:"answer,omitempty" yaml:"Results" jsonschema:"title=answer,description=The aggregated answer from a web search."`
+	Results []tavilyModels.SearchResult `json:"results" yaml:"Results" jsonschema:"title=Search Results,description=The results from a web search."`
+	Answer  string                      `json:"answer,omitempty" yaml:"Results" jsonschema:"title=Final Answer,description=The aggregated answer from a web search."`
 }
 
 func (i *SearchResult) GetType() llms.ChatMessageType {
@@ -76,7 +76,7 @@ func NewWithAPIKey(apikey string) (*Tool, error) {
 		apikey:      apikey,
 		//baseURL:     "https://api.tavily.com/search",
 		httpClient: http.DefaultClient,
-		funcParams: sc.Functions[0].Parameters,
+		funcParams: sc.Parameters,
 	}
 	return tool, nil
 }
