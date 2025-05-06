@@ -10,10 +10,7 @@ import (
 
 type Transport struct {
 	*Base
-	closeHandler   func()
-	errorHandler   func(error)
-	messageHandler func(ctx context.Context, message *transport.BaseJsonRpcMessage)
-	lock           sync.RWMutex
+	lock sync.RWMutex
 }
 
 func New() *Transport {

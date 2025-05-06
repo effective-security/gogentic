@@ -12,6 +12,7 @@ import (
 	"github.com/effective-security/gogentic/utils"
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/xlog"
+	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/prompts"
@@ -38,6 +39,7 @@ type Assistant[O chatmodel.ContentProvider] struct {
 
 var (
 	_ TypeableAssistant[chatmodel.Output] = (*Assistant[chatmodel.Output])(nil)
+	_ IMCPAssistant                       = (*Assistant[chatmodel.Output])(nil)
 )
 
 // NewAssistant initializes the AgentAgent
@@ -150,11 +152,6 @@ func (a *Assistant[O]) GetPromptInputVariables() []string {
 	return a.sysprompt.GetInputVariables()
 }
 
-func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error) {
-	var output O
-	return a.Run(ctx, input, promptInputs, &output)
-}
-
 func (a *Assistant[O]) GetSystemPrompt(promptInputs map[string]any) (string, error) {
 	promptValue, err := a.FormatPrompt(promptInputs)
 	if err != nil {
@@ -170,6 +167,37 @@ func (a *Assistant[O]) GetSystemPrompt(promptInputs map[string]any) (string, err
 		systemPrompt = fmt.Sprintf("%s\n\n# OUTPUT SCHEMA\n%s", systemPrompt, outputSchema)
 	}
 	return systemPrompt, nil
+}
+
+func (a *Assistant[O]) RegisterMCP(registrator McpServerRegistrator) error {
+	return registrator.RegisterPrompt(a.Name(), a.Description(), func(ctx context.Context, input chatmodel.MCPInput) (*mcp.PromptResponse, error) {
+		return a.CallMCP(ctx, input)
+	})
+}
+
+func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInput) (*mcp.PromptResponse, error) {
+	ctx, err := chatmodel.SetChatID(ctx, input.ChatID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := a.Run(ctx, input.Content, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var messages []*mcp.PromptMessage
+	for _, choice := range resp.Choices {
+		messages = append(messages, mcp.NewPromptMessage(mcp.NewTextContent(choice.Content), mcp.RoleAssistant))
+	}
+
+	mcpres := mcp.NewPromptResponse(a.Description(), messages...)
+	return mcpres, nil
+}
+
+func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error) {
+	var output O
+	return a.Run(ctx, input, promptInputs, &output)
 }
 
 // Run runs the chat agent with the given user input synchronously.

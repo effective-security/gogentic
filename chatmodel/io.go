@@ -5,6 +5,13 @@ type ContentProvider interface {
 	GetContent() string
 }
 
+// MCPInput represents the MCP input from the user to the AI agent.
+type MCPInput struct {
+	ChatID string `json:"ChatID" yaml:"ChatID" jsonschema:"title=Chat ID,description=The unique identifier for the chat session."`
+	// Content is the chat message sent by the user to the assistant.
+	Content string `json:"Content" yaml:"Content" jsonschema:"title=Input Content,description=The chat message sent by the user to the assistant."`
+}
+
 // Input represents the input from the user to the AI agent.
 type Input struct {
 	// Content is the chat message sent by the user to the assistant.
