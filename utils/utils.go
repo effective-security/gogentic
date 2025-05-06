@@ -117,19 +117,19 @@ func StripComments(text string) string {
 }
 
 func ToolClarificationComment(tool, clarification string) string {
-	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=clarification -->\n%s\n", tool, clarification)
+	return fmt.Sprintf("<!-- @type=tool @name=%s @reason=clarification -->\n%s\n", tool, clarification)
 }
 
 func AssistantClarificationComment(agent, clarification string) string {
-	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=clarification -->\n%s\n", agent, clarification)
+	return fmt.Sprintf("<!-- @type=assistant @name=%s @reason=clarification -->\n%s\n", agent, clarification)
 }
 
 func ToolErrorComment(tool, err string) string {
-	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=error -->\n%s\n", tool, err)
+	return fmt.Sprintf("<!-- @type=tool @name=%s @reason=error -->\n%s\n", tool, err)
 }
 
 func AssistantErrorComment(agent, err string) string {
-	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=error -->\n%s\n", agent, err)
+	return fmt.Sprintf("<!-- @type=assistant @name=%s @reason=error -->\n%s\n", agent, err)
 }
 
 func JSONIndent(body string) string {

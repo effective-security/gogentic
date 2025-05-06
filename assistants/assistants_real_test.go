@@ -56,7 +56,7 @@ func Test_Real_Assistant(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	ag := assistants.NewAssistant[chatmodel.Output](llmModel, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](llmModel, systemPrompt, acfg...).
 		WithCallback(assistants.NewPrinterCallback(&buf))
 
 	apikey := os.Getenv("TAVILY_API_KEY")
@@ -70,7 +70,7 @@ func Test_Real_Assistant(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	var output chatmodel.Output
+	var output chatmodel.OutputResult
 	apiResp, err := assistants.Run(ctx, ag, "What is a capital of largest country in Europe?", nil, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)

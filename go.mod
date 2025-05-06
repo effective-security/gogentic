@@ -77,4 +77,4 @@ require (
 
 replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35
 
-replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250505103855-7ad11234f504
+replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250506100728-9bd61ea2e11b

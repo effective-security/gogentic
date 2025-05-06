@@ -32,6 +32,8 @@ type IAssistant interface {
 	GetPromptInputVariables() []string
 
 	/*
+		//	WithPromptInputProvider(func(input string) map[string]any)
+
 		// MessageHistory returns the message history of the Assistant from the current store.
 		// This is used to store the conversation history for the Assistant,
 		// excluding the system prompt and tools executions.
@@ -42,6 +44,8 @@ type IAssistant interface {
 
 	Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error)
 }
+
+type ProvidePromptInputsFunc func(input string) (map[string]any, error)
 
 type HasCallback interface {
 	GetCallback() Callback
@@ -69,7 +73,7 @@ type Callback interface {
 type IMCPAssistant interface {
 	IAssistant
 	RegisterMCP(registrator McpServerRegistrator) error
-	CallMCP(context.Context, chatmodel.MCPInput) (*mcp.PromptResponse, error)
+	CallMCP(context.Context, chatmodel.MCPInputRequest) (*mcp.PromptResponse, error)
 }
 
 func GetDescriptions(list ...IAssistant) string {

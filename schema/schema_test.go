@@ -39,19 +39,19 @@ func TestSchema(t *testing.T) {
 
 	t.Run("Input", func(t *testing.T) {
 		t.Parallel()
-		si, err := schema.New(reflect.TypeOf(chatmodel.Input{}))
+		si, err := schema.New(reflect.TypeOf(chatmodel.InputRequest{}))
 		require.NoError(t, err)
 		exp := `{
 	"properties": {
-		"Content": {
+		"Input": {
 			"type": "string",
-			"title": "Input Content",
-			"description": "The chat message sent by the user to the assistant."
+			"title": "Input",
+			"description": "The message sent by the user to the assistant."
 		}
 	},
 	"type": "object",
 	"required": [
-		"Content"
+		"Input"
 	]
 }`
 		assert.Equal(t, exp, si.String())
@@ -60,14 +60,14 @@ func TestSchema(t *testing.T) {
 
 	t.Run("Output", func(t *testing.T) {
 		t.Parallel()
-		so, err := schema.New(reflect.TypeOf(chatmodel.Output{}))
+		so, err := schema.New(reflect.TypeOf(chatmodel.OutputResult{}))
 		require.NoError(t, err)
 		exp := `{
 	"properties": {
 		"Content": {
 			"type": "string",
 			"title": "Response Content",
-			"description": "The chat message exchanged between the user and the chat agent."
+			"description": "The content returned by agent or tool."
 		}
 	},
 	"type": "object",
@@ -128,7 +128,6 @@ func TestSchema(t *testing.T) {
 						"description": "Value of the pair"
 					}
 				},
-				"additionalProperties": false,
 				"type": "object",
 				"required": [
 					"Key",
@@ -152,12 +151,13 @@ func TestSchema(t *testing.T) {
 					"description": "Value of the pair"
 				}
 			},
-			"additionalProperties": false,
 			"type": "object",
 			"required": [
 				"Key",
 				"Value"
-			]
+			],
+			"title": "Prov",
+			"description": "Provider for the search"
 		}
 	},
 	"type": "object",

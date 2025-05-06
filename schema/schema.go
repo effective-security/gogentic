@@ -68,7 +68,7 @@ func ToFunctionSchema(tType reflect.Type, tSchema *jsonschema.Schema) *jsonschem
 	redID := strings.TrimPrefix(tSchema.Ref, "#/$defs/")
 
 	var defs = make(map[string]*jsonschema.Schema)
-	var root *jsonschema.Schema
+	root := tSchema
 
 	for name, def := range tSchema.Definitions {
 		if name == redID {
@@ -135,7 +135,9 @@ func (s *Schema) NameFromRef() string {
 // JSONSchema return the json schema of the configuration
 func JSONSchema(t reflect.Type) *jsonschema.Schema {
 	r := new(jsonschema.Reflector)
-	//r.ExpandedStruct = true
+	r.ExpandedStruct = true
+	r.DoNotReference = true
+	r.AllowAdditionalProperties = true
 
 	// The Struct name could be same, but the package name is different
 	// For example, all of the notification plugins have the same struct name - `NotifyConfig`

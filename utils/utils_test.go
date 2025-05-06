@@ -55,24 +55,24 @@ Some text
 }
 
 func Test_ClarificationComment(t *testing.T) {
-	exp := `<!-- @type=Tool @name=tool1 @reason=clarification -->
+	exp := `<!-- @type=tool @name=tool1 @reason=clarification -->
 I need more information about the tool
 `
 	assert.Equal(t, exp, utils.ToolClarificationComment("tool1", "I need more information about the tool"))
 
-	exp2 := `<!-- @type=Assistant @name=agent2 @reason=clarification -->
+	exp2 := `<!-- @type=assistant @name=agent2 @reason=clarification -->
 I need more information about the tool
 `
 	assert.Equal(t, exp2, utils.AssistantClarificationComment("agent2", "I need more information about the tool"))
 }
 
 func Test_ErrorComment(t *testing.T) {
-	exp := `<!-- @type=Tool @name=tool1 @reason=error -->
+	exp := `<!-- @type=tool @name=tool1 @reason=error -->
 I need more information about the tool
 `
 	assert.Equal(t, exp, utils.ToolErrorComment("tool1", "I need more information about the tool"))
 
-	exp2 := `<!-- @type=Assistant @name=agent2 @reason=error -->
+	exp2 := `<!-- @type=assistant @name=agent2 @reason=error -->
 I need more information about the tool
 `
 	assert.Equal(t, exp2, utils.AssistantErrorComment("agent2", "I need more information about the tool"))

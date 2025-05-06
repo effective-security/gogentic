@@ -20,7 +20,7 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
-const ToolName = "WebSearch"
+const ToolName = "web_search"
 
 var DefaultAPIKeyEnvName = "TAVILY_API_KEY"
 
@@ -31,8 +31,8 @@ type SearchRequest struct {
 
 // SearchResult represents the structure for a search response
 type SearchResult struct {
-	Results []tavilyModels.SearchResult `json:"results" yaml:"Results" jsonschema:"title=Search Results,description=The results from a web search."`
-	Answer  string                      `json:"answer,omitempty" yaml:"Results" jsonschema:"title=Final Answer,description=The aggregated answer from a web search."`
+	Results []tavilyModels.SearchResult `json:"results" yaml:"Results" jsonschema:"title=Search Results,description=The results from a web pages."`
+	Answer  string                      `json:"answer,omitempty" yaml:"Answer" jsonschema:"title=Final Answer,description=The aggregated answer from a web search."`
 }
 
 func (i *SearchResult) GetType() llms.ChatMessageType {

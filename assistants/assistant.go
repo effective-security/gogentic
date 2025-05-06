@@ -35,11 +35,12 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	sysprompt   prompts.FormatPrompter
 	callback    Callback
 	runMessages []llms.MessageContent
+	onPrompt    ProvidePromptInputsFunc
 }
 
 var (
-	_ TypeableAssistant[chatmodel.Output] = (*Assistant[chatmodel.Output])(nil)
-	_ IMCPAssistant                       = (*Assistant[chatmodel.Output])(nil)
+	_ TypeableAssistant[chatmodel.OutputResult] = (*Assistant[chatmodel.OutputResult])(nil)
+	_ IMCPAssistant                             = (*Assistant[chatmodel.OutputResult])(nil)
 )
 
 // NewAssistant initializes the AgentAgent
@@ -152,7 +153,21 @@ func (a *Assistant[O]) GetPromptInputVariables() []string {
 	return a.sysprompt.GetInputVariables()
 }
 
-func (a *Assistant[O]) GetSystemPrompt(promptInputs map[string]any) (string, error) {
+func (a *Assistant[O]) WithPromptInputProvider(cb ProvidePromptInputsFunc) {
+	a.onPrompt = cb
+}
+
+func (a *Assistant[O]) GetSystemPrompt(input string, promptInputs map[string]any) (string, error) {
+	if a.onPrompt != nil {
+		extra, err := a.onPrompt(input)
+		if err != nil {
+			return "", errors.WithMessage(err, "failed to get prompt inputs")
+		}
+		if len(extra) > 0 {
+			promptInputs = utils.MergeInputs(promptInputs, extra)
+		}
+	}
+
 	promptValue, err := a.FormatPrompt(promptInputs)
 	if err != nil {
 		return "", err
@@ -170,18 +185,18 @@ func (a *Assistant[O]) GetSystemPrompt(promptInputs map[string]any) (string, err
 }
 
 func (a *Assistant[O]) RegisterMCP(registrator McpServerRegistrator) error {
-	return registrator.RegisterPrompt(a.Name(), a.Description(), func(ctx context.Context, input chatmodel.MCPInput) (*mcp.PromptResponse, error) {
+	return registrator.RegisterPrompt(a.Name(), a.Description(), func(ctx context.Context, input chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
 		return a.CallMCP(ctx, input)
 	})
 }
 
-func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInput) (*mcp.PromptResponse, error) {
+func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
 	ctx, err := chatmodel.SetChatID(ctx, input.ChatID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := a.Run(ctx, input.Content, nil, nil)
+	resp, err := a.Run(ctx, input.Input, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +222,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 		return nil, errors.New("invalid chat context")
 	}
 
-	systemPrompt, err := a.GetSystemPrompt(promptInputs)
+	systemPrompt, err := a.GetSystemPrompt(input, promptInputs)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to format system prompt")
 	}

@@ -47,12 +47,12 @@ Respond with JSON in the following JSON schema:
 					"description": "gender"
 				}
 			},
-			"additionalProperties": false,
 			"type": "object",
 			"required": [
 				"Location",
 				"Gender"
-			]
+			],
+			"description": "Details of a person"
 		},
 		"DetailList": {
 			"items": {
@@ -66,7 +66,6 @@ Respond with JSON in the following JSON schema:
 						"description": "gender"
 					}
 				},
-				"additionalProperties": false,
 				"type": "object",
 				"required": [
 					"Location",

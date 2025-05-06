@@ -149,7 +149,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	ag := assistants.NewAssistant[chatmodel.Output](mockLLM, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
 		WithCallback(assistants.NewPrinterCallback(&buf)).
 		WithTools(mockTool).
 		WithMessageStore(store.NewMemoryStore())
@@ -157,7 +157,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	sysPrompt, err := ag.GetSystemPrompt(nil)
+	sysPrompt, err := ag.GetSystemPrompt("", nil)
 	require.NoError(t, err)
 	expPrompt := `You are helpful and friendly AI assistant.
 
@@ -170,7 +170,7 @@ Respond with JSON in the following JSON schema:` +
 		"Content": {
 			"type": "string",
 			"title": "Response Content",
-			"description": "The chat message exchanged between the user and the chat agent."
+			"description": "The content returned by agent or tool."
 		}
 	},
 	"type": "object",
@@ -182,7 +182,7 @@ Respond with JSON in the following JSON schema:` +
 Make sure to return an instance of the JSON, not the schema itself.`
 	assert.Equal(t, expPrompt, sysPrompt)
 
-	var output chatmodel.Output
+	var output chatmodel.OutputResult
 	apiResp, err := ag.Run(ctx, "What is a capital of largest country in Europe?", nil, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
@@ -340,7 +340,7 @@ func Test_Assistant_Chat(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	sysPrompt, err := ag.GetSystemPrompt(nil)
+	sysPrompt, err := ag.GetSystemPrompt("", nil)
 	require.NoError(t, err)
 	expPrompt := `You are helpful and friendly AI assistant.`
 	assert.Equal(t, expPrompt, sysPrompt)
