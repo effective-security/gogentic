@@ -8,6 +8,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/xlog"
+	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -15,6 +16,10 @@ var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "as
 
 //go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/tmc/langchaingo/llms  Model
 //go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
+
+type McpServerRegistrator interface {
+	RegisterPrompt(name string, description string, handler any) error
+}
 
 type IAssistant interface {
 	// Name returns the name of the Assistant.
@@ -55,6 +60,16 @@ type Callback interface {
 	OnAssistantStart(ctx context.Context, agent IAssistant, input string)
 	OnAssistantEnd(ctx context.Context, agent IAssistant, input string, resp *llms.ContentResponse)
 	OnAssistantError(cyx context.Context, agent IAssistant, input string, err error)
+}
+
+// IMCPAssistant is an interface that extends IAssistant to include functionality for
+// registering the assistant with an MCP server.
+// The RegisterMCP method allows the assistant to be registered with a given
+// MCP Server.
+type IMCPAssistant interface {
+	IAssistant
+	RegisterMCP(registrator McpServerRegistrator) error
+	CallMCP(context.Context, chatmodel.MCPInput) (*mcp.PromptResponse, error)
 }
 
 func GetDescriptions(list ...IAssistant) string {

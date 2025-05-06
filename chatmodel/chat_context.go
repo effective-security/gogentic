@@ -15,6 +15,8 @@ type ChatContext interface {
 	GetTenantID() string
 	// GetChatID retrieves the chat ID from the context
 	GetChatID() string
+	// SetChatID updates the chat ID in the context
+	SetChatID(id string)
 	// AppData returns immutable app data
 	AppData() any
 	// GetMetadata retrieves metadata by key
@@ -36,6 +38,11 @@ func (c *chatContext) GetTenantID() string {
 
 func (c *chatContext) GetChatID() string {
 	return c.chatID
+}
+
+// SetChatID updates the chat ID in the context
+func (c *chatContext) SetChatID(id string) {
+	c.chatID = id
 }
 
 func (c *chatContext) AppData() any {
@@ -81,6 +88,14 @@ func GetChatContext(ctx context.Context) ChatContext {
 		return v
 	}
 	return nil
+}
+
+func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
+	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+		v.SetChatID(chatID)
+		return ctx, nil
+	}
+	return nil, errors.New("invalid chat context")
 }
 
 // GetTenantAndChatID retrieves the tenant and chat ID from the provided context.
