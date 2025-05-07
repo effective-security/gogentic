@@ -42,7 +42,7 @@ type IAssistant interface {
 		RunMessages() []llms.MessageContent
 	*/
 
-	Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error)
+	Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error)
 }
 
 type ProvidePromptInputsFunc func(input string) (map[string]any, error)
@@ -56,7 +56,7 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	HasCallback
 	// Run executes the assistant with the given input and prompt inputs.
 	// Do not use this method directly, use the Run function instead.
-	Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O) (*llms.ContentResponse, error)
+	Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error)
 }
 
 type Callback interface {
@@ -102,6 +102,7 @@ func Run[O chatmodel.ContentProvider](
 	input string,
 	promptInputs map[string]any,
 	optionalOutputType *O,
+	options ...Option,
 ) (*llms.ContentResponse, error) {
 	var callback Callback
 	if cb, ok := assistant.(HasCallback); ok {
@@ -112,7 +113,7 @@ func Run[O chatmodel.ContentProvider](
 		callback.OnAssistantStart(ctx, assistant, input)
 	}
 
-	apiResp, err := assistant.Run(ctx, input, promptInputs, optionalOutputType)
+	apiResp, err := assistant.Run(ctx, input, promptInputs, optionalOutputType, options...)
 	if err != nil {
 		if callback != nil {
 			callback.OnAssistantError(ctx, assistant, input, err)
@@ -132,6 +133,7 @@ func Call(
 	assistant IAssistant,
 	input string,
 	promptInputs map[string]any,
+	options ...Option,
 ) (*llms.ContentResponse, error) {
 	var callback Callback
 	if cb, ok := assistant.(HasCallback); ok {
@@ -142,7 +144,7 @@ func Call(
 		callback.OnAssistantStart(ctx, assistant, input)
 	}
 
-	apiResp, err := assistant.Call(ctx, input, promptInputs)
+	apiResp, err := assistant.Call(ctx, input, promptInputs, options...)
 	if err != nil {
 		if callback != nil {
 			callback.OnAssistantError(ctx, assistant, input, err)

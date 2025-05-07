@@ -7,7 +7,6 @@ import (
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/utils"
 	"github.com/effective-security/x/slices"
@@ -22,20 +21,20 @@ import (
 // This class provides the core functionality for handling chat interactions, including managing memory,
 // generating system prompts, and obtaining responses from a language model.
 type Assistant[O chatmodel.ContentProvider] struct {
-	Config
-	Store        store.MessageStore
 	LLM          llms.Model
 	OutputParser chatmodel.OutputParser[O]
 
 	tools       map[string]tools.ITool
 	llmToolDefs []llms.Tool
 
+	cfg         *Config
 	name        string
 	description string
 	sysprompt   prompts.FormatPrompter
 	callback    Callback
 	runMessages []llms.MessageContent
 	onPrompt    ProvidePromptInputsFunc
+	inputParser func(string) (string, error)
 }
 
 var (
@@ -49,7 +48,7 @@ func NewAssistant[O chatmodel.ContentProvider](
 	sysprompt prompts.FormatPrompter,
 	options ...Option) *Assistant[O] {
 	ret := &Assistant[O]{
-		Config: *NewConfig(options...),
+		cfg: NewConfig(options...),
 		// By default no store is used.
 		//Store:       store.NewMemoryStore(),
 		LLM:         llmModel,
@@ -60,7 +59,7 @@ func NewAssistant[O chatmodel.ContentProvider](
 	}
 
 	var output O
-	ret.OutputParser, _ = encoding.NewTypedOutputParser(output, ret.Config.Mode)
+	ret.OutputParser, _ = encoding.NewTypedOutputParser(output, ret.cfg.Mode)
 
 	return ret
 }
@@ -71,6 +70,11 @@ func (a *Assistant[O]) WithOutputParser(outputParser chatmodel.OutputParser[O]) 
 	return a
 }
 
+// WithInputParser sets the input parser for the Assistant.
+func (a *Assistant[O]) WithInputParser(inputParser func(string) (string, error)) {
+	a.inputParser = inputParser
+}
+
 // WithCallback sets the callback.
 func (a *Assistant[O]) WithCallback(cb Callback) *Assistant[O] {
 	a.callback = cb
@@ -79,12 +83,6 @@ func (a *Assistant[O]) WithCallback(cb Callback) *Assistant[O] {
 
 func (a *Assistant[O]) GetCallback() Callback {
 	return a.callback
-}
-
-// MessageStore sets the messages store for the Assistant.
-func (a *Assistant[O]) WithMessageStore(store store.MessageStore) *Assistant[O] {
-	a.Store = store
-	return a
 }
 
 // WithName sets the name of the Agent, when used in a prompt of another Agents or LLMs.
@@ -139,14 +137,14 @@ func (a *Assistant[O]) RunMessages() []llms.MessageContent {
 }
 
 func (a *Assistant[O]) MessageHistory(ctx context.Context) []llms.ChatMessage {
-	if a.Store == nil {
+	if a.cfg.Store == nil {
 		return nil
 	}
-	return a.Store.Messages(ctx)
+	return a.cfg.Store.Messages(ctx)
 }
 
 func (a *Assistant[O]) FormatPrompt(promptInputs map[string]any) (llms.PromptValue, error) {
-	return a.sysprompt.FormatPrompt(utils.MergeInputs(a.PromptInput, promptInputs))
+	return a.sysprompt.FormatPrompt(utils.MergeInputs(a.cfg.PromptInput, promptInputs))
 }
 
 func (a *Assistant[O]) GetPromptInputVariables() []string {
@@ -210,17 +208,20 @@ func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequ
 	return mcpres, nil
 }
 
-func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error) {
 	var output O
-	return a.Run(ctx, input, promptInputs, &output)
+	return a.Run(ctx, input, promptInputs, &output, options...)
 }
 
 // Run runs the chat agent with the given user input synchronously.
-func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error) {
 	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, errors.New("invalid chat context")
 	}
+
+	// create a per call config
+	cfg := a.cfg.Apply(options...)
 
 	systemPrompt, err := a.GetSystemPrompt(input, promptInputs)
 	if err != nil {
@@ -230,11 +231,11 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 	messageHistory := []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
 	}
-	for _, example := range a.Examples {
+	for _, example := range cfg.Examples {
 		messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, example.Prompt))
 		messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, example.Completion))
 	}
-	if a.Store != nil {
+	if cfg.Store != nil {
 		prevMessages := a.MessageHistory(ctx)
 		logger.ContextKV(ctx, xlog.DEBUG,
 			"assistant", a.name,
@@ -246,11 +247,23 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 	}
 	var userMessage llms.MessageContent
 	if input != "" {
-		userMessage = llms.TextParts(llms.ChatMessageTypeHuman, input)
+		if a.inputParser != nil {
+			input, err = a.inputParser(input)
+			if err != nil {
+				return nil, errors.WithMessage(err, "failed to parse input")
+			}
+		}
+
+		role := llms.ChatMessageTypeHuman
+		// TODO: keep as Human?
+		// if cfg.IsGeneric {
+		// 	role = llms.ChatMessageTypeGeneric
+		// }
+		userMessage = llms.TextParts(role, input)
 		messageHistory = append(messageHistory, userMessage)
 	}
 
-	callOpts := a.Config.GetCallOptions()
+	callOpts := cfg.GetCallOptions()
 	if len(a.llmToolDefs) > 0 {
 		callOpts = append(callOpts, llms.WithTools(a.llmToolDefs))
 	}
@@ -295,9 +308,16 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 
 	messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, result))
 
-	if a.Store != nil && !a.SkipMessageHistory {
-		_ = a.Store.Add(ctx, &llms.HumanChatMessage{Content: input})
-		_ = a.Store.Add(ctx, &llms.AIChatMessage{Content: result})
+	if cfg.Store != nil && !cfg.SkipMessageHistory {
+		if cfg.IsGeneric {
+			_ = cfg.Store.Add(ctx, &llms.GenericChatMessage{
+				Name:    a.Name(),
+				Content: utils.AssistantObservationComment(a.Name(), input),
+			})
+		} else {
+			_ = cfg.Store.Add(ctx, &llms.HumanChatMessage{Content: input})
+		}
+		_ = cfg.Store.Add(ctx, &llms.AIChatMessage{Content: result})
 
 		logger.ContextKV(ctx, xlog.DEBUG,
 			"assistant", a.name,
@@ -361,7 +381,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, messageHistory []ll
 				a.callback.OnToolEnd(ctx, tool, toolArgs, res)
 			}
 			// Append tool_result to messageHistory
-			weatherCallResponse := llms.MessageContent{
+			toolCallResponse := llms.MessageContent{
 				Role: llms.ChatMessageTypeTool,
 				Parts: []llms.ContentPart{
 					llms.ToolCallResponse{
@@ -371,7 +391,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, messageHistory []ll
 					},
 				},
 			}
-			messageHistory = append(messageHistory, weatherCallResponse)
+			messageHistory = append(messageHistory, toolCallResponse)
 		}
 	}
 	return executed, messageHistory, nil

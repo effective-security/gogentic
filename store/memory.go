@@ -63,6 +63,19 @@ func NewMemoryStore() MessageStore {
 	}
 }
 
+func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
+	s := NewMemoryStore()
+	if store != nil {
+		for _, msg := range store.Messages(ctx) {
+			err := s.Add(ctx, msg)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s, nil
+}
+
 func (m *inMemory) Messages(ctx context.Context) []llms.ChatMessage {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {

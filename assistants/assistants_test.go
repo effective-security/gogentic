@@ -146,13 +146,13 @@ func Test_Assistant_Defined(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
+		assistants.WithMessageStore(store.NewMemoryStore()),
 	}
 
 	var buf strings.Builder
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
 		WithCallback(assistants.NewPrinterCallback(&buf)).
-		WithTools(mockTool).
-		WithMessageStore(store.NewMemoryStore())
+		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
@@ -329,13 +329,13 @@ func Test_Assistant_Chat(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
+		assistants.WithMessageStore(store.NewMemoryStore()),
 	}
 
 	var buf strings.Builder
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...).
 		WithCallback(assistants.NewPrinterCallback(&buf)).
-		WithTools(mockTool).
-		WithMessageStore(store.NewMemoryStore())
+		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
