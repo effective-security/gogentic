@@ -116,20 +116,38 @@ func StripComments(text string) string {
 	return text
 }
 
+// RemoveAllComments removes all <!--  --> comments from the LLM output
+func RemoveAllComments(input string) string {
+	result := input
+	for {
+		// Keep removing comments until no more are found
+		cleaned := StripComments(result)
+		if cleaned == result {
+			// No more comments found, we're done
+			return cleaned
+		}
+		result = cleaned
+	}
+}
+
 func ToolClarificationComment(tool, clarification string) string {
-	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=clarification -->\n%s\n", tool, clarification)
+	return fmt.Sprintf("<!-- @type=tool @name=%s @content=clarification -->\n", tool) + clarification
 }
 
 func AssistantClarificationComment(agent, clarification string) string {
-	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=clarification -->\n%s\n", agent, clarification)
+	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=clarification -->\n", agent) + clarification
+}
+
+func AssistantObservationComment(agent, clarification string) string {
+	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=observation -->\n", agent) + clarification
 }
 
 func ToolErrorComment(tool, err string) string {
-	return fmt.Sprintf("<!-- @type=Tool @name=%s @reason=error -->\n%s\n", tool, err)
+	return fmt.Sprintf("<!-- @type=tool @name=%s @content=error -->\n", tool) + err
 }
 
 func AssistantErrorComment(agent, err string) string {
-	return fmt.Sprintf("<!-- @type=Assistant @name=%s @reason=error -->\n%s\n", agent, err)
+	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=error -->\n", agent) + err
 }
 
 func JSONIndent(body string) string {
@@ -199,10 +217,10 @@ func MergeInputs(configInputs map[string]any, userInputs map[string]any) map[str
 	return res
 }
 
-// ShowMessageContents is a debugging helper for MessageContent.
-func ShowMessageContents(w io.Writer, msgs []llms.MessageContent) {
-	for i, mc := range msgs {
-		fmt.Fprintf(w, "[%d] Role: %s\n", i, mc.Role)
+// PrintMessageContents is a debugging helper for MessageContent.
+func PrintMessageContents(w io.Writer, msgs []llms.MessageContent) {
+	for _, mc := range msgs {
+		fmt.Fprintf(w, "%s: ", strings.ToUpper(string(mc.Role)))
 		for _, p := range mc.Parts {
 			switch pp := p.(type) {
 			case llms.TextContent:
@@ -219,5 +237,12 @@ func ShowMessageContents(w io.Writer, msgs []llms.MessageContent) {
 				//fmt.Fprintf(w, "unknown type %T\n", pp)
 			}
 		}
+	}
+}
+
+func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage) {
+	for _, mc := range msgs {
+		fmt.Fprintf(w, "%s: ", strings.ToUpper(string(mc.GetType())))
+		fmt.Fprintln(w, mc.GetContent())
 	}
 }

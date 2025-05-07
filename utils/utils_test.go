@@ -52,28 +52,51 @@ Some text
 Some text
 `
 	assert.Equal(t, expected, clean)
+
+	llmOutput = `Text
+<!-- @type=tool @name=tool1 @content=clarification -->
+Some text
+<!-- @type=assistant @name=agent2 @content=clarification -->
+I need more information about the tool
+<!-- @type=tool @name=tool1 @content=error -->
+I need more information about the tool
+`
+	clean = utils.RemoveAllComments(llmOutput)
+	expected = `Text
+Some text
+I need more information about the tool
+I need more information about the tool
+`
+	assert.Equal(t, expected, clean)
 }
 
 func Test_ClarificationComment(t *testing.T) {
-	exp := `<!-- @type=Tool @name=tool1 @reason=clarification -->
+	exp := `<!-- @type=tool @name=tool1 @content=clarification -->
 I need more information about the tool
 `
-	assert.Equal(t, exp, utils.ToolClarificationComment("tool1", "I need more information about the tool"))
+	assert.Equal(t, exp, utils.ToolClarificationComment("tool1", "I need more information about the tool\n"))
 
-	exp2 := `<!-- @type=Assistant @name=agent2 @reason=clarification -->
+	exp2 := `<!-- @type=assistant @name=agent2 @content=clarification -->
 I need more information about the tool
 `
-	assert.Equal(t, exp2, utils.AssistantClarificationComment("agent2", "I need more information about the tool"))
+	assert.Equal(t, exp2, utils.AssistantClarificationComment("agent2", "I need more information about the tool\n"))
 }
 
 func Test_ErrorComment(t *testing.T) {
-	exp := `<!-- @type=Tool @name=tool1 @reason=error -->
+	exp := `<!-- @type=tool @name=tool1 @content=error -->
 I need more information about the tool
 `
-	assert.Equal(t, exp, utils.ToolErrorComment("tool1", "I need more information about the tool"))
+	assert.Equal(t, exp, utils.ToolErrorComment("tool1", "I need more information about the tool\n"))
 
-	exp2 := `<!-- @type=Assistant @name=agent2 @reason=error -->
+	exp2 := `<!-- @type=assistant @name=agent2 @content=error -->
 I need more information about the tool
 `
-	assert.Equal(t, exp2, utils.AssistantErrorComment("agent2", "I need more information about the tool"))
+	assert.Equal(t, exp2, utils.AssistantErrorComment("agent2", "I need more information about the tool\n"))
+}
+
+func Test_ObservationComment(t *testing.T) {
+	exp := `<!-- @type=assistant @name=agent2 @content=observation -->
+I need more information about the tool
+`
+	assert.Equal(t, exp, utils.AssistantObservationComment("agent2", "I need more information about the tool\n"))
 }

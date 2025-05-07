@@ -5,6 +5,7 @@ import (
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/store"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -73,10 +74,15 @@ type Config struct {
 	// Return an error to stop streaming early.
 	StreamingFunc func(ctx context.Context, chunk []byte) error
 
-	PromptInput        map[string]any
-	Examples           chatmodel.FewShotExamples
-	Mode               encoding.Mode
+	Store       store.MessageStore
+	PromptInput map[string]any
+	Examples    chatmodel.FewShotExamples
+	Mode        encoding.Mode
+	// SkipMessageHistory is a flag to skip adding Assistant messages to History.
 	SkipMessageHistory bool
+	// IsGeneric is a flag to indicate that the assistant should add a generic message to the history,
+	// instead of the human
+	IsGeneric bool
 }
 
 func NewConfig(opts ...Option) *Config {
@@ -84,10 +90,23 @@ func NewConfig(opts ...Option) *Config {
 		Mode:     encoding.ModeDefault,
 		JSONMode: true,
 	}
+	return cfg.Apply(opts...)
+}
+
+// Apply applies the options to the Config.
+func (c *Config) Apply(opts ...Option) *Config {
+	cfg := *c
 	for _, opt := range opts {
-		opt(cfg)
+		opt(&cfg)
 	}
-	return cfg
+	return &cfg
+}
+
+// WithMessageStore is an option that allows to specify the message store.
+func WithMessageStore(store store.MessageStore) Option {
+	return func(o *Config) {
+		o.Store = store
+	}
 }
 
 // WithMode is an option that allows to specify the encoding mode.
@@ -99,6 +118,14 @@ func WithMode(mode encoding.Mode) Option {
 		} else {
 			o.JSONMode = false
 		}
+	}
+}
+
+// WithGeneric is an option to indicate that the assistant should add a generic message to the history,
+// instead of the human
+func WithGeneric(val bool) Option {
+	return func(o *Config) {
+		o.IsGeneric = val
 	}
 }
 
