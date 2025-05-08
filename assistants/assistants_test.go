@@ -10,11 +10,11 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tmc/langchaingo/llms"
@@ -44,7 +44,7 @@ func Test_Assistant_Defined(t *testing.T) {
 			return "", fmt.Errorf("error")
 		}
 		if strings.Contains(input, "weather") {
-			return utils.ToJSON(tavily.SearchResult{
+			return llmutils.ToJSON(tavily.SearchResult{
 				Results: []tavilyModels.SearchResult{
 					{
 						Title: "Weather in Europe",
@@ -59,7 +59,7 @@ func Test_Assistant_Defined(t *testing.T) {
 			}), nil
 		}
 		if strings.Contains(input, "capital") {
-			return utils.ToJSON(tavily.SearchResult{
+			return llmutils.ToJSON(tavily.SearchResult{
 				Results: []tavilyModels.SearchResult{
 					{
 						Title: "Capital of France",
@@ -73,7 +73,7 @@ func Test_Assistant_Defined(t *testing.T) {
 				Answer: "The capital of France is Paris.",
 			}), nil
 		}
-		return utils.ToJSON(tavily.SearchResult{
+		return llmutils.ToJSON(tavily.SearchResult{
 			Results: []tavilyModels.SearchResult{
 				{
 					Title: "Search result 1",
@@ -93,7 +93,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-			input := lastUserQuestion(messages)
+			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
 				return nil, fmt.Errorf("error")
 			}
@@ -143,15 +143,17 @@ func Test_Assistant_Defined(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
-		assistants.WithMessageStore(store.NewMemoryStore()),
+		assistants.WithMessageStore(memstore),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
 	}
 
-	var buf strings.Builder
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
-		WithCallback(assistants.NewPrinterCallback(&buf)).
 		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -194,7 +196,7 @@ Make sure to return an instance of the JSON, not the schema itself.`
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	history := ag.MessageHistory(ctx)
+	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
 	exp := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
@@ -227,7 +229,7 @@ func Test_Assistant_Chat(t *testing.T) {
 			return "", fmt.Errorf("error")
 		}
 		if strings.Contains(input, "weather") {
-			return utils.ToJSON(tavily.SearchResult{
+			return llmutils.ToJSON(tavily.SearchResult{
 				Results: []tavilyModels.SearchResult{
 					{
 						Title: "Weather in Europe",
@@ -242,7 +244,7 @@ func Test_Assistant_Chat(t *testing.T) {
 			}), nil
 		}
 		if strings.Contains(input, "capital") {
-			return utils.ToJSON(tavily.SearchResult{
+			return llmutils.ToJSON(tavily.SearchResult{
 				Results: []tavilyModels.SearchResult{
 					{
 						Title: "Capital of France",
@@ -256,7 +258,7 @@ func Test_Assistant_Chat(t *testing.T) {
 				Answer: "The capital of France is Paris.",
 			}), nil
 		}
-		return utils.ToJSON(tavily.SearchResult{
+		return llmutils.ToJSON(tavily.SearchResult{
 			Results: []tavilyModels.SearchResult{
 				{
 					Title: "Search result 1",
@@ -276,7 +278,7 @@ func Test_Assistant_Chat(t *testing.T) {
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-			input := lastUserQuestion(messages)
+			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
 				return nil, fmt.Errorf("error")
 			}
@@ -326,15 +328,17 @@ func Test_Assistant_Chat(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
-		assistants.WithMessageStore(store.NewMemoryStore()),
+		assistants.WithMessageStore(memstore),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
 	}
 
-	var buf strings.Builder
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...).
-		WithCallback(assistants.NewPrinterCallback(&buf)).
 		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -354,7 +358,7 @@ func Test_Assistant_Chat(t *testing.T) {
 
 	assert.NotEmpty(t, apiResp.Choices)
 
-	history := ag.MessageHistory(ctx)
+	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
 	exp := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
@@ -363,18 +367,4 @@ AI: The weather in Europe is generally mild.`
 	chat, err := llms.GetBufferString(history, "Human", "AI")
 	require.NoError(t, err)
 	assert.Equal(t, exp, chat)
-}
-
-func lastUserQuestion(messages []llms.MessageContent) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		if msg.Role == llms.ChatMessageTypeHuman {
-			for _, part := range msg.Parts {
-				if textPart, ok := part.(llms.TextContent); ok {
-					return strings.ToLower(textPart.Text)
-				}
-			}
-		}
-	}
-	return ""
 }

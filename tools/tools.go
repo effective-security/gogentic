@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	mcp "github.com/metoro-io/mcp-golang"
+	"github.com/tmc/langchaingo/llms"
 )
 
 //go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools
@@ -24,6 +25,7 @@ type ITool interface {
 	// Parameters returns the parameters definition of the function, to be used in the prompt.
 	Parameters() any
 
+	// Call executes the tool with the given input and returns the result.
 	Call(context.Context, string) (string, error)
 }
 
@@ -31,6 +33,7 @@ type Callback interface {
 	OnToolStart(context.Context, ITool, string)
 	OnToolEnd(context.Context, ITool, string, string)
 	OnToolError(context.Context, ITool, string, error)
+	OnToolLLMCall(context.Context, ITool, []llms.MessageContent)
 }
 
 type Tool[I any, O any] interface {

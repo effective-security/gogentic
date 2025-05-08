@@ -11,6 +11,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/llmfactory"
+	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/xlog"
 	"github.com/stretchr/testify/assert"
@@ -50,14 +51,17 @@ func Test_Real_Assistant(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
+		assistants.WithMessageStore(memstore),
 	}
 
-	var buf strings.Builder
-	ag := assistants.NewAssistant[chatmodel.OutputResult](llmModel, systemPrompt, acfg...).
-		WithCallback(assistants.NewPrinterCallback(&buf))
+	ag := assistants.NewAssistant[chatmodel.OutputResult](llmModel, systemPrompt, acfg...)
 
 	apikey := os.Getenv("TAVILY_API_KEY")
 	if apikey != "" {
@@ -82,7 +86,7 @@ func Test_Real_Assistant(t *testing.T) {
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	history := ag.MessageHistory(ctx)
+	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
 	fmt.Println(llms.GetBufferString(history, "Human", "AI"))
 }

@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/effective-security/gogentic/utils"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
@@ -48,7 +48,7 @@ func New(t reflect.Type) (*Schema, error) {
 }
 
 func (s *Schema) String() string {
-	return utils.ToJSONIndent(s.Parameters)
+	return llmutils.ToJSONIndent(s.Parameters)
 }
 
 func buildSchema(t reflect.Type) (*Schema, error) {

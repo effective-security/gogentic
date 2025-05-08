@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 )
@@ -48,7 +48,7 @@ func (e *Encoder) Marshal(v any) ([]byte, error) {
 }
 
 func (e *Encoder) Unmarshal(bs []byte, ret any) error {
-	data := utils.BytesTrimBackticks(bs)
+	data := llmutils.BytesTrimBackticks(bs)
 	return yaml.Unmarshal(data, ret)
 }
 

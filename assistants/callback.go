@@ -28,6 +28,10 @@ func (l *NoopCallback) OnToolStart(ctx context.Context, tool tools.ITool, input 
 func (l *NoopCallback) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
 }
 func (l *NoopCallback) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {}
+func (l *NoopCallback) OnAssistantLLMCall(ctx context.Context, agent IAssistant, payload []llms.MessageContent) {
+}
+func (l *NoopCallback) OnToolLLMCall(ctx context.Context, tool tools.ITool, payload []llms.MessageContent) {
+}
 
 // PrinterCallback is a callback handler that prints to the Writer.
 type PrinterCallback struct {
@@ -70,6 +74,14 @@ func (l *PrinterCallback) OnToolEnd(ctx context.Context, tool tools.ITool, input
 
 func (l *PrinterCallback) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {
 	fmt.Fprintf(l.Out, "Tool Error: %s: %s\n", tool.Name(), err.Error())
+}
+
+func (l *PrinterCallback) OnAssistantLLMCall(ctx context.Context, agent IAssistant, payload []llms.MessageContent) {
+	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %d messages\n", agent.Name(), len(payload))
+}
+
+func (l *PrinterCallback) OnToolLLMCall(ctx context.Context, tool tools.ITool, payload []llms.MessageContent) {
+	fmt.Fprintf(l.Out, "Tool LLM Call: %s: %d messages\n", tool.Name(), len(payload))
 }
 
 // PackageLoggerCallback is a callback handler that prints to the logger.
@@ -131,5 +143,21 @@ func (l *PackageLoggerCallback) OnToolError(ctx context.Context, tool tools.IToo
 		"event", "tool_error",
 		"tool", tool.Name(),
 		"err", err.Error(),
+	)
+}
+
+func (l *PackageLoggerCallback) OnAssistantLLMCall(ctx context.Context, agent IAssistant, payload []llms.MessageContent) {
+	l.logger.ContextKV(ctx, xlog.DEBUG,
+		"event", "assistant_llm_call",
+		"assistant", agent.Name(),
+		"messages", len(payload),
+	)
+}
+
+func (l *PackageLoggerCallback) OnToolLLMCall(ctx context.Context, tool tools.ITool, payload []llms.MessageContent) {
+	l.logger.ContextKV(ctx, xlog.DEBUG,
+		"event", "tool_llm_call",
+		"tool", tool.Name(),
+		"messages", len(payload),
 	)
 }
