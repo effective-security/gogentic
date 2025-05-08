@@ -1,10 +1,11 @@
-package utils
+package llmutils
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/tmc/langchaingo/llms"
@@ -130,24 +131,8 @@ func RemoveAllComments(input string) string {
 	}
 }
 
-func ToolClarificationComment(tool, clarification string) string {
-	return fmt.Sprintf("<!-- @type=tool @name=%s @content=clarification -->\n", tool) + clarification
-}
-
-func AssistantClarificationComment(agent, clarification string) string {
-	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=clarification -->\n", agent) + clarification
-}
-
-func AssistantObservationComment(agent, clarification string) string {
-	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=observation -->\n", agent) + clarification
-}
-
-func ToolErrorComment(tool, err string) string {
-	return fmt.Sprintf("<!-- @type=tool @name=%s @content=error -->\n", tool) + err
-}
-
-func AssistantErrorComment(agent, err string) string {
-	return fmt.Sprintf("<!-- @type=assistant @name=%s @content=error -->\n", agent) + err
+func AddComment(role, name, typ, content string) string {
+	return fmt.Sprintf("<!-- @role=%s @name=%s @content=%s -->\n", role, name, typ) + content
 }
 
 func JSONIndent(body string) string {
@@ -230,9 +215,9 @@ func PrintMessageContents(w io.Writer, msgs []llms.MessageContent) {
 			case llms.BinaryContent:
 				//fmt.Fprintf(w, "BinaryContent MIME=%q, size=%d\n", pp.MIMEType, len(pp.Data))
 			case llms.ToolCall:
-				fmt.Fprintf(w, "ToolCall ID=%v, Type=%v, Func=%v(%v)\n", pp.ID, pp.Type, pp.FunctionCall.Name, pp.FunctionCall.Arguments)
+				fmt.Fprintf(w, "ToolCall ID=%s, Type=%s, Func=%s(%s)\n", pp.ID, pp.Type, pp.FunctionCall.Name, pp.FunctionCall.Arguments)
 			case llms.ToolCallResponse:
-				fmt.Fprintf(w, "ToolCallResponse ID=%v, Name=%v, Content=%v\n", pp.ToolCallID, pp.Name, pp.Content)
+				fmt.Fprintf(w, "ToolCallResponse ID=%s, Name=%s, Content=%s\n", pp.ToolCallID, pp.Name, pp.Content)
 			default:
 				//fmt.Fprintf(w, "unknown type %T\n", pp)
 			}
@@ -240,9 +225,49 @@ func PrintMessageContents(w io.Writer, msgs []llms.MessageContent) {
 	}
 }
 
-func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage) {
+func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage, filter ...llms.ChatMessageType) {
 	for _, mc := range msgs {
+		if len(filter) > 0 && !slices.Contains(filter, mc.GetType()) {
+			continue
+		}
 		fmt.Fprintf(w, "%s: ", strings.ToUpper(string(mc.GetType())))
 		fmt.Fprintln(w, mc.GetContent())
 	}
+}
+
+func FindLastUserQuestion(messages []llms.MessageContent) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Role == llms.ChatMessageTypeHuman {
+			for _, part := range msg.Parts {
+				if textPart, ok := part.(llms.TextContent); ok {
+					return textPart.Text
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// ExtractTag extracts the content of a specific tag from the input string.
+// The tag prefix can be # or @, and the content is extracted until the next space or newline.
+func ExtractTag(input string, tagPrefix string) string {
+	// Find the index of the tag prefix
+	startIndex := strings.Index(input, tagPrefix)
+	if startIndex == -1 {
+		return "" // Tag not found
+	}
+
+	// Move the start index to the end of the tag prefix
+	startIndex += len(tagPrefix)
+
+	// Find the end index of the tag content (next space or newline)
+	endIndex := strings.IndexAny(input[startIndex:], " \n")
+	if endIndex == -1 {
+		endIndex = len(input) // No space or newline found, take the rest of the string
+	} else {
+		endIndex += startIndex // Adjust for the substring
+	}
+
+	return input[startIndex:endIndex]
 }

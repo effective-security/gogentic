@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	tavilyModels "github.com/diverged/tavily-go/models"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/tools/tavily"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +50,7 @@ func Test_Tool(t *testing.T) {
 	assert.Equal(t, tavily.ToolName, tool.Name())
 	assert.Contains(t, tool.Description(), `web search`)
 
-	params := utils.ToJSONIndent(tool.Parameters())
+	params := llmutils.ToJSONIndent(tool.Parameters())
 	expParams := `{
 	"properties": {
 		"Query": {
@@ -81,7 +81,7 @@ func Test_Tool(t *testing.T) {
 `
 	assert.Equal(t, exp, resp.String())
 
-	resp2, err := tool.Call(ctx, utils.ToJSON(input))
+	resp2, err := tool.Call(ctx, llmutils.ToJSON(input))
 	require.NoError(t, err)
 	exp = `{"results":[{"title":"Test Result","url":"https://example.com","content":"Test content","score":0.9}],"answer":"Paris"}`
 	assert.Equal(t, exp, resp2)
@@ -105,7 +105,7 @@ func Test_Tool_Real(t *testing.T) {
 		Query: "What is capital of France",
 	}
 
-	resp, err := tool.Call(ctx, utils.ToJSON(input))
+	resp, err := tool.Call(ctx, llmutils.ToJSON(input))
 	require.NoError(t, err)
 	assert.Contains(t, resp, "Paris")
 }

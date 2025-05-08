@@ -12,9 +12,9 @@ import (
 
 	tavilygo "github.com/diverged/tavily-go"
 	tavilyModels "github.com/diverged/tavily-go/models"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
 	"github.com/effective-security/gogentic/tools"
-	"github.com/effective-security/gogentic/utils"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
@@ -40,7 +40,7 @@ func (i *SearchResult) GetType() llms.ChatMessageType {
 }
 
 func (i *SearchResult) GetContent() string {
-	return utils.ToJSON(i)
+	return llmutils.ToJSON(i)
 }
 
 // Tool is a tool that provides a web search functionality
@@ -155,7 +155,7 @@ func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, erro
 
 func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 	var req SearchRequest
-	if err := json.Unmarshal(utils.CleanJSON([]byte(input)), &req); err != nil {
+	if err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), &req); err != nil {
 		return "", errors.Wrap(err, "failed to unmarshal input")
 	}
 	out, err := t.Run(ctx, &req)

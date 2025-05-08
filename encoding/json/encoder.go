@@ -6,8 +6,8 @@ import (
 	"reflect"
 
 	"github.com/bububa/ljson"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -31,7 +31,7 @@ func (e *Encoder) Marshal(req any) ([]byte, error) {
 }
 
 func (e *Encoder) Unmarshal(bs []byte, ret any) error {
-	data := utils.BytesTrimBackticks(bs)
+	data := llmutils.BytesTrimBackticks(bs)
 	return ljson.Unmarshal(data, ret)
 }
 

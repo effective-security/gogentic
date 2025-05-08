@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"reflect"
 
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -138,7 +138,7 @@ func (e *StreamEncoder) processBuffer(parsedChan chan<- any) {
 }
 
 func (e *StreamEncoder) processRemainingBuffer(parsedChan chan<- any) {
-	remaining := utils.CleanJSON(e.buffer.Bytes())
+	remaining := llmutils.CleanJSON(e.buffer.Bytes())
 
 	if idx := bytes.LastIndex(remaining, []byte{']'}); idx != -1 {
 		remaining = remaining[:idx]

@@ -45,6 +45,12 @@ type IAssistant interface {
 	Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error)
 }
 
+// IAssistantTool provides an interface for tools that use underlying the Assistants.
+type IAssistantTool interface {
+	// CallAssistant allows the tool to call the assistant with the given input and options.
+	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
+}
+
 type ProvidePromptInputsFunc func(input string) (map[string]any, error)
 
 type HasCallback interface {
@@ -63,7 +69,8 @@ type Callback interface {
 	tools.Callback
 	OnAssistantStart(ctx context.Context, agent IAssistant, input string)
 	OnAssistantEnd(ctx context.Context, agent IAssistant, input string, resp *llms.ContentResponse)
-	OnAssistantError(cyx context.Context, agent IAssistant, input string, err error)
+	OnAssistantError(ctx context.Context, agent IAssistant, input string, err error)
+	OnAssistantLLMCall(ctx context.Context, agent IAssistant, payload []llms.MessageContent)
 }
 
 // IMCPAssistant is an interface that extends IAssistant to include functionality for

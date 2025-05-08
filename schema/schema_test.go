@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
-	"github.com/effective-security/gogentic/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +55,7 @@ func TestSchema(t *testing.T) {
 	]
 }`
 		assert.Equal(t, exp, si.String())
-		assert.Equal(t, exp, utils.ToJSONIndent(si.Parameters))
+		assert.Equal(t, exp, llmutils.ToJSONIndent(si.Parameters))
 	})
 
 	t.Run("Output", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestSchema(t *testing.T) {
 	]
 }`
 		assert.Equal(t, exp, so.String())
-		assert.Equal(t, exp, utils.ToJSONIndent(so.Parameters))
+		assert.Equal(t, exp, llmutils.ToJSONIndent(so.Parameters))
 
 	})
 
@@ -167,6 +167,6 @@ func TestSchema(t *testing.T) {
 	]
 }`
 		assert.Equal(t, exp, s.String())
-		assert.Equal(t, exp, utils.ToJSONIndent(s.Parameters))
+		assert.Equal(t, exp, llmutils.ToJSONIndent(s.Parameters))
 	})
 }
