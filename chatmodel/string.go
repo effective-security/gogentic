@@ -13,6 +13,11 @@ func NewString(str string) *String {
 	}
 }
 
+func (o *String) ParseInput(input string) error {
+	o.value = input
+	return nil
+}
+
 // GetContent gets the content of the message for the chat history
 func (o String) GetContent() string {
 	return string(o.value)

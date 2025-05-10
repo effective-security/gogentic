@@ -124,7 +124,7 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 	return a
 }
 
-func (a *Assistant[O]) RunMessages() []llms.MessageContent {
+func (a *Assistant[O]) LastRunMessages() []llms.MessageContent {
 	return a.runMessages
 }
 

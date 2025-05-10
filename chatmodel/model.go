@@ -26,6 +26,9 @@ func Stringify(s any) string {
 	if v, ok := s.(Stringer); ok {
 		return v.String()
 	}
+	if v, ok := s.(ContentProvider); ok {
+		return v.GetContent()
+	}
 	bs, _ := json.Marshal(s)
 	return string(bs)
 }
@@ -33,6 +36,9 @@ func Stringify(s any) string {
 func ToBytes(s any) []byte {
 	if v, ok := s.(Stringer); ok {
 		return []byte(v.String())
+	}
+	if v, ok := s.(ContentProvider); ok {
+		return []byte(v.GetContent())
 	}
 	bs, _ := json.Marshal(s)
 	return bs

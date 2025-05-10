@@ -65,6 +65,10 @@ func (f *fakeAssistant) Call(ctx context.Context, input string, promptInputs map
 	return nil, nil
 }
 
+func (f *fakeAssistant) LastRunMessages() []llms.MessageContent {
+	return nil
+}
+
 type fakeTool struct {
 	name string
 }
