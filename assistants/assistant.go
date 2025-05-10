@@ -52,7 +52,7 @@ func NewAssistant[O chatmodel.ContentProvider](
 		//Store:       store.NewMemoryStore(),
 		LLM:         llmModel,
 		sysprompt:   sysprompt,
-		name:        "Assistant",
+		name:        "Generic Assistant",
 		description: "An AI assistant that can perform various tasks.",
 	}
 

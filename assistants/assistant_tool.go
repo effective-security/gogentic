@@ -26,7 +26,7 @@ type AssistantTool[I any, O chatmodel.ContentProvider] struct {
 }
 
 func NewAssistantTool[I any, O chatmodel.ContentProvider](assistant TypeableAssistant[O]) (TypeableAssistantTool[I, O], error) {
-	var def O
+	var def I
 	sc, err := schema.New(reflect.TypeOf(def))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create schema")
