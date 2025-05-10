@@ -91,7 +91,14 @@ AI: This is a test answer 1.`
 }`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
 
-	tres, err := tool.CallAssistant(ctx, "What is a capital of largest country in Europe?", assistants.WithMessageStore(memstore))
+	_, err = tool.CallAssistant(ctx, "plain string", assistants.WithMessageStore(memstore))
+	assert.EqualError(t, err, "failed to unmarshal input: invalid character 'p' looking for beginning of value")
+
+	input := llmutils.ToJSONIndent(&chatmodel.InputRequest{
+		Input: "What is a capital of largest country in Europe?",
+	})
+
+	tres, err := tool.CallAssistant(ctx, input, assistants.WithMessageStore(memstore))
 	require.NoError(t, err)
 	assert.Equal(t, "This is a test answer 2.", tres)
 }

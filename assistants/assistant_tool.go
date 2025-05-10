@@ -2,6 +2,7 @@ package assistants
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 
 	"github.com/effective-security/gogentic/chatmodel"
@@ -18,14 +19,14 @@ type TypeableAssistantTool[I any, O any] interface {
 	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
 }
 
-type AssistantTool[I any, O chatmodel.ContentProvider] struct {
+type AssistantTool[I chatmodel.ContentProvider, O chatmodel.ContentProvider] struct {
 	assistant   TypeableAssistant[O]
 	name        string
 	description string
 	funcParams  any
 }
 
-func NewAssistantTool[I any, O chatmodel.ContentProvider](assistant TypeableAssistant[O]) (TypeableAssistantTool[I, O], error) {
+func NewAssistantTool[I chatmodel.ContentProvider, O chatmodel.ContentProvider](assistant TypeableAssistant[O]) (TypeableAssistantTool[I, O], error) {
 	var def I
 	sc, err := schema.New(reflect.TypeOf(def))
 	if err != nil {
@@ -68,8 +69,20 @@ func (t *AssistantTool[I, O]) Call(ctx context.Context, input string) (string, e
 }
 
 func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, options ...Option) (string, error) {
+	var tin I
+	if parser, ok := (any)(&tin).(chatmodel.InputParser); ok {
+		if err := parser.ParseInput(input); err != nil {
+			return "", err
+		}
+	} else {
+		// Validate the input against the function parameters
+		if err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), &tin); err != nil {
+			return "", errors.Wrap(err, "failed to unmarshal input")
+		}
+	}
+
 	var res O
-	_, err := t.assistant.Run(ctx, input, nil, &res, options...)
+	_, err := t.assistant.Run(ctx, tin.GetContent(), nil, &res, options...)
 	if err != nil {
 		if val, ok := (any)(&res).(chatmodel.IBaseResult); ok {
 			val.SetClarification(llmutils.AddComment("tool", t.Name(), "error", err.Error()))
