@@ -9,6 +9,7 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/store"
 	"github.com/stretchr/testify/assert"
@@ -71,8 +72,24 @@ AI: This is a test answer 1.`
 	require.NoError(t, err)
 	assert.Equal(t, exp, chat)
 
-	tool, err := assistants.NewAssistantTool[chatmodel.String, chatmodel.String](ag)
+	tool, err := assistants.NewAssistantTool[chatmodel.InputRequest](ag)
 	require.NoError(t, err)
+	assert.Equal(t, "Generic Assistant", tool.Name())
+	assert.Equal(t, ag.Description(), tool.Description())
+	exp = `{
+	"properties": {
+		"Input": {
+			"type": "string",
+			"title": "Input",
+			"description": "The message sent by the user to the assistant."
+		}
+	},
+	"type": "object",
+	"required": [
+		"Input"
+	]
+}`
+	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
 
 	tres, err := tool.CallAssistant(ctx, "What is a capital of largest country in Europe?", assistants.WithMessageStore(memstore))
 	require.NoError(t, err)
