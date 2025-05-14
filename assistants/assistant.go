@@ -24,7 +24,8 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	LLM          llms.Model
 	OutputParser chatmodel.OutputParser[O]
 
-	tools       map[string]tools.ITool
+	toolsByName map[string]tools.ITool
+	tools       []tools.ITool
 	llmToolDefs []llms.Tool
 
 	cfg         *Config
@@ -100,15 +101,21 @@ func (a *Assistant[O]) Description() string {
 	return a.description
 }
 
+func (a *Assistant[O]) GetTools() []tools.ITool {
+	return a.tools
+}
+
+// WithTools adds new tools to the Assistant,
+// existing tools are not replaced.
 func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
-	if a.tools == nil {
-		a.tools = make(map[string]tools.ITool)
+	if a.toolsByName == nil {
+		a.toolsByName = make(map[string]tools.ITool)
 	}
 	for _, tool := range list {
 		name := tool.Name()
-		if a.tools[name] == nil {
-			a.tools[strings.ToLower(name)] = tool
-
+		if a.toolsByName[name] == nil {
+			a.toolsByName[strings.ToLower(name)] = tool
+			a.tools = append(a.tools, tool)
 			t := llms.Tool{
 				Type: "function",
 				Function: &llms.FunctionDefinition{
@@ -349,7 +356,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			}
 			messageHistory = append(messageHistory, assistantResponse)
 
-			tool := a.tools[strings.ToLower(toolCall.FunctionCall.Name)]
+			tool := a.toolsByName[strings.ToLower(toolCall.FunctionCall.Name)]
 			if tool == nil {
 				return false, nil, errors.Errorf("tool %s not found", toolName)
 			}
