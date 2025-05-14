@@ -8,7 +8,7 @@ require (
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/effective-security/x v0.12.54
+	github.com/effective-security/x v0.12.55
 	github.com/effective-security/xdb v0.22.103
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0

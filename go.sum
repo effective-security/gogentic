@@ -40,6 +40,8 @@ github.com/effective-security/mcp-golang v0.0.0-20250506100728-9bd61ea2e11b h1:L
 github.com/effective-security/mcp-golang v0.0.0-20250506100728-9bd61ea2e11b/go.mod h1:ifLP9ZzKpN1UqFWNTpAHOqSvNkMK6b7d1FSZ5Lu0lN0=
 github.com/effective-security/x v0.12.54 h1:wZwSIc6KbSA1glBtMNk7WWViULU73/sAeY1LesK0lGk=
 github.com/effective-security/x v0.12.54/go.mod h1:xf0v5iVrWAk455/TbaGm1MbGkY73TMVWr1zyPNcCoF0=
+github.com/effective-security/x v0.12.55 h1:cIGV7WByLIjDLasOGBedZkV24CVEBA3VKbffyCW0/iQ=
+github.com/effective-security/x v0.12.55/go.mod h1:xf0v5iVrWAk455/TbaGm1MbGkY73TMVWr1zyPNcCoF0=
 github.com/effective-security/xdb v0.22.103 h1:1LNWV/zSAVmAqu4VJNlhLWuQxichCxeoWr16oUi5kG8=
 github.com/effective-security/xdb v0.22.103/go.mod h1:w2EZaZ1xfe9z9l/kwGL7PybAT7lGdUnhJlCrqwsxYz4=
 github.com/effective-security/xlog v0.9.41 h1:z+35GBV0BSybcl0rtuqxaqoDHa5ayY1CrjWPDRL9cdc=

@@ -2,9 +2,8 @@ package tools
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
+	"github.com/effective-security/gogentic/llmutils"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/tmc/langchaingo/llms"
 )
@@ -55,10 +54,22 @@ type MCPTool[I any] interface {
 	RunMCP(context.Context, *I) (*mcp.ToolResponse, error)
 }
 
+type toolDescription struct {
+	Name        string `json:"Name" yaml:"Name"`
+	Description string `json:"Description" yaml:"Description"`
+}
+
+type toolsDescription struct {
+	Tools []toolDescription `json:"Tools" yaml:"Tools"`
+}
+
 func GetDescriptions(list ...ITool) string {
-	var ts strings.Builder
-	for _, item := range list {
-		ts.WriteString(fmt.Sprintf("- `%s`: %s\n", item.Name(), item.Description()))
+	var d toolsDescription
+	for _, tool := range list {
+		d.Tools = append(d.Tools, toolDescription{
+			Name:        tool.Name(),
+			Description: tool.Description(),
+		})
 	}
-	return ts.String()
+	return llmutils.BackticksJSON(llmutils.ToJSONIndent(d))
 }
