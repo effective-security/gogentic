@@ -183,8 +183,8 @@ func (m *inMemory) ListChats(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	t, ok := m.tenants[tenantID]
 	if !ok {
@@ -206,8 +206,8 @@ func (m *inMemory) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error
 		id = chatID
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	t, ok := m.tenants[tenantID]
 	if !ok {

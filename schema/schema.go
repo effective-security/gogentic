@@ -31,8 +31,8 @@ type Schema struct {
 
 // New creates a new schema from the given type
 func New(t reflect.Type) (*Schema, error) {
-	cacheMu.RLock()
-	defer cacheMu.RUnlock()
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
 
 	if s, ok := cache[t]; ok {
 		return s, nil
