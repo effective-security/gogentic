@@ -119,7 +119,7 @@ func (t *SSETransport) Start(ctx context.Context) error {
 	h.Set("Access-Control-Allow-Origin", "*")
 
 	// Send the endpoint event
-	endpointURL := fmt.Sprintf("%s?sessionId=%s", t.endpoint, t.sessionID)
+	endpointURL := fmt.Sprintf("%s?session=%s", t.endpoint, t.sessionID)
 	if err := t.writeEvent("endpoint", endpointURL); err != nil {
 		return err
 	}

@@ -134,6 +134,9 @@ func (s *Schema) NameFromRef() string {
 
 // JSONSchema return the json schema of the configuration
 func JSONSchema(t reflect.Type) *jsonschema.Schema {
+	// VS Code does not support the jsonschema version 2020-12
+	jsonschema.Version = "http://json-schema.org/draft-07/schema#"
+
 	r := new(jsonschema.Reflector)
 	r.ExpandedStruct = true
 	r.DoNotReference = true
