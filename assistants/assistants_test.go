@@ -169,7 +169,7 @@ Respond with JSON in the following JSON schema:` +
 		"\n```json" + `
 {
 	"properties": {
-		"Content": {
+		"content": {
 			"type": "string",
 			"title": "Response Content",
 			"description": "The content returned by agent or tool."
@@ -177,7 +177,7 @@ Respond with JSON in the following JSON schema:` +
 	},
 	"type": "object",
 	"required": [
-		"Content"
+		"content"
 	]
 }
 ` + "```" + `

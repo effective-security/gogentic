@@ -53,7 +53,6 @@ func (s *Transport) SetCloseHandler(handler func()) {
 func (s *Transport) SetMessageHandler(handler func(ctx context.Context, message *transport.BaseJsonRpcMessage)) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.Base.messageHandler = handler
 	s.messageHandler = handler
 }
 
@@ -61,7 +60,7 @@ func (s *Transport) SetMessageHandler(handler func(ctx context.Context, message 
 func (s *Transport) Send(ctx context.Context, message *transport.BaseJsonRpcMessage) error {
 	key := message.JsonRpcResponse.Id
 
-	responseChannel := s.Base.responseMap[int64(key)]
+	responseChannel := s.responseMap[int64(key)]
 	if responseChannel == nil {
 		return errors.Errorf("no response channel found for key: %d", key)
 	}

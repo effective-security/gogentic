@@ -97,7 +97,7 @@ func (t *Base) HandleMessage(ctx context.Context, body []byte) (*transport.BaseJ
 	var notification transport.BaseJSONRPCNotification
 	if !deserialized {
 		if err := json.Unmarshal(body, &notification); err == nil {
-			deserialized = true
+			//deserialized = true
 			t.mu.RLock()
 			handler := t.messageHandler
 			t.mu.RUnlock()
@@ -106,6 +106,9 @@ func (t *Base) HandleMessage(ctx context.Context, body []byte) (*transport.BaseJ
 				handler(ctx, transport.NewBaseMessageNotification(&notification))
 			}
 		}
+		return &transport.BaseJsonRpcMessage{
+			Type: transport.BaseMessageTypeJSONRPCResponseType,
+		}, nil
 	}
 
 	// Try as a response

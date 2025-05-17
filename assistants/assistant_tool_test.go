@@ -78,7 +78,7 @@ AI: This is a test answer 1.`
 	assert.Equal(t, ag.Description(), tool.Description())
 	exp = `{
 	"properties": {
-		"Input": {
+		"input": {
 			"type": "string",
 			"title": "Input",
 			"description": "The message sent by the user to the assistant."
@@ -86,7 +86,7 @@ AI: This is a test answer 1.`
 	},
 	"type": "object",
 	"required": [
-		"Input"
+		"input"
 	]
 }`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
