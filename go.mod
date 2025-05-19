@@ -8,8 +8,8 @@ require (
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/effective-security/x v0.12.55
-	github.com/effective-security/xdb v0.22.103
+	github.com/effective-security/x v0.12.57
+	github.com/effective-security/xdb v0.23.105
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/google/uuid v1.6.0
@@ -77,4 +77,4 @@ require (
 
 replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35
 
-replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250517145752-3f10e8810c6f
+replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5
