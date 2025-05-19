@@ -38,8 +38,8 @@ github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35 h1:
 github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35/go.mod h1:vpQ5NOIhpzxDfTZK9B6tf2GM/MoaHewPWM5KXXGh7hg=
 github.com/effective-security/mcp-golang v0.0.0-20250517145752-3f10e8810c6f h1:3CWsvovSu1VoKYWiYBr4HBeQr6tSQaHT7hkMC5ZtcFg=
 github.com/effective-security/mcp-golang v0.0.0-20250517145752-3f10e8810c6f/go.mod h1:ifLP9ZzKpN1UqFWNTpAHOqSvNkMK6b7d1FSZ5Lu0lN0=
-github.com/effective-security/x v0.12.55 h1:cIGV7WByLIjDLasOGBedZkV24CVEBA3VKbffyCW0/iQ=
-github.com/effective-security/x v0.12.55/go.mod h1:xf0v5iVrWAk455/TbaGm1MbGkY73TMVWr1zyPNcCoF0=
+github.com/effective-security/x v0.12.57 h1:UNaRBcux2m7oj4v0+w56rJFR4F9ezMYxGcuE/djXq0I=
+github.com/effective-security/x v0.12.57/go.mod h1:xf0v5iVrWAk455/TbaGm1MbGkY73TMVWr1zyPNcCoF0=
 github.com/effective-security/xdb v0.22.103 h1:1LNWV/zSAVmAqu4VJNlhLWuQxichCxeoWr16oUi5kG8=
 github.com/effective-security/xdb v0.22.103/go.mod h1:w2EZaZ1xfe9z9l/kwGL7PybAT7lGdUnhJlCrqwsxYz4=
 github.com/effective-security/xlog v0.9.41 h1:z+35GBV0BSybcl0rtuqxaqoDHa5ayY1CrjWPDRL9cdc=
