@@ -3,11 +3,11 @@ package encoding
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	dummyenc "github.com/effective-security/gogentic/encoding/dummy"
 	jsonenc "github.com/effective-security/gogentic/encoding/json"
 	tomlenc "github.com/effective-security/gogentic/encoding/toml"
 	yamlenc "github.com/effective-security/gogentic/encoding/yaml"
-	"github.com/pkg/errors"
 )
 
 type SchemaEncoder interface {

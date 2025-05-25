@@ -2,19 +2,56 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	rediscon "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/tmc/langchaingo/llms"
 )
 
-func Test_MemoryStore(t *testing.T) {
-	// Create a new in-memory store
-	st := store.NewMemoryStore()
+func Test_RedisStore(t *testing.T) {
+	ctx := context.Background()
+	redisContainer, err := rediscon.Run(ctx, "redis:7",
+		testcontainers.WithConfigModifier(func(config *container.Config) {
+			config.Env = []string{
+				"ALLOW_EMPTY_PASSWORD=yes",
+				"REDIS_PASSWORD=redis",
+				"REDIS_TLS_PORT=16379",
+			}
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, redisContainer.Terminate(ctx))
+	})
+
+	state, err := redisContainer.State(ctx)
+	require.NoError(t, err)
+	require.True(t, state.Running)
+
+	root := fmt.Sprintf("test-%d", time.Now().Unix())
+
+	host, err := redisContainer.ConnectionString(ctx)
+	require.NoError(t, err)
+
+	options, err := redis.ParseURL(host)
+	require.NoError(t, err)
+
+	// Create a new Redis store
+	client := redis.NewClient(options)
+
+	rs := client.Ping(ctx) // Ensure the connection is established
+	require.NoError(t, rs.Err(), "failed to connect to Redis")
+
+	st := store.NewRedisStore(client, root)
 
 	// Create a new chat context
 	tenantID := "tenant1"
@@ -23,11 +60,10 @@ func Test_MemoryStore(t *testing.T) {
 	msg1 := &llms.HumanChatMessage{Content: "Hello"}
 	msg2 := &llms.AIChatMessage{Content: "Hi there!"}
 
-	ctx := context.Background()
 	expErr := "invalid chat context"
 	assert.EqualError(t, st.Reset(ctx), expErr)
 	assert.EqualError(t, st.Add(ctx, msg1), expErr)
-	err := st.UpdateChat(ctx, "", nil)
+	err = st.UpdateChat(ctx, "", nil)
 	assert.EqualError(t, err, expErr)
 	_, err = st.ListChats(ctx)
 	assert.EqualError(t, err, expErr)

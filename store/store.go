@@ -4,8 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/effective-security/xlog"
 	"github.com/tmc/langchaingo/llms"
 )
+
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "store")
 
 type ChatInfo struct {
 	TenantID  string
@@ -29,9 +32,39 @@ type MessageStore interface {
 	Reset(ctx context.Context) error
 
 	// UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-	UpdateChat(ctx context.Context, title string, metadata map[string]any) (*ChatInfo, error)
+	UpdateChat(ctx context.Context, title string, metadata map[string]any) error
 	// ListChats returns a list of chat IDs for a tenant and chat ID from context.
 	ListChats(ctx context.Context) ([]string, error)
 	// GetChatInfo returns the chat information for a tenant and chat ID from context.
 	GetChatInfo(ctx context.Context, id string) (*ChatInfo, error)
+}
+
+func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
+	s := NewMemoryStore()
+	if store != nil {
+		for _, msg := range store.Messages(ctx) {
+			err := s.Add(ctx, msg)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s, nil
+}
+
+// ConvertChatMessagesToModel Convert a ChatMessage list to a ChatMessageModel list.
+func ConvertChatMessagesToModel(m []llms.ChatMessage) []llms.ChatMessageModel {
+	models := make([]llms.ChatMessageModel, len(m))
+	for i, msg := range m {
+		models[i] = llms.ConvertChatMessageToModel(msg)
+	}
+	return models
+}
+
+func ToChatMessages(messages []llms.ChatMessageModel) []llms.ChatMessage {
+	chatMessages := make([]llms.ChatMessage, len(messages))
+	for i, msg := range messages {
+		chatMessages[i] = msg.ToChatMessage()
+	}
+	return chatMessages
 }

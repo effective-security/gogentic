@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/llmutils"
@@ -12,7 +13,6 @@ import (
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/xlog"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/prompts"
 )

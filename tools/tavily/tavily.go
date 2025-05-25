@@ -10,13 +10,13 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/cockroachdb/errors"
 	tavilygo "github.com/diverged/tavily-go"
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
 	"github.com/effective-security/gogentic/tools"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/pkg/errors"
 	"github.com/tmc/langchaingo/llms"
 )
 

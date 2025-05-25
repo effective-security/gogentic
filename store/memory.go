@@ -63,19 +63,6 @@ func NewMemoryStore() MessageStore {
 	}
 }
 
-func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
-	s := NewMemoryStore()
-	if store != nil {
-		for _, msg := range store.Messages(ctx) {
-			err := s.Add(ctx, msg)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	return s, nil
-}
-
 func (m *inMemory) Messages(ctx context.Context) []llms.ChatMessage {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
@@ -131,10 +118,10 @@ func (m *inMemory) Reset(ctx context.Context) error {
 }
 
 // UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any) (*ChatInfo, error) {
+func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any) error {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	m.mu.Lock()
@@ -159,22 +146,15 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 		}
 		t.chats[chatID] = chat
 	}
-	updated := false
 	if title != "" {
 		chat.Title = title
-		updated = true
 	}
-	if metadata != nil {
-		for k, v := range metadata {
-			chat.Metadata[k] = v
-		}
-		updated = true
-	}
-	if updated {
-		chat.UpdatedAt = time.Now()
+	for k, v := range metadata {
+		chat.Metadata[k] = v
 	}
 
-	return chat, nil
+	chat.UpdatedAt = time.Now()
+	return nil
 }
 
 func (m *inMemory) ListChats(ctx context.Context) ([]string, error) {
