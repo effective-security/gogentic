@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"reflect"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
 	"github.com/effective-security/gogentic/tools"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/pkg/errors"
 )
 
 type TypeableAssistantTool[I any, O any] interface {

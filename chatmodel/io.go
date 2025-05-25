@@ -3,9 +3,9 @@ package chatmodel
 import (
 	"encoding/json"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/llmutils"
 	"github.com/invopop/jsonschema"
-	"github.com/pkg/errors"
 )
 
 // ContentProvider is an interface for providing content from a message.

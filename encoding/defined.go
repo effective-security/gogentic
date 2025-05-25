@@ -3,8 +3,8 @@ package encoding
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/pkg/errors"
 )
 
 // TypedOutputParser parses output from an LLM into Go structs.

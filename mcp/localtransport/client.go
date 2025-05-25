@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/metoro-io/mcp-golang/transport"
-	"github.com/pkg/errors"
 )
 
 type McpProxyRequest struct {
