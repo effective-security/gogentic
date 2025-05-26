@@ -127,6 +127,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250417070650-eff3c484bf35
+replace github.com/tmc/langchaingo => github.com/effective-security/langchaingo v0.0.0-20250526073910-9827f7a5a62a
 
 replace github.com/metoro-io/mcp-golang => github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5
