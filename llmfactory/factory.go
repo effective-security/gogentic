@@ -12,9 +12,13 @@ import (
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")
 
+// Factory is the interface for creating and managing LLM models.
 type Factory interface {
+	// DefaultModel returns the default LLM model.
 	DefaultModel() (llms.Model, error)
+	// ModelByType returns an LLM model by its type.
 	ModelByType(typ string) (llms.Model, error)
+	// ModelByName returns an LLM model by its name.
 	ModelByName(name string) (llms.Model, error)
 }
 
