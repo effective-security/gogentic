@@ -181,7 +181,9 @@ Respond with JSON in the following JSON schema:` +
 	]
 }
 ` + "```" + `
-Make sure to return an instance of the JSON, not the schema itself.`
+Make sure to return an instance of the JSON, not the schema itself.
+Use the exact field names as they are defined in the schema.`
+
 	assert.Equal(t, expPrompt, sysPrompt)
 
 	var output chatmodel.OutputResult
