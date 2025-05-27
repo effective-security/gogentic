@@ -25,6 +25,7 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	OutputParser chatmodel.OutputParser[O]
 
 	toolsByName map[string]tools.ITool
+	toolsNames  []string
 	tools       []tools.ITool
 	llmToolDefs []llms.Tool
 
@@ -113,8 +114,11 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 	}
 	for _, tool := range list {
 		name := tool.Name()
-		if a.toolsByName[name] == nil {
-			a.toolsByName[strings.ToLower(name)] = tool
+		// use lowercase for the key
+		nameLowerCase := strings.ToLower(name)
+		if a.toolsByName[nameLowerCase] == nil {
+			a.toolsByName[nameLowerCase] = tool
+			a.toolsNames = append(a.toolsNames, name)
 			a.tools = append(a.tools, tool)
 			t := llms.Tool{
 				Type: "function",
@@ -356,9 +360,29 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			}
 			messageHistory = append(messageHistory, assistantResponse)
 
+			// use lowercase for the key
 			tool := a.toolsByName[strings.ToLower(toolCall.FunctionCall.Name)]
 			if tool == nil {
-				return false, nil, errors.Errorf("tool %s not found", toolName)
+				availableTools := strings.Join(a.toolsNames, ", ")
+				logger.ContextKV(ctx, xlog.WARNING,
+					"assistant", a.name,
+					"status", "tool_not_found",
+					"tool_name", toolName,
+					"available_tools", availableTools,
+				)
+				// Append tool_result to messageHistory
+				toolCallResponse := llms.MessageContent{
+					Role: llms.ChatMessageTypeTool,
+					Parts: []llms.ContentPart{
+						llms.ToolCallResponse{
+							ToolCallID: toolCall.ID,
+							Name:       toolName,
+							Content:    fmt.Sprintf("Tool `%s` not found. Please check the tool name and try again with exact match. Available tools: %s", toolName, availableTools),
+						},
+					},
+				}
+				messageHistory = append(messageHistory, toolCallResponse)
+				continue
 			}
 
 			if cfg.CallbackHandler != nil {
