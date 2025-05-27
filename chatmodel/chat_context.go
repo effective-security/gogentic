@@ -90,6 +90,16 @@ func GetChatContext(ctx context.Context) ChatContext {
 	return nil
 }
 
+// NewFromContext returns new Background context with ChatContext from incoming context.
+// This is useful for passing the chat context to the background context of a service.
+func NewFromContext(ctx context.Context) context.Context {
+	chatCtx := GetChatContext(ctx)
+	if chatCtx == nil {
+		return context.Background()
+	}
+	return WithChatContext(context.Background(), chatCtx)
+}
+
 func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
 	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
 		v.SetChatID(chatID)

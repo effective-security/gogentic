@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path"
 	"time"
 
@@ -225,7 +224,7 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 		chat = &ChatInfo{
 			TenantID:  tenantID,
 			ChatID:    chatID,
-			Title:     fmt.Sprintf("Chat %s", chatID),
+			Title:     "New Chat",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			Metadata:  make(map[string]any),
@@ -244,4 +243,32 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 	}
 
 	return chat, nil
+}
+
+// GetChatTitle returns the title for a tenant and chat ID from context.
+// If the chat does not exist or not persisted, it returns an empty string.
+func (m *redisStore) GetChatTitle(ctx context.Context, id string) (string, error) {
+	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	if err != nil {
+		return "", err
+	}
+	if id == "" {
+		id = chatID
+	}
+
+	chatKey := m.getRedisChatInfoKey(tenantID, id)
+	data, err := m.client.Get(ctx, chatKey).Result()
+	if err != nil {
+		if err != redis.Nil && !errors.Is(err, redis.Nil) {
+			return "", errors.Wrap(err, "failed to get chat info from Redis")
+		}
+		return "", nil
+	}
+
+	var chat ChatInfo
+	err = json.Unmarshal([]byte(data), &chat)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to unmarshal chat info")
+	}
+	return chat.Title, nil
 }
