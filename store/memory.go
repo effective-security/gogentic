@@ -3,11 +3,11 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/x/values"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -36,7 +36,7 @@ func (t *tenant) add(chatID string, msg llms.ChatMessage) {
 		chat = &ChatInfo{
 			TenantID:  t.id,
 			ChatID:    chatID,
-			Title:     fmt.Sprintf("Chat %s", chatID),
+			Title:     "New Chat",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -141,7 +141,7 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 			TenantID:  tenantID,
 			ChatID:    chatID,
 			CreatedAt: time.Now(),
-			Title:     fmt.Sprintf("Chat %s", chatID),
+			Title:     values.StringsCoalesce(title, "New Chat"),
 			Metadata:  make(map[string]any),
 		}
 		t.chats[chatID] = chat
@@ -198,4 +198,29 @@ func (m *inMemory) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error
 		return nil, errors.New("chat not found")
 	}
 	return chat, nil
+}
+
+// GetChatTitle returns the title for a tenant and chat ID from context.
+// If the chat does not exist or not persisted, it returns an empty string.
+func (m *inMemory) GetChatTitle(ctx context.Context, id string) (string, error) {
+	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	if err != nil {
+		return "", err
+	}
+	if id == "" {
+		id = chatID
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	t, ok := m.tenants[tenantID]
+	if !ok {
+		return "", nil
+	}
+	chat, ok := t.chats[id]
+	if !ok {
+		return "", nil
+	}
+	return chat.Title, nil
 }

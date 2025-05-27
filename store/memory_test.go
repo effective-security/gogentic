@@ -43,6 +43,11 @@ func Test_MemoryStore(t *testing.T) {
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
 
+	// Test GetChatTitle for existing chat
+	title, err := st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Empty(t, title)
+
 	require.NoError(t, st.Add(ctx, msg1))
 	require.NoError(t, st.Add(ctx, msg2))
 
@@ -56,6 +61,22 @@ func Test_MemoryStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
+
+	// Test GetChatTitle for existing chat
+	title, err = st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, "New Chat", title)
+
+	// Update chat title and test again
+	require.NoError(t, st.UpdateChat(ctx, "Updated Title", nil))
+	title, err = st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Title", title)
+
+	// Test GetChatTitle for non-existing chat
+	title, err = st.GetChatTitle(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Equal(t, "", title)
 
 	list, err := st.ListChats(ctx)
 	require.NoError(t, err)

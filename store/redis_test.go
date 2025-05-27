@@ -79,8 +79,28 @@ func Test_RedisStore(t *testing.T) {
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
 
+	title, err := st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Empty(t, title)
+
 	require.NoError(t, st.Add(ctx, msg1))
 	require.NoError(t, st.Add(ctx, msg2))
+
+	// Test GetChatTitle for existing chat
+	title, err = st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, "New Chat", title)
+
+	// Update chat title and test again
+	require.NoError(t, st.UpdateChat(ctx, "Updated Title", nil))
+	title, err = st.GetChatTitle(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Title", title)
+
+	// Test GetChatTitle for non-existing chat
+	title, err = st.GetChatTitle(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Equal(t, "", title)
 
 	// Retrieve messages from the store
 	messages := st.Messages(ctx)

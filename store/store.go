@@ -37,6 +37,10 @@ type MessageStore interface {
 	ListChats(ctx context.Context) ([]string, error)
 	// GetChatInfo returns the chat information for a tenant and chat ID from context.
 	GetChatInfo(ctx context.Context, id string) (*ChatInfo, error)
+
+	// GetChatTitle returns the title for a tenant and chat ID from context.
+	// If the chat does not exist or not persisted, it returns an empty string.
+	GetChatTitle(ctx context.Context, id string) (string, error)
 }
 
 func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
