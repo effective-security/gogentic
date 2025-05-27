@@ -47,6 +47,7 @@ func (e *Encoder) GetFormatInstructions() string {
 	b.Write([]byte(e.schema.String()))
 	b.WriteString("\n```")
 	b.WriteString("\nMake sure to return an instance of the JSON, not the schema itself.\n")
+	b.WriteString("Use the exact field names as they are defined in the schema.\n")
 	return b.String()
 }
 
