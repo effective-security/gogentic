@@ -31,7 +31,7 @@ func (e *Encoder) Marshal(req any) ([]byte, error) {
 }
 
 func (e *Encoder) Unmarshal(bs []byte, ret any) error {
-	data := llmutils.BytesTrimBackticks(bs)
+	data := llmutils.CleanJSON(bs)
 	return ljson.Unmarshal(data, ret)
 }
 

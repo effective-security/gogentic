@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
@@ -47,7 +48,7 @@ func Test_AssistantTool(t *testing.T) {
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...)
@@ -92,7 +93,8 @@ AI: This is a test answer 1.`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
 
 	_, err = tool.CallAssistant(ctx, "plain string", assistants.WithMessageStore(memstore))
-	assert.EqualError(t, err, "failed to unmarshal input: invalid character 'p' looking for beginning of value")
+	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput))
+	assert.EqualError(t, err, "failed to unmarshal input: check the schema and try again")
 
 	input := llmutils.ToJSONIndent(&chatmodel.InputRequest{
 		Input: "What is a capital of largest country in Europe?",

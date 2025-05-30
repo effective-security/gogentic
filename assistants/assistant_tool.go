@@ -72,12 +72,12 @@ func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, o
 	var tin I
 	if parser, ok := (any)(&tin).(chatmodel.InputParser); ok {
 		if err := parser.ParseInput(input); err != nil {
-			return "", err
+			return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 		}
 	} else {
 		// Validate the input against the function parameters
 		if err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), &tin); err != nil {
-			return "", errors.Wrap(err, "failed to unmarshal input")
+			return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 		}
 	}
 
@@ -86,9 +86,11 @@ func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, o
 	if err != nil {
 		if val, ok := (any)(&res).(chatmodel.IBaseResult); ok {
 			val.SetClarification(llmutils.AddComment("tool", t.Name(), "error", err.Error()))
+		} else {
+			return "", err
 		}
-		return "", err
 	}
+
 	return chatmodel.Stringify(res), nil
 }
 

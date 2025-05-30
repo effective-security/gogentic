@@ -35,6 +35,7 @@ type IAssistant interface {
 	GetPromptInputVariables() []string
 
 	// Call executes the assistant with the given input and prompt inputs.
+	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error)
 }
 
@@ -42,6 +43,7 @@ type IAssistant interface {
 type IAssistantTool interface {
 	tools.ITool
 	// CallAssistant allows the tool to call the assistant with the given input and options.
+	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
 }
 
@@ -56,15 +58,18 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	HasCallback
 	// Run executes the assistant with the given input and prompt inputs.
 	// Do not use this method directly, use the Run function instead.
+	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error)
 }
 
 type Callback interface {
 	tools.Callback
-	OnAssistantStart(ctx context.Context, agent IAssistant, input string)
-	OnAssistantEnd(ctx context.Context, agent IAssistant, input string, resp *llms.ContentResponse)
-	OnAssistantError(ctx context.Context, agent IAssistant, input string, err error)
-	OnAssistantLLMCall(ctx context.Context, agent IAssistant, payload []llms.MessageContent)
+	OnAssistantStart(ctx context.Context, a IAssistant, input string)
+	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *llms.ContentResponse)
+	OnAssistantError(ctx context.Context, a IAssistant, input string, err error)
+	OnAssistantLLMCall(ctx context.Context, a IAssistant, payload []llms.MessageContent)
+	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
+	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
 }
 
 // IMCPAssistant is an interface that extends IAssistant to include functionality for

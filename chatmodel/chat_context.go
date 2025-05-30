@@ -2,11 +2,15 @@ package chatmodel
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/xdb/pkg/flake"
+)
+
+var (
+	ErrInvalidChatContext = errors.New("invalid chat context")
 )
 
 // ChatContext is the context for the chat agent,
@@ -23,11 +27,14 @@ type ChatContext interface {
 	GetMetadata(key string) (value any, ok bool)
 	// SetMetadata sets metadata by key
 	SetMetadata(key string, value any)
+	// RunID returns the run ID for the chat
+	RunID() string
 }
 
 type chatContext struct {
 	tenantID string
 	chatID   string
+	runID    string
 	metadata sync.Map
 	appData  any
 }
@@ -38,6 +45,10 @@ func (c *chatContext) GetTenantID() string {
 
 func (c *chatContext) GetChatID() string {
 	return c.chatID
+}
+
+func (c *chatContext) RunID() string {
+	return c.runID
 }
 
 // SetChatID updates the chat ID in the context
@@ -66,6 +77,7 @@ func NewChatContext(tenantID, chatID string, appData any) ChatContext {
 	return &chatContext{
 		tenantID: tenantID,
 		chatID:   chatID,
+		runID:    NewChatID(),
 		appData:  appData,
 		metadata: sync.Map{},
 	}
@@ -105,7 +117,7 @@ func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
 		v.SetChatID(chatID)
 		return ctx, nil
 	}
-	return nil, errors.New("invalid chat context")
+	return nil, errors.WithStack(ErrInvalidChatContext)
 }
 
 // GetTenantAndChatID retrieves the tenant and chat ID from the provided context.
@@ -114,7 +126,7 @@ func GetTenantAndChatID(ctx context.Context) (string, string, error) {
 	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
 		return v.GetTenantID(), v.GetChatID(), nil
 	}
-	return "", "", errors.New("invalid chat context")
+	return "", "", errors.WithStack(ErrInvalidChatContext)
 }
 
 // NewChatID generates a new chat ID using the flake ID generator.

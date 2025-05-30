@@ -22,6 +22,8 @@ func Test_CleanJSON(t *testing.T) {
 	expected = "[{\"city\": \"Paris\", \"country\": \"France\"}]"
 	assert.Equal(t, expected, string(clean))
 
+	resp := "{\n\t\"answer\": \"Here is the search query used to find the top 5 assets under attack:\\n\\n```json\\n{\\n  \\\"queryId\\\": \\\"Asset\\\",\\n  \\\"filterQuery\\\": {\\n    \\\"term\\\": {\\n      \\\"asset.OnAttack\\\": true\\n    }\\n  },\\n  \\\"sort\\\": \\\"asset.AttackCount DESC\\\",\\n  \\\"limit\\\": 5\\n}\\n```\",\n\t\"chatTitle\": \"Top 5 Assets Under Attack\",\n\t\"actions\": []\n}"
+	assert.Equal(t, resp, string(llmutils.CleanJSON([]byte(resp))))
 }
 
 func Test_TrimBackticks(t *testing.T) {

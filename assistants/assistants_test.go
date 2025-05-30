@@ -150,7 +150,7 @@ func Test_Assistant_Defined(t *testing.T) {
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
@@ -337,7 +337,7 @@ func Test_Assistant_Chat(t *testing.T) {
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...).
@@ -369,4 +369,125 @@ AI: The weather in Europe is generally mild.`
 	chat, err := llms.GetBufferString(history, "Human", "AI")
 	require.NoError(t, err)
 	assert.Equal(t, exp, chat)
+}
+
+func Test_Assistant_FailtedParseToolInput(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	t.Setenv("TAVILY_API_KEY", "test-key")
+	tavilyTool, err := tavily.New()
+	require.NoError(t, err)
+
+	// This will simulate a tool that fails to unmarshal input the first time, then succeeds
+	callCount := 0
+	mockTool := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool.EXPECT().Name().Return(tavilyTool.Name()).AnyTimes()
+	mockTool.EXPECT().Description().Return(tavilyTool.Description()).AnyTimes()
+	mockTool.EXPECT().Parameters().Return(tavilyTool.Parameters()).AnyTimes()
+	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		callCount++
+		if callCount == 1 {
+			// Simulate failed unmarshal
+			return "", chatmodel.ErrFailedUnmarshalInput
+		}
+		// On retry, succeed
+		return llmutils.ToJSON(tavily.SearchResult{
+			Results: []tavilyModels.SearchResult{
+				{
+					Title: "Weather in Europe",
+					URL:   "https://weather.com/europe",
+				},
+			},
+			Answer: "The weather in Europe is generally mild.",
+		}), nil
+	}).Times(2)
+
+	// LLM mock: first returns a tool call with invalid input, then with valid input, then the final answer
+	llmCall := 0
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			llmCall++
+			if llmCall == 1 {
+				// First, LLM issues a tool call with invalid input
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: []llms.ToolCall{
+								{
+									ID:   "tavily-search",
+									Type: "function",
+									FunctionCall: &llms.FunctionCall{
+										Name:      tavilyTool.Name(),
+										Arguments: `not a json`,
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			}
+			if llmCall == 2 {
+				// After error, LLM retries with valid JSON input
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: []llms.ToolCall{
+								{
+									ID:   "tavily-search",
+									Type: "function",
+									FunctionCall: &llms.FunctionCall{
+										Name:      tavilyTool.Name(),
+										Arguments: `{"Query":"weather in Europe"}`,
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			}
+			// Final, LLM returns the answer
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"The weather in Europe is generally mild."}`,
+					},
+				},
+			}, nil
+		}).Times(3)
+
+	memstore := store.NewMemoryStore()
+	var buf strings.Builder
+	acfg := []assistants.Option{
+		assistants.WithMode(encoding.ModeJSONSchema),
+		assistants.WithJSONMode(true),
+		assistants.WithMessageStore(memstore),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+	}
+
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
+		WithTools(mockTool)
+
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	var output chatmodel.OutputResult
+	apiResp, err := ag.Run(ctx, "Search for weather in Europe", nil, &output)
+	require.NoError(t, err)
+	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, apiResp.Choices)
+	assert.Contains(t, output.Content, "weather")
+
+	history := memstore.Messages(ctx)
+	assert.NotEmpty(t, history)
+	chat, err := llms.GetBufferString(history, "Human", "AI")
+	require.NoError(t, err)
+	// The final answer should be present
+	assert.Contains(t, chat, "The weather in Europe is generally mild.")
+
+	// // The error message should be present in the chat history
+	// assert.Contains(t, chat, "Failed to unmarshal input, check the JSON schema and try again.")
 }
