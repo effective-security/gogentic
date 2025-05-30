@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	tavilygo "github.com/diverged/tavily-go"
 	tavilyModels "github.com/diverged/tavily-go/models"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/schema"
 	"github.com/effective-security/gogentic/tools"
@@ -156,7 +157,7 @@ func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, erro
 func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 	var req SearchRequest
 	if err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), &req); err != nil {
-		return "", errors.Wrap(err, "failed to unmarshal input")
+		return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 	}
 	out, err := t.Run(ctx, &req)
 	if err != nil {

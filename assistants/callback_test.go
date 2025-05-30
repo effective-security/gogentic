@@ -16,7 +16,7 @@ import (
 
 func TestCallback(t *testing.T) {
 	var buf bytes.Buffer
-	cb := assistants.NewPrinterCallback(&buf)
+	cb := assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)
 
 	ast := &fakeAssistant{name: "test-assistant"}
 	tool := &fakeTool{name: "test-tool"}

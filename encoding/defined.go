@@ -43,7 +43,7 @@ func (p *TypedOutputParser[T]) WithValidation(validate bool) {
 func (p *TypedOutputParser[T]) Parse(text string) (*T, error) {
 	var target T
 	if err := p.enc.Unmarshal([]byte(text), &target); err != nil {
-		return nil, errors.Wrap(err, "failed to decode")
+		return nil, errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 	}
 	if validator, ok := p.enc.(Validator); ok && p.validate {
 		if err := validator.Validate(target); err != nil {

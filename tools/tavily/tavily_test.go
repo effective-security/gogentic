@@ -3,12 +3,14 @@ package tavily_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	tavilyModels "github.com/diverged/tavily-go/models"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/stretchr/testify/assert"
@@ -66,6 +68,10 @@ func Test_Tool(t *testing.T) {
 }`
 
 	assert.Equal(t, expParams, string(params))
+
+	_, err = tool.Call(ctx, "plain string")
+	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput))
+	assert.EqualError(t, err, "failed to unmarshal input: check the schema and try again")
 
 	input := &tavily.SearchRequest{
 		Query: "What is capital of France",

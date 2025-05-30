@@ -57,7 +57,7 @@ func Test_Real_Assistant(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf)),
+		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
 		assistants.WithMessageStore(memstore),
 	}
 

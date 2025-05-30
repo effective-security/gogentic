@@ -214,7 +214,7 @@ func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[
 func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error) {
 	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
-		return nil, errors.New("invalid chat context")
+		return nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
 	}
 
 	// create a per call config
@@ -301,6 +301,18 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 	if optionalOutputType != nil {
 		finalOutput, err := a.OutputParser.Parse(result)
 		if err != nil {
+			logger.ContextKV(ctx, xlog.DEBUG,
+				"assistant", a.name,
+				"status", "failed_to_parse_llm_response",
+				"err", err.Error(),
+				"output_parser", a.OutputParser.Type(),
+				"result", result,
+			)
+
+			if a.cfg.CallbackHandler != nil {
+				a.cfg.CallbackHandler.OnAssistantLLMParseError(ctx, a, input, result, err)
+			}
+
 			return nil, err
 		}
 		*optionalOutputType = *finalOutput
@@ -363,6 +375,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			// use lowercase for the key
 			tool := a.toolsByName[strings.ToLower(toolCall.FunctionCall.Name)]
 			if tool == nil {
+				if cfg.CallbackHandler != nil {
+					cfg.CallbackHandler.OnToolNotFound(ctx, a, toolName)
+				}
+
 				availableTools := strings.Join(a.toolsNames, ", ")
 				logger.ContextKV(ctx, xlog.WARNING,
 					"assistant", a.name,
@@ -400,7 +416,13 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolError(ctx, tool, toolArgs, err)
 				}
-				return false, nil, errors.WithMessagef(err, "failed to call tool %s", toolName)
+
+				if errors.Is(err, chatmodel.ErrFailedUnmarshalInput) {
+					// Return an error to LLM to retry the tool call
+					res = llmutils.AddComment("assistant", a.Name(), "error", "Failed to unmarshal input, check the JSON schema and try again.")
+				} else {
+					return false, nil, errors.WithMessagef(err, "failed to call tool %s", toolName)
+				}
 			}
 
 			if cfg.CallbackHandler != nil {

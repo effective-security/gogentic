@@ -25,6 +25,7 @@ type ITool interface {
 	Parameters() any
 
 	// Call executes the tool with the given input and returns the result.
+	// If the tool fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	Call(context.Context, string) (string, error)
 }
 

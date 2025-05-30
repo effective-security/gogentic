@@ -2,11 +2,18 @@ package chatmodel
 
 import (
 	"encoding/json"
+
+	"github.com/cockroachdb/errors"
+)
+
+var (
+	ErrFailedUnmarshalInput = errors.New("failed to unmarshal input: check the schema and try again")
 )
 
 // OutputParser is an interface for parsing the output of an LLM call.
 type OutputParser[T any] interface {
 	// Parse parses the output of an LLM call.
+	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	Parse(text string) (*T, error)
 	// GetFormatInstructions returns a string describing the format of the output.
 	GetFormatInstructions() string
