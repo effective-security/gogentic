@@ -10,6 +10,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.1.1+incompatible
+	github.com/effective-security/metrics v0.8.94
 	github.com/effective-security/x v0.13.59
 	github.com/effective-security/xdb v0.23.105
 	github.com/effective-security/xlog v0.9.41
@@ -124,11 +125,10 @@ require (
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
 	google.golang.org/grpc v1.70.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 

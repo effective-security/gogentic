@@ -79,6 +79,8 @@ github.com/effective-security/langchaingo v0.0.0-20250526073910-9827f7a5a62a h1:
 github.com/effective-security/langchaingo v0.0.0-20250526073910-9827f7a5a62a/go.mod h1:vpQ5NOIhpzxDfTZK9B6tf2GM/MoaHewPWM5KXXGh7hg=
 github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5 h1:JNDYMq9vvZWQShXx38oUk7CUuZofrclRHJZ0XgVfmTw=
 github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5/go.mod h1:ifLP9ZzKpN1UqFWNTpAHOqSvNkMK6b7d1FSZ5Lu0lN0=
+github.com/effective-security/metrics v0.8.94 h1:SskjWU/cXtlampGV4DUY8UeAR+Hpqy8/jlCvVWuIWlY=
+github.com/effective-security/metrics v0.8.94/go.mod h1:pF3WYh8Unn4X0PBXbHhICS5wWkwsCXUq6eGryyWzqL8=
 github.com/effective-security/x v0.13.59 h1:H92toKqZIEp7w6BEVwY0DKHt+aDnw1nHzSGhqTrI0RE=
 github.com/effective-security/x v0.13.59/go.mod h1:CxuN04roC0Htt1G5XD8vL+ZO3L4ZVPtud24lHMpNDx4=
 github.com/effective-security/xdb v0.23.105 h1:MJb/VFt9Vopd4Om+CH6UCBcd7GNszuHExOLj/j4bFw4=
@@ -370,8 +372,8 @@ golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.2.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.11.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
-golang.org/x/sys v0.32.0 h1:s77OFDvIQeibCmezSnk/q6iAfkdiQaJi4VzroCFrN20=
-golang.org/x/sys v0.32.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
+golang.org/x/sys v0.33.0 h1:q3i8TbbEz+JRD9ywIRlyRAQbM0qF7hu24q3teo2hbuw=
+golang.org/x/sys v0.33.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/term v0.2.0/go.mod h1:TVmDHMZPmdnySmBfhjOoOdhjzdE1h4u1VwSiw2l1Nuc=
