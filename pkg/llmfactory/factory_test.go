@@ -3,7 +3,7 @@ package llmfactory_test
 import (
 	"testing"
 
-	"github.com/effective-security/gogentic/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/stretchr/testify/require"
 )
 

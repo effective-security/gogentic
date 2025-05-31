@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/effective-security/gogentic/llmutils"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )

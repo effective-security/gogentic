@@ -1,4 +1,4 @@
-package assistants_test
+package callbacks_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/values"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ import (
 
 func TestCallback(t *testing.T) {
 	var buf bytes.Buffer
-	cb := assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)
+	cb := callbacks.NewPrinter(&buf, callbacks.ModeVerbose)
 
 	ast := &fakeAssistant{name: "test-assistant"}
 	tool := &fakeTool{name: "test-tool"}

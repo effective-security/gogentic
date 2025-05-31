@@ -225,6 +225,62 @@ func PrintMessageContents(w io.Writer, msgs []llms.MessageContent) {
 	}
 }
 
+// CountMessagesContentSize counts the size of the content in the messages
+func CountMessagesContentSize(msgs []llms.MessageContent) uint64 {
+	var size uint64
+	for _, mc := range msgs {
+		size += uint64(len(mc.Role))
+		for _, p := range mc.Parts {
+			switch pp := p.(type) {
+			case llms.TextContent:
+				size += uint64(len(pp.Text))
+			case llms.ImageURLContent:
+				size += uint64(len(pp.URL))
+				size += uint64(len(pp.Detail))
+			case llms.BinaryContent:
+				size += uint64(len(pp.MIMEType))
+				size += uint64(len(pp.Data))
+			case llms.ToolCall:
+				size += uint64(len(pp.ID))
+				size += uint64(len(pp.Type))
+				if pp.FunctionCall != nil {
+					size += uint64(len(pp.FunctionCall.Name))
+					size += uint64(len(pp.FunctionCall.Arguments))
+				}
+			case llms.ToolCallResponse:
+				size += uint64(len(pp.ToolCallID))
+				size += uint64(len(pp.Name))
+				size += uint64(len(pp.Content))
+			default:
+				//fmt.Fprintf(w, "unknown type %T\n", pp)
+			}
+		}
+	}
+	return size
+}
+
+// CountResponseContentSize counts the size of the content in the content response
+func CountResponseContentSize(resp *llms.ContentResponse) uint64 {
+	var size uint64
+	for _, choice := range resp.Choices {
+		size += uint64(len(choice.Content))
+		size += uint64(len(choice.ReasoningContent))
+		if choice.FuncCall != nil {
+			size += uint64(len(choice.FuncCall.Name))
+			size += uint64(len(choice.FuncCall.Arguments))
+		}
+		for _, toolCall := range choice.ToolCalls {
+			size += uint64(len(toolCall.ID))
+			size += uint64(len(toolCall.Type))
+			if toolCall.FunctionCall != nil {
+				size += uint64(len(toolCall.FunctionCall.Name))
+				size += uint64(len(toolCall.FunctionCall.Arguments))
+			}
+		}
+	}
+	return size
+}
+
 func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage, filter ...llms.ChatMessageType) {
 	for _, mc := range msgs {
 		if len(filter) > 0 && !slices.Contains(filter, mc.GetType()) {

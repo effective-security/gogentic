@@ -3,9 +3,8 @@ package tools
 import (
 	"context"
 
-	"github.com/effective-security/gogentic/llmutils"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/tmc/langchaingo/llms"
 )
 
 //go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools
@@ -33,7 +32,6 @@ type Callback interface {
 	OnToolStart(context.Context, ITool, string)
 	OnToolEnd(context.Context, ITool, string, string)
 	OnToolError(context.Context, ITool, string, error)
-	OnToolLLMCall(context.Context, ITool, []llms.MessageContent)
 }
 
 type Tool[I any, O any] interface {

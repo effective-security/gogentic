@@ -8,10 +8,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/mocks/mockllms"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +49,7 @@ func Test_AssistantTool(t *testing.T) {
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...)

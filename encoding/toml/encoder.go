@@ -6,8 +6,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/brianvoe/gofakeit/v7"
-	"github.com/effective-security/gogentic/llmutils"
-	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/go-playground/validator/v10"
 )
 

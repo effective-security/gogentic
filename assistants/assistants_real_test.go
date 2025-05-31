@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/xlog"
@@ -25,7 +26,7 @@ func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 	xlog.SetFormatter(xlog.NewStringFormatter(os.Stdout))
 	xlog.SetGlobalLogLevel(xlog.ERROR)
 
-	cfg, err := llmfactory.LoadConfig("../llmfactory/testdata/llm.yaml")
+	cfg, err := llmfactory.LoadConfig("../pkg/llmfactory/testdata/llm.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
 
@@ -57,7 +58,7 @@ func Test_Real_Assistant(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		assistants.WithMessageStore(memstore),
 	}
 
