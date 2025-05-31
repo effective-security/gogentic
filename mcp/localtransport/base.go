@@ -29,6 +29,9 @@ func NewBase() *Base {
 // Send implements Transport.Send
 func (t *Base) Send(ctx context.Context, message *transport.BaseJsonRpcMessage) error {
 	key := message.JsonRpcResponse.Id
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	responseChannel := t.responseMap[int64(key)]
 	if responseChannel == nil {
 		return fmt.Errorf("no response channel found for key: %d", key)

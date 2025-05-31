@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/llmutils"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/xlog"

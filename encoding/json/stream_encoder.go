@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/effective-security/gogentic/llmutils"
-	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/go-playground/validator/v10"
 )
 

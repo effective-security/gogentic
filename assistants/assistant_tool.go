@@ -7,8 +7,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/effective-security/gogentic/llmutils"
-	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
 	mcp "github.com/metoro-io/mcp-golang"
 )

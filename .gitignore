@@ -8,6 +8,8 @@ bin/
 .docker/
 .DS_Store
 .vscode/
+.cursor/
+.claude/
 .aider*
 change_log.txt
 test_log.txt

@@ -60,6 +60,9 @@ func (s *Transport) SetMessageHandler(handler func(ctx context.Context, message 
 func (s *Transport) Send(ctx context.Context, message *transport.BaseJsonRpcMessage) error {
 	key := message.JsonRpcResponse.Id
 
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	responseChannel := s.responseMap[int64(key)]
 	if responseChannel == nil {
 		return errors.Errorf("no response channel found for key: %d", key)

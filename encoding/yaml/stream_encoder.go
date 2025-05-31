@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/brianvoe/gofakeit/v7"
-	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 )

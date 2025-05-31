@@ -11,7 +11,7 @@ import (
 
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/effective-security/gogentic/llmutils"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

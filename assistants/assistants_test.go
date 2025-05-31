@@ -8,11 +8,12 @@ import (
 
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
-	"github.com/effective-security/gogentic/llmutils"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/stretchr/testify/assert"
@@ -150,7 +151,7 @@ func Test_Assistant_Defined(t *testing.T) {
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
@@ -337,7 +338,7 @@ func Test_Assistant_Chat(t *testing.T) {
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithJSONMode(false),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...).
@@ -465,7 +466,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
-		assistants.WithCallback(assistants.NewPrinterCallback(&buf, assistants.PrintModeVerbose)),
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).

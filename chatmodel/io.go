@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/cockroachdb/errors"
-	"github.com/effective-security/gogentic/llmutils"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/invopop/jsonschema"
 )
 

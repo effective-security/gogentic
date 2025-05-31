@@ -6,8 +6,8 @@ import (
 	"reflect"
 
 	"github.com/bububa/ljson"
-	"github.com/effective-security/gogentic/llmutils"
-	"github.com/effective-security/gogentic/schema"
+	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/go-playground/validator/v10"
 )
 
