@@ -9,7 +9,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/docker/docker v28.1.1+incompatible
+	github.com/docker/docker v28.2.2+incompatible
 	github.com/effective-security/metrics v0.8.94
 	github.com/effective-security/x v0.13.59
 	github.com/effective-security/xdb v0.23.105
@@ -40,6 +40,8 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
