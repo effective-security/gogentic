@@ -327,3 +327,17 @@ func ExtractTag(input string, tagPrefix string) string {
 
 	return input[startIndex:endIndex]
 }
+
+// EnsureEndsWithNewline ensures the message ends with a newline,
+// it also removes any extra leading and trailing spaces.
+func EnsureEndsWithNewline(s string) string {
+	s = strings.TrimSpace(s)
+	c := len(s)
+	if c == 0 {
+		return s
+	}
+	if s[c-1] != '\n' {
+		return s + "\n"
+	}
+	return s
+}

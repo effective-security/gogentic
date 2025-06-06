@@ -140,3 +140,13 @@ AI: What is the capital of France?
 `
 	assert.Equal(t, exp, buf.String())
 }
+
+func Test_EnsureNewline(t *testing.T) {
+	assert.Equal(t, "", llmutils.EnsureEndsWithNewline(" \n"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline(" \nHello"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("\nHello\n"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n\n"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n\n\n"))
+	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n\n\n\n"))
+}

@@ -225,6 +225,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 	return resp, nil
 }
 
+// run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
 func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error) {
 	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
@@ -317,7 +318,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 	choices := resp.Choices
 	if len(choices) < 1 {
-		return nil, errors.New("empty response from LLM")
+		return nil, errors.Newf("assistant %s: LLM returned empty response with no choices", a.name)
 	}
 	result := choices[0].Content
 
