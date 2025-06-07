@@ -47,7 +47,7 @@ type IAssistantTool interface {
 	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
 }
 
-type ProvidePromptInputsFunc func(input string) (map[string]any, error)
+type ProvidePromptInputsFunc func(ctx context.Context, input string) (map[string]any, error)
 
 type HasCallback interface {
 	GetCallback() Callback
