@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/assistants"
@@ -491,4 +492,113 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 
 	// // The error message should be present in the chat history
 	// assert.Contains(t, chat, "Failed to unmarshal input, check the JSON schema and try again.")
+}
+
+func Test_Assistant_ParallelToolCalls(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	// Create two mock tools
+	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool1.EXPECT().Name().Return("search_tool").AnyTimes()
+	mockTool1.EXPECT().Description().Return("Search tool for testing").AnyTimes()
+	mockTool1.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool1.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		// Simulate some work
+		time.Sleep(100 * time.Millisecond)
+		return `{"answer": "Result from tool 1"}`, nil
+	}).AnyTimes()
+
+	mockTool2 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool2.EXPECT().Name().Return("analyze_tool").AnyTimes()
+	mockTool2.EXPECT().Description().Return("Analysis tool for testing").AnyTimes()
+	mockTool2.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool2.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		// Simulate some work
+		time.Sleep(100 * time.Millisecond)
+		return `{"answer": "Result from tool 2"}`, nil
+	}).AnyTimes()
+
+	// Create a mock LLM that returns multiple tool calls
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			// First call: return multiple tool calls
+			if len(messages) == 1 {
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: []llms.ToolCall{
+								{
+									ID:   "1",
+									Type: "function",
+									FunctionCall: &llms.FunctionCall{
+										Name:      "search_tool",
+										Arguments: `{"query":"test query 1"}`,
+									},
+								},
+								{
+									ID:   "2",
+									Type: "function",
+									FunctionCall: &llms.FunctionCall{
+										Name:      "analyze_tool",
+										Arguments: `{"query":"test query 2"}`,
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			}
+			// Second call: return final response
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"Final response after parallel tool calls"}`,
+					},
+				},
+			}, nil
+		}).AnyTimes()
+
+	// Create assistant with both tools
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+		WithTools(mockTool1, mockTool2)
+
+	// Create chat context
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	// Run the assistant
+	var output chatmodel.OutputResult
+	start := time.Now()
+	apiResp, err := ag.Run(ctx, "Run parallel tools", nil, &output)
+	duration := time.Since(start)
+
+	// Verify results
+	require.NoError(t, err)
+	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, apiResp.Choices)
+
+	// Verify that the execution took less than 300ms (indicating parallel execution)
+	// If tools were executed sequentially, it would take at least 200ms (100ms per tool)
+	assert.Less(t, duration, 300*time.Millisecond, "Tools should execute in parallel")
+
+	// Verify the final response
+	assert.Contains(t, output.Content, "Final response after parallel tool calls")
 }

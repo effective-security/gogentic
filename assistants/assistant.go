@@ -283,8 +283,10 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 		callOpts = append(callOpts, llms.WithTools(a.llmToolDefs))
 	}
 
-	var toolExecuted bool
+	var totalToolExecuted int
 	var resp *llms.ContentResponse
+	maxRetries := 2
+	retryCount := 0
 
 	for {
 		if a.cfg.CallbackHandler != nil {
@@ -302,25 +304,71 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 		bytesReceived := llmutils.CountResponseContentSize(resp)
 		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), a.Name())
-
 		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), a.Name())
 
+		// Check for empty response and retry if needed
+		if len(resp.Choices) == 0 {
+			retryCount++
+			if retryCount >= maxRetries {
+				logger.ContextKV(ctx, xlog.ERROR,
+					"assistant", a.name,
+					"status", "max_retries_exceeded",
+					"input", slices.StringUpto(input, 32),
+					"retry_count", retryCount,
+				)
+				return nil, errors.Newf("assistant %s: LLM returned empty response after %d retries", a.name, retryCount)
+			}
+			logger.ContextKV(ctx, xlog.WARNING,
+				"assistant", a.name,
+				"status", "retrying_empty_response",
+				"retry_count", retryCount,
+			)
+			continue
+		}
+
 		// Perform Tool call
+		var toolExecuted int
 		toolExecuted, messageHistory, err = a.executeToolCalls(ctx, cfg, messageHistory, resp, options...)
 		if err != nil {
 			return nil, err
 		}
 
-		if !toolExecuted {
+		if toolExecuted == 0 {
 			break
 		}
+		totalToolExecuted += toolExecuted
 	}
 
 	choices := resp.Choices
 	if len(choices) < 1 {
+		logger.ContextKV(ctx, xlog.ERROR,
+			"assistant", a.name,
+			"status", "empty_choices",
+			"input", slices.StringUpto(input, 32),
+		)
 		return nil, errors.Newf("assistant %s: LLM returned empty response with no choices", a.name)
 	}
+
+	// Log response analysis for debugging
+	logger.ContextKV(ctx, xlog.DEBUG,
+		"assistant", a.name,
+		"status", "response_analysis",
+		"choices_count", len(choices),
+		"tool_calls", totalToolExecuted,
+	)
+
 	result := choices[0].Content
+	if len(choices) > 1 {
+		// Handle multiple choices by combining their content
+		var combinedContent strings.Builder
+		for i, choice := range choices {
+			if i > 0 {
+				combinedContent.WriteString("\n\n")
+			}
+			combinedContent.WriteString(choice.Content)
+		}
+		result = combinedContent.String()
+	}
 
 	if optionalOutputType != nil {
 		finalOutput, err := a.OutputParser.Parse(result)
@@ -372,14 +420,75 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 // executeToolCalls executes the tool calls in the response and returns the
 // updated message history.
-func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messageHistory []llms.MessageContent, resp *llms.ContentResponse, options ...Option) (bool, []llms.MessageContent, error) {
-	executed := false
-	for _, choice := range resp.Choices {
-		for _, toolCall := range choice.ToolCalls {
-			executed = true
+func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messageHistory []llms.MessageContent, resp *llms.ContentResponse, options ...Option) (int, []llms.MessageContent, error) {
+	executedCount := 0
 
-			toolName := toolCall.FunctionCall.Name
-			toolArgs := toolCall.FunctionCall.Arguments
+	// Create a type to hold tool call results
+	type toolCallResult struct {
+		toolCall     llms.ToolCall
+		response     string
+		err          error
+		messageIndex int
+	}
+
+	// Channel to collect results
+	resultChan := make(chan toolCallResult)
+	var toolCalls []llms.ToolCall
+	var messageIndices []int
+
+	// Collect all tool calls first
+	for _, choice := range resp.Choices {
+		// Log the type of content in the choice
+		// logger.ContextKV(ctx, xlog.DEBUG,
+		// 	"assistant", a.name,
+		// 	"status", "choice_analysis",
+		// 	"has_content", choice.Content != "",
+		// 	"has_tool_calls", len(choice.ToolCalls) > 0,
+		// 	"has_func_call", choice.FuncCall != nil,
+		// )
+
+		// Handle function calls if present
+		if choice.FuncCall != nil {
+			logger.ContextKV(ctx, xlog.DEBUG,
+				"assistant", a.name,
+				"status", "function_call",
+				"function", choice.FuncCall.Name,
+			)
+			// Convert function call to tool call
+			toolCall := llms.ToolCall{
+				ID:   fmt.Sprintf("func_%d", executedCount),
+				Type: "function",
+				FunctionCall: &llms.FunctionCall{
+					Name:      choice.FuncCall.Name,
+					Arguments: choice.FuncCall.Arguments,
+				},
+			}
+			toolCalls = append(toolCalls, toolCall)
+			messageIndices = append(messageIndices, len(messageHistory))
+			executedCount++
+
+			// Append function call to messageHistory
+			assistantResponse := llms.MessageContent{
+				Role: llms.ChatMessageTypeAI,
+				Parts: []llms.ContentPart{
+					llms.ToolCall{
+						ID:   toolCall.ID,
+						Type: toolCall.Type,
+						FunctionCall: &llms.FunctionCall{
+							Name:      toolCall.FunctionCall.Name,
+							Arguments: toolCall.FunctionCall.Arguments,
+						},
+					},
+				},
+			}
+			messageHistory = append(messageHistory, assistantResponse)
+		}
+
+		// Handle tool calls
+		for _, toolCall := range choice.ToolCalls {
+			executedCount++
+			toolCalls = append(toolCalls, toolCall)
+			messageIndices = append(messageIndices, len(messageHistory))
 
 			// Append tool_use to messageHistory
 			assistantResponse := llms.MessageContent{
@@ -389,16 +498,28 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 						ID:   toolCall.ID,
 						Type: toolCall.Type,
 						FunctionCall: &llms.FunctionCall{
-							Name:      toolName,
-							Arguments: toolArgs,
+							Name:      toolCall.FunctionCall.Name,
+							Arguments: toolCall.FunctionCall.Arguments,
 						},
 					},
 				},
 			}
 			messageHistory = append(messageHistory, assistantResponse)
+		}
+	}
+
+	if executedCount == 0 {
+		return executedCount, messageHistory, nil
+	}
+
+	// Launch goroutines for each tool call
+	for i, toolCall := range toolCalls {
+		go func(tc llms.ToolCall, msgIdx int) {
+			toolName := tc.FunctionCall.Name
+			toolArgs := tc.FunctionCall.Arguments
 
 			// use lowercase for the key
-			tool := a.toolsByName[strings.ToLower(toolCall.FunctionCall.Name)]
+			tool := a.toolsByName[strings.ToLower(toolName)]
 			if tool == nil {
 				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName)
 				if cfg.CallbackHandler != nil {
@@ -412,19 +533,13 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 					"tool_name", toolName,
 					"available_tools", availableTools,
 				)
-				// Append tool_result to messageHistory
-				toolCallResponse := llms.MessageContent{
-					Role: llms.ChatMessageTypeTool,
-					Parts: []llms.ContentPart{
-						llms.ToolCallResponse{
-							ToolCallID: toolCall.ID,
-							Name:       toolName,
-							Content:    fmt.Sprintf("Tool `%s` not found. Please check the tool name and try again with exact match. Available tools: %s", toolName, availableTools),
-						},
-					},
+
+				resultChan <- toolCallResult{
+					toolCall:     tc,
+					response:     fmt.Sprintf("Tool `%s` not found. Please check the tool name and try again with exact match. Available tools: %s", toolName, availableTools),
+					messageIndex: msgIdx,
 				}
-				messageHistory = append(messageHistory, toolCallResponse)
-				continue
+				return
 			}
 
 			if cfg.CallbackHandler != nil {
@@ -450,10 +565,14 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 				}
 
 				if errors.Is(err, chatmodel.ErrFailedUnmarshalInput) {
-					// Return an error to LLM to retry the tool call
 					res = llmutils.AddComment("assistant", a.Name(), "error", "Failed to unmarshal input, check the JSON schema and try again.")
 				} else {
-					return false, nil, errors.WithMessagef(err, "failed to call tool %s", toolName)
+					resultChan <- toolCallResult{
+						toolCall:     tc,
+						err:          errors.WithMessagef(err, "failed to call tool %s", toolName),
+						messageIndex: msgIdx,
+					}
+					return
 				}
 			}
 			metricskey.StatsToolCallsSucceeded.IncrCounter(1, toolName)
@@ -461,19 +580,53 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			if cfg.CallbackHandler != nil {
 				cfg.CallbackHandler.OnToolEnd(ctx, tool, toolArgs, res)
 			}
-			// Append tool_result to messageHistory
-			toolCallResponse := llms.MessageContent{
-				Role: llms.ChatMessageTypeTool,
-				Parts: []llms.ContentPart{
-					llms.ToolCallResponse{
-						ToolCallID: toolCall.ID,
-						Name:       toolName,
-						Content:    res,
-					},
-				},
+
+			resultChan <- toolCallResult{
+				toolCall:     tc,
+				response:     res,
+				messageIndex: msgIdx,
 			}
-			messageHistory = append(messageHistory, toolCallResponse)
-		}
+		}(toolCall, messageIndices[i])
 	}
-	return executed, messageHistory, nil
+
+	// Collect results
+	results := make(map[int]toolCallResult)
+	for i := 0; i < len(toolCalls); i++ {
+		result := <-resultChan
+		// Use the messageIndex from the result to ensure proper ordering
+		results[result.messageIndex] = result
+	}
+
+	// Process results in order
+	for i := 0; i < len(toolCalls); i++ {
+		result := results[messageIndices[i]]
+		var content string
+		if result.err != nil {
+			// Format error as a message for the LLM
+			content = fmt.Sprintf("Tool call failed: %s", result.err.Error())
+			// Log the error for monitoring
+			logger.ContextKV(ctx, xlog.WARNING,
+				"assistant", a.name,
+				"status", "tool_call_failed",
+				"tool", result.toolCall.FunctionCall.Name,
+				"err", result.err.Error(),
+			)
+		} else {
+			content = result.response
+		}
+
+		toolCallResponse := llms.MessageContent{
+			Role: llms.ChatMessageTypeTool,
+			Parts: []llms.ContentPart{
+				llms.ToolCallResponse{
+					ToolCallID: result.toolCall.ID,
+					Name:       result.toolCall.FunctionCall.Name,
+					Content:    content,
+				},
+			},
+		}
+		messageHistory = append(messageHistory, toolCallResponse)
+	}
+
+	return executedCount, messageHistory, nil
 }
