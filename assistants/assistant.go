@@ -154,9 +154,9 @@ func (a *Assistant[O]) WithPromptInputProvider(cb ProvidePromptInputsFunc) {
 }
 
 // GetSystemPrompt generates the system prompt for the Assistant.
-func (a *Assistant[O]) GetSystemPrompt(input string, promptInputs map[string]any) (string, error) {
+func (a *Assistant[O]) GetSystemPrompt(ctx context.Context, input string, promptInputs map[string]any) (string, error) {
 	if a.onPrompt != nil {
-		extra, err := a.onPrompt(input)
+		extra, err := a.onPrompt(ctx, input)
 		if err != nil {
 			return "", errors.WithMessage(err, "failed to get prompt inputs")
 		}
@@ -235,7 +235,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 	// create a per call config
 	cfg := a.cfg.Apply(options...)
 
-	systemPrompt, err := a.GetSystemPrompt(input, promptInputs)
+	systemPrompt, err := a.GetSystemPrompt(ctx, input, promptInputs)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to format system prompt")
 	}

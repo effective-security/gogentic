@@ -160,7 +160,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	sysPrompt, err := ag.GetSystemPrompt("", nil)
+	sysPrompt, err := ag.GetSystemPrompt(ctx, "", nil)
 	require.NoError(t, err)
 	expPrompt := `You are helpful and friendly AI assistant.
 
@@ -347,7 +347,7 @@ func Test_Assistant_Chat(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	sysPrompt, err := ag.GetSystemPrompt("", nil)
+	sysPrompt, err := ag.GetSystemPrompt(ctx, "", nil)
 	require.NoError(t, err)
 	expPrompt := `You are helpful and friendly AI assistant.`
 	assert.Equal(t, expPrompt, sysPrompt)
