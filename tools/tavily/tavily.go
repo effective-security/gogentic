@@ -52,11 +52,34 @@ type Tool struct {
 	apikey      string
 	baseURL     string
 	httpClient  *http.Client
+
+	opts SearchOpts
 }
 
 // ensure WebSearchTool implements the llm.Function interface
 var _ tools.Tool[SearchRequest, SearchResult] = (*Tool)(nil)
 var _ tools.MCPTool[SearchRequest] = (*Tool)(nil)
+
+// SearchOpts represents the options for a web search.
+// See: https://docs.tavily.com/documentation/api-reference/endpoint/search
+type SearchOpts struct {
+	// Available options: basic, advanced
+	// A basic search costs 1 API Credit, while an advanced search costs 2 API Credits.
+	SearchDepth string `json:"search_depth,omitempty"`
+	// Available options: general, news
+	Topic string `json:"topic,omitempty"`
+	// Include an LLM-generated answer to the provided query.
+	// `basic` or `true` returns a quick answer.
+	// `advanced` returns a more detailed answer.
+	IncludeAnswer bool `json:"include_answer,omitempty"`
+	// Required range: 0 <= x <= 20
+	MaxResults int `json:"max_results,omitempty"`
+	// A list of domains to specifically include in the search results.
+	IncludeDomains []string `json:"include_domains,omitempty"`
+	ExcludeDomains []string `json:"exclude_domains,omitempty"`
+	UseCache       bool     `json:"use_cache,omitempty"`
+	// IncludeImages  bool     `json:"include_images,omitempty"`
+}
 
 func New() (*Tool, error) {
 	apikey := os.Getenv(DefaultAPIKeyEnvName)
@@ -78,8 +101,20 @@ func NewWithAPIKey(apikey string) (*Tool, error) {
 		//baseURL:     "https://api.tavily.com/search",
 		httpClient: http.DefaultClient,
 		funcParams: sc.Parameters,
+		opts: SearchOpts{
+			SearchDepth:   "basic",
+			IncludeAnswer: true,
+			MaxResults:    5,
+			UseCache:      true,
+			Topic:         "general",
+		},
 	}
 	return tool, nil
+}
+
+func (t *Tool) WithSearchOpts(opts SearchOpts) *Tool {
+	t.opts = opts
+	return t
 }
 
 func (t *Tool) WithBaseURL(baseURL string) *Tool {
@@ -133,12 +168,14 @@ func (t *Tool) Run(ctx context.Context, req *SearchRequest) (*SearchResult, erro
 
 	// Perform a search
 	searchReq := tavilyModels.SearchRequest{
-		Query:         req.Query,
-		SearchDepth:   "basic",
-		IncludeAnswer: true,
-		// TODO: Option for
-		//IncludeDomains:
-		//ExcludeDomains: ,
+		Query:          req.Query,
+		SearchDepth:    t.opts.SearchDepth,
+		IncludeAnswer:  t.opts.IncludeAnswer,
+		MaxResults:     t.opts.MaxResults,
+		UseCache:       t.opts.UseCache,
+		Topic:          t.opts.Topic,
+		IncludeDomains: t.opts.IncludeDomains,
+		ExcludeDomains: t.opts.ExcludeDomains,
 	}
 
 	searchResp, err := tavilygo.Search(client, searchReq)
