@@ -11,14 +11,14 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/effective-security/metrics v0.8.94
-	github.com/effective-security/x v0.13.59
-	github.com/effective-security/xdb v0.23.105
+	github.com/effective-security/x v0.14.63
+	github.com/effective-security/xdb v0.23.106
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/metoro-io/mcp-golang v0.11.0
-	github.com/redis/go-redis/v9 v9.9.0
+	github.com/redis/go-redis/v9 v9.10.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0

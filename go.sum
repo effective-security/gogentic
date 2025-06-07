@@ -85,10 +85,10 @@ github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5 h1:J
 github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5/go.mod h1:ifLP9ZzKpN1UqFWNTpAHOqSvNkMK6b7d1FSZ5Lu0lN0=
 github.com/effective-security/metrics v0.8.94 h1:SskjWU/cXtlampGV4DUY8UeAR+Hpqy8/jlCvVWuIWlY=
 github.com/effective-security/metrics v0.8.94/go.mod h1:pF3WYh8Unn4X0PBXbHhICS5wWkwsCXUq6eGryyWzqL8=
-github.com/effective-security/x v0.13.59 h1:H92toKqZIEp7w6BEVwY0DKHt+aDnw1nHzSGhqTrI0RE=
-github.com/effective-security/x v0.13.59/go.mod h1:CxuN04roC0Htt1G5XD8vL+ZO3L4ZVPtud24lHMpNDx4=
-github.com/effective-security/xdb v0.23.105 h1:MJb/VFt9Vopd4Om+CH6UCBcd7GNszuHExOLj/j4bFw4=
-github.com/effective-security/xdb v0.23.105/go.mod h1:PhT197tUbbuuW+O99i/Sfz+zVby2JKd2rMr764W+/XI=
+github.com/effective-security/x v0.14.63 h1:8S7d+8Wnu9Y3XmRraIwqyXhdJeOc7y7ZErpuhoJjjGw=
+github.com/effective-security/x v0.14.63/go.mod h1:ijUNpgZPbxhJtF5GxNVZgHD1s30WPAuBCP2tem9ivP0=
+github.com/effective-security/xdb v0.23.106 h1:vHHlbZqFdTYZ+qqaS1eQwJ9Nw7GOu9KnWXXQFLvXvCo=
+github.com/effective-security/xdb v0.23.106/go.mod h1:e74mFLxNdvQUGmd8+6/pus3X2H20ObZZFBMabaHB0VU=
 github.com/effective-security/xlog v0.9.41 h1:z+35GBV0BSybcl0rtuqxaqoDHa5ayY1CrjWPDRL9cdc=
 github.com/effective-security/xlog v0.9.41/go.mod h1:bK02QBVCwMTcPDkkzpJRI1cu+Rs0q19XaoFbBowtC64=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
@@ -229,8 +229,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c h1:ncq/mPwQF4JjgDlrVEn3C11VoGHZN7m8qihwgMEtzYw=
 github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
-github.com/redis/go-redis/v9 v9.9.0 h1:URbPQ4xVQSQhZ27WMQVmZSo3uT3pL+4IdHVcYq2nVfM=
-github.com/redis/go-redis/v9 v9.9.0/go.mod h1:huWgSWd8mW6+m0VPhJjSSQ+d6Nh1VICQ6Q5lHuCH/Iw=
+github.com/redis/go-redis/v9 v9.10.0 h1:FxwK3eV8p/CQa0Ch276C7u2d0eNC9kCmAYQ7mCXCzVs=
+github.com/redis/go-redis/v9 v9.10.0/go.mod h1:huWgSWd8mW6+m0VPhJjSSQ+d6Nh1VICQ6Q5lHuCH/Iw=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
