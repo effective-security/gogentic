@@ -438,50 +438,57 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 
 	// Collect all tool calls first
 	for _, choice := range resp.Choices {
-		// Log the type of content in the choice
-		// logger.ContextKV(ctx, xlog.DEBUG,
-		// 	"assistant", a.name,
-		// 	"status", "choice_analysis",
-		// 	"has_content", choice.Content != "",
-		// 	"has_tool_calls", len(choice.ToolCalls) > 0,
-		// 	"has_func_call", choice.FuncCall != nil,
-		// )
+		// First collect all tool calls to check for duplicates
+		toolCallMap := make(map[string]llms.ToolCall)
+		for _, toolCall := range choice.ToolCalls {
+			toolCallMap[strings.ToLower(toolCall.FunctionCall.Name)] = toolCall
+		}
 
-		// Handle function calls if present
+		// Handle function calls if present, but only if there's no tool call for the same tool
 		if choice.FuncCall != nil {
-			logger.ContextKV(ctx, xlog.DEBUG,
-				"assistant", a.name,
-				"status", "function_call",
-				"function", choice.FuncCall.Name,
-			)
-			// Convert function call to tool call
-			toolCall := llms.ToolCall{
-				ID:   fmt.Sprintf("func_%d", executedCount),
-				Type: "function",
-				FunctionCall: &llms.FunctionCall{
-					Name:      choice.FuncCall.Name,
-					Arguments: choice.FuncCall.Arguments,
-				},
-			}
-			toolCalls = append(toolCalls, toolCall)
-			messageIndices = append(messageIndices, len(messageHistory))
-			executedCount++
+			funcName := strings.ToLower(choice.FuncCall.Name)
+			if _, exists := toolCallMap[funcName]; !exists {
+				logger.ContextKV(ctx, xlog.DEBUG,
+					"assistant", a.name,
+					"status", "function_call",
+					"function", choice.FuncCall.Name,
+				)
+				// Convert function call to tool call with a generated ID
+				toolCall := llms.ToolCall{
+					ID:   fmt.Sprintf("func_%d", executedCount), // Generate an ID for function calls
+					Type: "function",
+					FunctionCall: &llms.FunctionCall{
+						Name:      choice.FuncCall.Name,
+						Arguments: choice.FuncCall.Arguments,
+					},
+				}
+				toolCalls = append(toolCalls, toolCall)
+				messageIndices = append(messageIndices, len(messageHistory))
+				executedCount++
 
-			// Append function call to messageHistory
-			assistantResponse := llms.MessageContent{
-				Role: llms.ChatMessageTypeAI,
-				Parts: []llms.ContentPart{
-					llms.ToolCall{
-						ID:   toolCall.ID,
-						Type: toolCall.Type,
-						FunctionCall: &llms.FunctionCall{
-							Name:      toolCall.FunctionCall.Name,
-							Arguments: toolCall.FunctionCall.Arguments,
+				// Append function call to messageHistory
+				assistantResponse := llms.MessageContent{
+					Role: llms.ChatMessageTypeAI,
+					Parts: []llms.ContentPart{
+						llms.ToolCall{
+							ID:   toolCall.ID,
+							Type: toolCall.Type,
+							FunctionCall: &llms.FunctionCall{
+								Name:      toolCall.FunctionCall.Name,
+								Arguments: toolCall.FunctionCall.Arguments,
+							},
 						},
 					},
-				},
+				}
+				messageHistory = append(messageHistory, assistantResponse)
+			} else {
+				logger.ContextKV(ctx, xlog.DEBUG,
+					"assistant", a.name,
+					"status", "skipping_function_call",
+					"function", choice.FuncCall.Name,
+					"reason", "tool_call_exists",
+				)
 			}
-			messageHistory = append(messageHistory, assistantResponse)
 		}
 
 		// Handle tool calls
@@ -615,16 +622,28 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			content = result.response
 		}
 
+		// Create tool call response using the ID from the original tool call
 		toolCallResponse := llms.MessageContent{
 			Role: llms.ChatMessageTypeTool,
 			Parts: []llms.ContentPart{
 				llms.ToolCallResponse{
-					ToolCallID: result.toolCall.ID,
+					ToolCallID: result.toolCall.ID, // Use the ID from the original tool call
 					Name:       result.toolCall.FunctionCall.Name,
 					Content:    content,
 				},
 			},
 		}
+
+		// Log the tool call response for debugging
+		logger.ContextKV(ctx, xlog.DEBUG,
+			"assistant", a.name,
+			"status", "tool_call_response",
+			"tool_call_id", result.toolCall.ID,
+			"tool_name", result.toolCall.FunctionCall.Name,
+			"content_length", len(content),
+		)
+
+		// Add the response immediately after its corresponding tool call
 		messageHistory = append(messageHistory, toolCallResponse)
 	}
 
