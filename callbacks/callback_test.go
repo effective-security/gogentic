@@ -67,11 +67,11 @@ func TestDescriptions(t *testing.T) {
 	"Assistants": [
 		{
 			"Name": "test-assistant1",
-			"Description": "test assistant1\nLine 1"
+			"Description": "test assistant1. Line 1."
 		},
 		{
 			"Name": "test-assistant2",
-			"Description": "test assistant2\nLine 2"
+			"Description": "test assistant2. Line 2."
 		}
 	]
 }
@@ -84,29 +84,29 @@ func TestDescriptions(t *testing.T) {
 	"Assistants": [
 		{
 			"Name": "test-assistant1",
-			"Description": "test assistant1\nLine 1",
+			"Description": "test assistant1. Line 1.",
 			"Tools": [
 				{
 					"Name": "test-tool1",
-					"Description": "test tool 1\nLine 1"
+					"Description": "test tool 1. Line 1."
 				},
 				{
 					"Name": "test-tool2",
-					"Description": "test tool 2\nLine 2"
+					"Description": "test tool 2. Line 2."
 				}
 			]
 		},
 		{
 			"Name": "test-assistant2",
-			"Description": "test assistant2\nLine 2",
+			"Description": "test assistant2. Line 2.",
 			"Tools": [
 				{
 					"Name": "test-tool2",
-					"Description": "test tool 2\nLine 2"
+					"Description": "test tool 2. Line 2."
 				},
 				{
 					"Name": "test-tool3",
-					"Description": "test tool 3\nLine 3"
+					"Description": "test tool 3. Line 3."
 				}
 			]
 		}

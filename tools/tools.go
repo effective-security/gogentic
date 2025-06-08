@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/x/format"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -67,7 +68,7 @@ func GetDescriptions(list ...ITool) string {
 	for _, tool := range list {
 		d.Tools = append(d.Tools, toolDescription{
 			Name:        tool.Name(),
-			Description: tool.Description(),
+			Description: format.TextOneLine(tool.Description()),
 		})
 	}
 	return llmutils.BackticksJSON(llmutils.ToJSONIndent(d))

@@ -112,6 +112,16 @@ func NewWithAPIKey(apikey string) (*Tool, error) {
 	return tool, nil
 }
 
+func (t *Tool) WithName(name string) *Tool {
+	t.name = name
+	return t
+}
+
+func (t *Tool) WithDescription(description string) *Tool {
+	t.description = description
+	return t
+}
+
 func (t *Tool) WithSearchOpts(opts SearchOpts) *Tool {
 	t.opts = opts
 	return t
