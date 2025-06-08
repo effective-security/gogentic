@@ -6,6 +6,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/effective-security/x/format"
 	"github.com/effective-security/xlog"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/tmc/langchaingo/llms"
@@ -87,7 +88,7 @@ func GetDescriptions(list ...IAssistant) string {
 	for _, item := range list {
 		ad := assistantDescription{
 			Name:        item.Name(),
-			Description: item.Description(),
+			Description: format.TextOneLine(item.Description()),
 		}
 		d.Assistants = append(d.Assistants, ad)
 	}
@@ -115,12 +116,12 @@ func GetDescriptionsWithTools(list ...IAssistant) string {
 	for _, item := range list {
 		ad := assistantDescription{
 			Name:        item.Name(),
-			Description: item.Description(),
+			Description: format.TextOneLine(item.Description()),
 		}
 		for _, t := range item.GetTools() {
 			ad.Tools = append(ad.Tools, toolDescription{
 				Name:        t.Name(),
-				Description: t.Description(),
+				Description: format.TextOneLine(t.Description()),
 			})
 		}
 		d.Assistants = append(d.Assistants, ad)

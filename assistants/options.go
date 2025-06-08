@@ -83,6 +83,8 @@ type Config struct {
 	// IsGeneric is a flag to indicate that the assistant should add a generic message to the history,
 	// instead of the human
 	IsGeneric bool
+	// EnableFunctionCalls is a flag to indicate that the assistant should enable legacy function calls.
+	EnableFunctionCalls bool
 }
 
 func NewConfig(opts ...Option) *Config {
@@ -118,6 +120,13 @@ func WithMode(mode encoding.Mode) Option {
 		} else {
 			o.JSONMode = false
 		}
+	}
+}
+
+// WithEnableFunctionCalls is an option to indicate that the assistant should enable legacy function calls.
+func WithEnableFunctionCalls(val bool) Option {
+	return func(o *Config) {
+		o.EnableFunctionCalls = val
 	}
 }
 
