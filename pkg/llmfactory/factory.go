@@ -1,6 +1,7 @@
 package llmfactory
 
 import (
+	"slices"
 	"strings"
 	"sync"
 
@@ -12,14 +13,22 @@ import (
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")
 
+// NewLLM is a wrapper for CreateLLM to allow for overriding the default implementation.
+var NewLLM = CreateLLM
+
 // Factory is the interface for creating and managing LLM models.
 type Factory interface {
 	// DefaultModel returns the default LLM model.
 	DefaultModel() (llms.Model, error)
-	// ModelByType returns an LLM model by its type.
-	ModelByType(typ string) (llms.Model, error)
-	// ModelByName returns an LLM model by its name.
-	ModelByName(name string) (llms.Model, error)
+	// ModelByType returns an LLM model by its type, e.g. OPEN_AI, AZURE, AZURE_AD, CLOUDFLARE
+	ModelByType(providerType string) (llms.Model, error)
+	// ModelByName returns an LLM model by its name,
+	// if the model is not found, it will return the default model.
+	ModelByName(preferredModels ...string) (llms.Model, error)
+	// ToolModel returns a tool model by its name.
+	ToolModel(toolName string, preferredModels ...string) (llms.Model, error)
+	// AssistantModel returns an assistant model by its name.
+	AssistantModel(assistantName string, preferredModels ...string) (llms.Model, error)
 }
 
 // Load returns OpenAI factory
@@ -34,42 +43,85 @@ func Load(location string) (Factory, error) {
 type factory struct {
 	cfg *Config
 
-	byType map[string]llms.Model
-	byName map[string]llms.Model
-	lock   sync.Mutex
+	defaultProvider *ProviderConfig
+	toolModels      map[string][]string
+	assistantModels map[string][]string
+	byType          map[string]llms.Model
+	byName          map[string]llms.Model
+	lock            sync.Mutex
 }
 
 // New creates a new LLM factory
 func New(cfg *Config) Factory {
 	f := &factory{
-		cfg:    cfg,
-		byType: make(map[string]llms.Model),
-		byName: make(map[string]llms.Model),
+		cfg:             cfg,
+		byType:          make(map[string]llms.Model),
+		byName:          make(map[string]llms.Model),
+		toolModels:      make(map[string][]string),
+		assistantModels: make(map[string][]string),
 	}
+
+	for k, v := range cfg.ToolModels {
+		f.toolModels[k] = slices.Clone(v)
+	}
+	for k, v := range cfg.AssistantModels {
+		f.assistantModels[k] = slices.Clone(v)
+	}
+
+	if cfg.DefaultProvider != "" {
+		for _, provider := range cfg.Providers {
+			if provider.Name == cfg.DefaultProvider {
+				f.defaultProvider = provider
+				break
+			}
+		}
+	}
+
+	if f.defaultProvider == nil && len(f.cfg.Providers) > 0 {
+		f.defaultProvider = f.cfg.Providers[0]
+	}
+
 	return f
 }
 
-func NewLLM(cfg *ProviderConfig) (llms.Model, error) {
+func CreateLLM(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	provType := strings.ToUpper(cfg.OpenAI.APIType)
+	switch provType {
+	case "OPENAI", "OPEN_AI":
+		return newOpenAI(cfg, preferredModels...)
+	case "AZURE", "AZURE_AD":
+		return newAzure(cfg, preferredModels...)
+	}
+	return nil, errors.Errorf("unsupported provider type: %s", provType)
+}
+
+func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
 	var opts []openai.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, openai.WithAPIType(openai.APITypeOpenAI), openai.WithModel(model))
+
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
 	}
-
-	model := cfg.DefaultModel
-	switch typ := strings.ToUpper(cfg.OpenAI.APIType); typ {
-	case "AZURE", "AZURE_AD":
-		if typ == "AZURE" {
-			opts = append(opts, openai.WithAPIType(openai.APITypeAzure))
-		} else {
-			opts = append(opts, openai.WithAPIType(openai.APITypeAzureAD))
-		}
-		opts = append(opts, openai.WithAPIVersion(cfg.OpenAI.APIVersion))
-	case "OPENAI", "OPEN_AI":
-		opts = append(opts, openai.WithAPIType(openai.APITypeOpenAI))
+	if cfg.OpenAI.BaseURL != "" {
+		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
 	}
+	return openai.New(opts...)
+}
 
-	opts = append(opts, openai.WithModel(model))
+func newAzure(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []openai.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, openai.WithAPIVersion(cfg.OpenAI.APIVersion), openai.WithModel(model))
 
+	if cfg.Token != "" {
+		opts = append(opts, openai.WithToken(cfg.Token))
+	}
+	if strings.EqualFold(cfg.OpenAI.APIType, "AZURE_AD") {
+		opts = append(opts, openai.WithAPIType(openai.APITypeAzureAD))
+	} else {
+		opts = append(opts, openai.WithAPIType(openai.APITypeAzure))
+	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
 	}
@@ -78,22 +130,23 @@ func NewLLM(cfg *ProviderConfig) (llms.Model, error) {
 
 // Default returns the default OpenAI client
 func (f *factory) DefaultModel() (llms.Model, error) {
-	if len(f.cfg.Providers) == 0 {
+	if len(f.cfg.Providers) == 0 || f.defaultProvider == nil {
 		return nil, errors.New("no providers configured")
 	}
-	return f.ModelByName(f.cfg.Providers[0].Name)
+
+	return NewLLM(f.defaultProvider, f.defaultProvider.DefaultModel)
 }
 
-func (f *factory) ModelByType(typ string) (llms.Model, error) {
+func (f *factory) ModelByType(providerType string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	if client, ok := f.byType[typ]; ok {
+	if client, ok := f.byType[providerType]; ok {
 		return client, nil
 	}
 
 	for _, cfg := range f.cfg.Providers {
-		if cfg.OpenAI.APIType == typ {
+		if cfg.OpenAI.APIType == providerType {
 			model, err := NewLLM(cfg)
 			if err != nil {
 				return nil, err
@@ -105,37 +158,77 @@ func (f *factory) ModelByType(typ string) (llms.Model, error) {
 				"version", cfg.OpenAI.APIVersion,
 				"name", cfg.Name)
 
-			f.byType[typ] = model
+			f.byType[providerType] = model
 			return model, nil
 		}
 	}
-	return nil, errors.Errorf("provider not found for type: %s", typ)
+	return nil, errors.Errorf("provider not found for type: %s", providerType)
 }
 
-func (f *factory) ModelByName(name string) (llms.Model, error) {
+func (f *factory) ModelByName(modelNames ...string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	if client, ok := f.byName[name]; ok {
-		return client, nil
-	}
+	for _, modelName := range modelNames {
+		if client, ok := f.byName[modelName]; ok {
+			return client, nil
+		}
 
-	for _, cfg := range f.cfg.Providers {
-		if cfg.Name == name {
-			model, err := NewLLM(cfg)
-			if err != nil {
-				return nil, err
+		for _, cfg := range f.cfg.Providers {
+			if slices.Contains(cfg.AvailableModels, modelName) {
+				model, err := NewLLM(cfg, modelNames...)
+				if err != nil {
+					logger.KV(xlog.ERROR,
+						"reason", "NewLLM",
+						"type", cfg.OpenAI.APIType,
+						"version", cfg.OpenAI.APIVersion,
+						"models", modelNames,
+					)
+					continue
+				}
+
+				logger.KV(xlog.DEBUG,
+					"status", "created_llm",
+					"type", cfg.OpenAI.APIType,
+					"version", cfg.OpenAI.APIVersion,
+					"name", cfg.Name)
+
+				f.byName[modelName] = model
+				return model, nil
 			}
-
-			logger.KV(xlog.DEBUG,
-				"status", "created_llm",
-				"type", cfg.OpenAI.APIType,
-				"version", cfg.OpenAI.APIVersion,
-				"name", cfg.Name)
-
-			f.byName[name] = model
-			return model, nil
 		}
 	}
-	return nil, errors.Errorf("provider not found for name: %s", name)
+	return f.DefaultModel()
+}
+
+// ToolModel returns a tool model by its name.
+func (f *factory) ToolModel(toolName string, preferredModels ...string) (llms.Model, error) {
+	// Check if we have a specific model mapping for this tool
+	if modelNames, ok := f.toolModels[toolName]; ok {
+		return f.ModelByName(modelNames...)
+	}
+
+	// Check for default model mapping
+	if modelNames, ok := f.toolModels["default"]; ok {
+		return f.ModelByName(modelNames...)
+	}
+
+	// Fallback to default provider
+	return f.ModelByName(preferredModels...)
+}
+
+// AssistantModel returns an assistant model by its name.
+func (f *factory) AssistantModel(assistantName string, preferredModels ...string) (llms.Model, error) {
+	// Check if we have a specific model mapping for this assistant
+	if modelNames, ok := f.assistantModels[assistantName]; ok {
+		return f.ModelByName(modelNames...)
+	}
+
+	// Check for default model mapping
+	if modelNames, ok := f.assistantModels["default"]; ok {
+		return f.ModelByName(modelNames...)
+	}
+
+	// Fallback to default provider
+	return f.ModelByName(preferredModels...)
 }

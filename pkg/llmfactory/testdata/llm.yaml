@@ -1,13 +1,35 @@
 ---
+default_provider: openai-dev
 providers:
-  # the first provider is the default one
+  # the first provider is the default one if default_provider is not set
   - name: openai-dev
     token: env://OPENAI_API_KEY
     default_model: gpt-4o
     available_models:
-      - gpt-4
       - gpt-4o
+      - gpt-4
       - gpt-4-mini
     open_ai:
       # OPEN_AI|AZURE|ANTHROPIC|CLOUDFLARE_AZURE
       api_type: OPEN_AI
+  - name: azure-test
+    default_model: gpt-41
+    available_models:
+      - gpt-41
+      - gpt-41-mini
+    open_ai:
+      api_type: AZURE
+      base_url: https://azure-test.openai.azure.com
+      api_version: 2024-08-01-preview
+      org_id: 1234567890
+      assistant_version: 2024-08-01-preview
+tool_models:
+  default:
+    - gpt-4o
+  web_search:
+    - gpt-4-mini
+assistant_models:
+  default:
+    - gpt-4o
+  orchestrator:
+    - gpt-41-mini
