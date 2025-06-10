@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,10 +13,12 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/mocks/mockassitants"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/store"
+	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -540,28 +543,28 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
-			if len(messages) == 1 {
+			if len(messages) == 2 {
+				toolCalls := make([]llms.ToolCall, 2)
+				toolCalls[0] = llms.ToolCall{
+					ID:   "search_tool",
+					Type: "function",
+					FunctionCall: &llms.FunctionCall{
+						Name:      "search_tool",
+						Arguments: `{"query":"test query 1"}`,
+					},
+				}
+				toolCalls[1] = llms.ToolCall{
+					ID:   "analyze_tool",
+					Type: "function",
+					FunctionCall: &llms.FunctionCall{
+						Name:      "analyze_tool",
+						Arguments: `{"query":"test query 2"}`,
+					},
+				}
 				return &llms.ContentResponse{
 					Choices: []*llms.ContentChoice{
 						{
-							ToolCalls: []llms.ToolCall{
-								{
-									ID:   "1",
-									Type: "function",
-									FunctionCall: &llms.FunctionCall{
-										Name:      "search_tool",
-										Arguments: `{"query":"test query 1"}`,
-									},
-								},
-								{
-									ID:   "2",
-									Type: "function",
-									FunctionCall: &llms.FunctionCall{
-										Name:      "analyze_tool",
-										Arguments: `{"query":"test query 2"}`,
-									},
-								},
-							},
+							ToolCalls: toolCalls,
 						},
 					},
 				}, nil
@@ -574,7 +577,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 					},
 				},
 			}, nil
-		}).AnyTimes()
+		}).Times(2) // Expect exactly 2 calls: one for tool calls, one for final response
 
 	// Create assistant with both tools
 	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
@@ -601,4 +604,150 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 
 	// Verify the final response
 	assert.Contains(t, output.Content, "Final response after parallel tool calls")
+}
+
+func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	// Create multiple mock tools with different processing times
+	mockTools := make([]tools.ITool, 7)
+	toolNames := []string{"search", "analyze", "summarize", "translate", "classify", "extract", "validate"}
+
+	// Track tool call IDs and their results
+	toolCallResults := make(map[string]string)
+	processedToolCalls := make(map[string]bool)
+	var mu sync.Mutex // Add mutex to protect map access
+
+	for i := 0; i < 7; i++ {
+		mockTool := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+		toolName := toolNames[i] + "_tool"
+		mockTool.EXPECT().Name().Return(toolName).AnyTimes()
+		mockTool.EXPECT().Description().Return(toolNames[i] + " tool for testing").AnyTimes()
+		mockTool.EXPECT().Parameters().Return(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type": "string",
+				},
+			},
+		}).AnyTimes()
+
+		// Each tool has a different processing time to better demonstrate parallelism
+		processingTime := time.Duration(50*(i+1)) * time.Millisecond
+		mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+			time.Sleep(processingTime)
+			result := fmt.Sprintf(`{"answer": "Result from %s tool"}`, toolNames[i])
+			// Store the result with the tool name for later verification
+			mu.Lock()
+			toolCallResults[strings.ToLower(toolName)] = result
+			processedToolCalls[strings.ToLower(toolName)] = true
+			mu.Unlock()
+			return result, nil
+		}).AnyTimes() // Allow any number of calls since we're testing parallel execution
+
+		mockTools[i] = mockTool
+	}
+
+	// Create a mock LLM that returns multiple tool calls
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			// First call: return multiple tool calls
+			if len(messages) == 2 {
+				toolCalls := make([]llms.ToolCall, 7)
+				for i := 0; i < 7; i++ {
+					toolName := toolNames[i] + "_tool"
+					toolCalls[i] = llms.ToolCall{
+						ID:   fmt.Sprintf("call_%d", i+1),
+						Type: "function",
+						FunctionCall: &llms.FunctionCall{
+							Name:      toolName,
+							Arguments: fmt.Sprintf(`{"query":"test query %d"}`, i+1),
+						},
+					}
+				}
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: toolCalls,
+						},
+					},
+				}, nil
+			}
+			// Second call: return final response
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"Final response after multiple parallel tool calls"}`,
+					},
+				},
+			}, nil
+		}).AnyTimes() // Allow any number of calls since we're testing parallel execution
+
+	// Create a mock callback to track tool calls
+	mockCallback := mockassitants.NewMockCallback(ctrl)
+	mockCallback.EXPECT().OnToolStart(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnToolEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, tool tools.ITool, input string, output string) {
+			mu.Lock()
+			processedToolCalls[strings.ToLower(tool.Name())] = true
+			toolCallResults[strings.ToLower(tool.Name())] = output
+			mu.Unlock()
+		},
+	).AnyTimes()
+	mockCallback.EXPECT().OnToolError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantLLMCall(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantLLMParseError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnToolNotFound(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	// Create assistant with all tools and callback
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, assistants.WithCallback(mockCallback)).
+		WithTools(mockTools...)
+
+	// Create chat context
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	// Run the assistant
+	var output chatmodel.OutputResult
+	start := time.Now()
+	apiResp, err := ag.Run(ctx, "Run multiple parallel tools", nil, &output)
+	duration := time.Since(start)
+
+	// Verify results
+	require.NoError(t, err)
+	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, apiResp.Choices)
+
+	// Verify that the execution took less than the sum of all tool processing times
+	// If tools were executed sequentially, it would take at least 350ms (50ms + 100ms + 150ms + 200ms + 250ms + 300ms + 350ms)
+	// With parallel execution, it should take less than the longest tool's processing time plus some overhead
+	assert.Less(t, duration, 400*time.Millisecond, "Tools should execute in parallel")
+
+	// Verify the final response
+	assert.Contains(t, output.Content, "Final response after multiple parallel tool calls")
+
+	// Add debug logging to help diagnose the issue
+	t.Logf("Processed tool calls: %v", processedToolCalls)
+	t.Logf("Tool call results: %v", toolCallResults)
+
+	// Verify that all tool calls were processed
+	assert.Equal(t, 7, len(processedToolCalls), "All tool calls should have been processed")
+	for _, toolName := range toolNames {
+		expectedToolName := strings.ToLower(toolName + "_tool")
+		assert.True(t, processedToolCalls[expectedToolName], "Tool %s should have been processed", expectedToolName)
+	}
+
+	// Verify that all tool call results were stored
+	assert.Equal(t, 7, len(toolCallResults), "All tool call results should have been stored")
+	for _, toolName := range toolNames {
+		expectedToolName := strings.ToLower(toolName + "_tool")
+		assert.Contains(t, toolCallResults, expectedToolName, "Tool %s result should have been stored", expectedToolName)
+	}
 }
