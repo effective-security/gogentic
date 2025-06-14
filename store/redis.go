@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -271,4 +272,76 @@ func (m *redisStore) GetChatTitle(ctx context.Context, id string) (string, error
 		return "", errors.Wrap(err, "failed to unmarshal chat info")
 	}
 	return chat.Title, nil
+}
+
+func NewRedisStoreManager(client *redis.Client, prefix string) MessageStoreManager {
+	return &redisStore{
+		client: client,
+		prefix: prefix,
+	}
+}
+
+func (m *redisStore) ListTenants(ctx context.Context) ([]string, error) {
+	tenantListKey := path.Join(m.prefix, "chatstore")
+	// Use SCAN instead of KEYS for better performance
+	iter := m.client.Scan(ctx, 0, tenantListKey+"/*", 0).Iterator()
+	tenants := make(map[string]struct{})
+
+	for iter.Next(ctx) {
+		key := iter.Val()
+		// Only get immediate tenant directories
+		parts := strings.Split(strings.TrimPrefix(key, tenantListKey+"/"), "/")
+		if len(parts) > 0 {
+			tenants[parts[0]] = struct{}{}
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to scan tenants from Redis")
+	}
+
+	result := make([]string, 0, len(tenants))
+	for tenant := range tenants {
+		result = append(result, tenant)
+	}
+	return result, nil
+}
+
+func (m *redisStore) Cleanup(ctx context.Context, tenantID string, olderThan time.Duration) (uint32, error) {
+	chatListKey := m.getRedisChatListKey(tenantID)
+	chatIDs, err := m.client.SMembers(ctx, chatListKey).Result()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to list chats from Redis")
+	}
+
+	deleted := uint32(0)
+	cutoff := time.Now().Add(-olderThan)
+	for _, chatID := range chatIDs {
+		chatKey := m.getRedisChatInfoKey(tenantID, chatID)
+		data, err := m.client.Get(ctx, chatKey).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue
+			}
+			return 0, errors.Wrap(err, "failed to get chat info")
+		}
+
+		var chat ChatInfo
+		if err := json.Unmarshal([]byte(data), &chat); err != nil {
+			return 0, errors.Wrap(err, "failed to unmarshal chat info")
+		}
+
+		if chat.UpdatedAt.Before(cutoff) {
+			pipe := m.client.Pipeline()
+			pipe.Del(ctx, chatKey)
+			pipe.Del(ctx, m.getRedisMessagesKey(tenantID, chatID))
+			pipe.SRem(ctx, chatListKey, chatID)
+			_, err = pipe.Exec(ctx)
+			if err != nil {
+				return 0, errors.Wrap(err, "failed to delete chat info and messages from Redis")
+			}
+			deleted++
+		}
+	}
+	return deleted, nil
 }

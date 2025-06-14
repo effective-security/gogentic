@@ -224,3 +224,41 @@ func (m *inMemory) GetChatTitle(ctx context.Context, id string) (string, error) 
 	}
 	return chat.Title, nil
 }
+
+func NewMemoryStoreManager(store MessageStore) MessageStoreManager {
+	if mgr, ok := store.(MessageStoreManager); ok {
+		return mgr
+	}
+	return nil
+}
+
+func (m *inMemory) ListTenants(ctx context.Context) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var tenants []string
+	for tenantID := range m.tenants {
+		tenants = append(tenants, tenantID)
+	}
+	return tenants, nil
+}
+
+func (m *inMemory) Cleanup(ctx context.Context, tenantID string, olderThan time.Duration) (uint32, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	t, ok := m.tenants[tenantID]
+	if !ok {
+		return 0, nil
+	}
+
+	deleted := uint32(0)
+	cutoff := time.Now().Add(-olderThan)
+	for chatID, chat := range t.chats {
+		if chat.UpdatedAt.Before(cutoff) {
+			delete(t.chats, chatID)
+			deleted++
+		}
+	}
+	return deleted, nil
+}

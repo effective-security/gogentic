@@ -114,7 +114,92 @@ func TestDescriptions(t *testing.T) {
 }
 ` + "```\n"
 	assert.Equal(t, exp, descr)
+}
 
+func TestFanoutCallback(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	cb1 := callbacks.NewPrinter(&buf1, callbacks.ModeVerbose)
+	cb2 := callbacks.NewPrinter(&buf2, callbacks.ModeVerbose)
+
+	fanout := callbacks.NewFanout(cb1, cb2)
+
+	ast := &fakeAssistant{name: "test-assistant"}
+	tool := &fakeTool{name: "test-tool"}
+
+	// Test OnAssistantStart
+	fanout.OnAssistantStart(context.Background(), ast, "test input")
+	assert.Contains(t, buf1.String(), "Assistant Start: test-assistant")
+	assert.Contains(t, buf2.String(), "Assistant Start: test-assistant")
+
+	// Test OnAssistantEnd
+	fanout.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "test output",
+			},
+		},
+	})
+	assert.Contains(t, buf1.String(), "Assistant End: test-assistant")
+	assert.Contains(t, buf2.String(), "Assistant End: test-assistant")
+
+	// Test OnAssistantError
+	fanout.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"))
+	assert.Contains(t, buf1.String(), "Assistant Error: test-assistant")
+	assert.Contains(t, buf2.String(), "Assistant Error: test-assistant")
+
+	// Test OnToolStart
+	fanout.OnToolStart(context.Background(), tool, "test input")
+	assert.Contains(t, buf1.String(), "Tool Start: test-tool")
+	assert.Contains(t, buf2.String(), "Tool Start: test-tool")
+
+	// Test OnToolEnd
+	fanout.OnToolEnd(context.Background(), tool, "test input", "test output")
+	assert.Contains(t, buf1.String(), "Tool End: test-tool")
+	assert.Contains(t, buf2.String(), "Tool End: test-tool")
+
+	// Test OnToolError
+	fanout.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
+	assert.Contains(t, buf1.String(), "Tool Error: test-tool")
+	assert.Contains(t, buf2.String(), "Tool Error: test-tool")
+
+	// Test OnAssistantLLMCall
+	fanout.OnAssistantLLMCall(context.Background(), ast, []llms.MessageContent{})
+	assert.Contains(t, buf1.String(), "Assistant LLM Call: test-assistant")
+	assert.Contains(t, buf2.String(), "Assistant LLM Call: test-assistant")
+
+	// Test OnToolNotFound
+	fanout.OnToolNotFound(context.Background(), ast, "missing-tool")
+	assert.Contains(t, buf1.String(), "Tool Not Found: missing-tool")
+	assert.Contains(t, buf2.String(), "Tool Not Found: missing-tool")
+
+	// Test OnAssistantLLMParseError
+	fanout.OnAssistantLLMParseError(context.Background(), ast, "test input", "test response", errors.New("parse error"))
+	assert.Contains(t, buf1.String(), "Assistant LLM Parse Error: test-assistant")
+	assert.Contains(t, buf2.String(), "Assistant LLM Parse Error: test-assistant")
+
+	// Test Add method
+	var buf3 bytes.Buffer
+	cb3 := callbacks.NewPrinter(&buf3, callbacks.ModeVerbose)
+	fanout.Add(cb3)
+	fanout.OnAssistantStart(context.Background(), ast, "test input")
+	assert.Contains(t, buf3.String(), "Assistant Start: test-assistant")
+}
+
+func TestNoopCallback(t *testing.T) {
+	noop := callbacks.NewNoop()
+	ast := &fakeAssistant{name: "test-assistant"}
+	tool := &fakeTool{name: "test-tool"}
+
+	// Test all methods - they should not panic
+	noop.OnAssistantStart(context.Background(), ast, "test input")
+	noop.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{})
+	noop.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"))
+	noop.OnAssistantLLMParseError(context.Background(), ast, "test input", "test response", errors.New("parse error"))
+	noop.OnToolStart(context.Background(), tool, "test input")
+	noop.OnToolEnd(context.Background(), tool, "test input", "test output")
+	noop.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
+	noop.OnAssistantLLMCall(context.Background(), ast, []llms.MessageContent{})
+	noop.OnToolNotFound(context.Background(), ast, "missing-tool")
 }
 
 type fakeAssistant struct {
