@@ -43,6 +43,11 @@ type MessageStore interface {
 	GetChatTitle(ctx context.Context, id string) (string, error)
 }
 
+type MessageStoreManager interface {
+	ListTenants(ctx context.Context) ([]string, error)
+	Cleanup(ctx context.Context, tenantID string, olderThan time.Duration) (uint32, error)
+}
+
 func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
 	s := NewMemoryStore()
 	if store != nil {

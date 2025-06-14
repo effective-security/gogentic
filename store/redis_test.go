@@ -164,3 +164,112 @@ func Test_RedisStore(t *testing.T) {
 	messages = st.Messages(ctx)
 	assert.Equal(t, 0, len(messages))
 }
+
+func Test_RedisStoreManager(t *testing.T) {
+	ctx := context.Background()
+	redisContainer, err := rediscon.Run(ctx, "redis:7",
+		testcontainers.WithConfigModifier(func(config *container.Config) {
+			config.Env = []string{
+				"ALLOW_EMPTY_PASSWORD=yes",
+				"REDIS_PASSWORD=redis",
+				"REDIS_TLS_PORT=16379",
+			}
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, redisContainer.Terminate(ctx))
+	})
+
+	state, err := redisContainer.State(ctx)
+	require.NoError(t, err)
+	require.True(t, state.Running)
+
+	host, err := redisContainer.ConnectionString(ctx)
+	require.NoError(t, err)
+
+	options, err := redis.ParseURL(host)
+	require.NoError(t, err)
+
+	client := redis.NewClient(options)
+	rs := client.Ping(ctx) // Ensure the connection is established
+	require.NoError(t, rs.Err(), "failed to connect to Redis")
+
+	root := fmt.Sprintf("test-%d", time.Now().Unix())
+
+	st := store.NewRedisStore(client, root)
+
+	tenantID := "tenant1"
+	chatID := "chat1"
+	appData := map[string]string{"key": "value"}
+	msg1 := &llms.HumanChatMessage{Content: "Hello"}
+	msg2 := &llms.AIChatMessage{Content: "Hi there!"}
+
+	chatCtx := chatmodel.NewChatContext(tenantID, chatID, appData)
+	ctx = chatmodel.WithChatContext(ctx, chatCtx)
+
+	tID, cID, err := chatmodel.GetTenantAndChatID(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tenantID, tID)
+	assert.Equal(t, chatID, cID)
+
+	_ = st.Add(ctx, msg1)
+	_ = st.Add(ctx, msg2)
+
+	chats, err := st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(chats))
+	assert.Equal(t, chatID, chats[0])
+
+	chi, err := st.GetChatInfo(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, tenantID, chi.TenantID)
+	assert.Equal(t, chatID, chi.ChatID)
+
+	time.Sleep(2 * time.Millisecond)
+	err = st.Add(ctx, msg1)
+	require.NoError(t, err)
+	chi, err = st.GetChatInfo(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, tenantID, chi.TenantID)
+	assert.Equal(t, chatID, chi.ChatID)
+
+	chats, err = st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(chats))
+	assert.Equal(t, chatID, chats[0])
+
+	mgr := store.NewRedisStoreManager(client, root)
+
+	tenants, err := mgr.ListTenants(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tenants))
+	assert.Equal(t, tenantID, tenants[0])
+
+	chats, err = st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(chats))
+
+	deleted, err := mgr.Cleanup(ctx, tenantID, 1*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), deleted)
+
+	time.Sleep(2 * time.Second)
+	tenants, err = mgr.ListTenants(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tenants))
+	assert.Equal(t, tenantID, tenants[0])
+
+	chats, err = st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(chats))
+
+	time.Sleep(2 * time.Second)
+	deleted, err = mgr.Cleanup(ctx, tenantID, 1*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), deleted)
+
+	chats, err = st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(chats))
+}

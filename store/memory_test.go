@@ -129,3 +129,52 @@ func Test_MemoryStore(t *testing.T) {
 	messages = st.Messages(ctx)
 	assert.Equal(t, 0, len(messages))
 }
+
+func Test_MemoryStoreManager(t *testing.T) {
+	tenantID := "tenant1"
+	chatID := "chat1"
+	appData := map[string]string{"key": "value"}
+	chatCtx := chatmodel.NewChatContext(tenantID, chatID, appData)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	st := store.NewMemoryStore()
+	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "Hello"})
+	_ = st.Add(ctx, &llms.AIChatMessage{Content: "Hi there!"})
+	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "How are you?"})
+	_ = st.Add(ctx, &llms.AIChatMessage{Content: "I'm good, thank you!"})
+	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "What is your name?"})
+	_ = st.Add(ctx, &llms.AIChatMessage{Content: "My name is John Doe."})
+
+	mgr := store.NewMemoryStoreManager(st)
+
+	tenants, err := mgr.ListTenants(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tenants))
+	assert.Equal(t, tenantID, tenants[0])
+
+	deleted, err := mgr.Cleanup(ctx, tenantID, 1*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), deleted)
+
+	tenants, err = mgr.ListTenants(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tenants))
+	assert.Equal(t, tenantID, tenants[0])
+
+	chats, err := st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(chats))
+
+	time.Sleep(2 * time.Second)
+	deleted, err = mgr.Cleanup(ctx, tenantID, 1*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), deleted)
+
+	tenants, err = mgr.ListTenants(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tenants))
+
+	chats, err = st.ListChats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(chats))
+}
