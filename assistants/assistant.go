@@ -14,6 +14,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/metricskey"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/slices"
+	"github.com/effective-security/x/values"
 	"github.com/effective-security/xlog"
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/tmc/langchaingo/llms"
@@ -286,16 +287,26 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 	var totalToolExecuted int
 	var resp *llms.ContentResponse
-	maxRetries := 2
+	maxRetries := DefaultMaxRetries
 	retryCount := 0
 
+	bytesLimit := uint64(values.NumbersCoalesce(cfg.MaxLength, DefaultMaxContentSize))
+	toolsLimit := values.NumbersCoalesce(cfg.MaxToolCalls, DefaultMaxToolCalls)
+
 	for {
+		if len(messageHistory) >= cfg.MaxMessages {
+			return nil, errors.Newf("assistant %s: the messages count exceeded limit", a.name)
+		}
+		bytesSent := llmutils.CountMessagesContentSize(messageHistory)
+		if bytesSent > bytesLimit {
+			return nil, errors.Newf("assistant %s: the content size exceeded limit", a.name)
+		}
+
 		if a.cfg.CallbackHandler != nil {
 			a.cfg.CallbackHandler.OnAssistantLLMCall(ctx, a, messageHistory)
 		}
 
 		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), a.Name())
-		bytesSent := llmutils.CountMessagesContentSize(messageHistory)
 		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), a.Name())
 
 		resp, err = a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
@@ -338,6 +349,9 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 			break
 		}
 		totalToolExecuted += toolExecuted
+		if totalToolExecuted >= toolsLimit {
+			return nil, errors.Newf("assistant %s: the tool calls limit is exceeded", a.name)
+		}
 	}
 
 	choices := resp.Choices

@@ -1,6 +1,7 @@
 include .project/gomod-project.mk
 export GO111MODULE=on
 BUILD_FLAGS=
+export COVERAGE_EXCLUSIONS="vendor|tests|third_party|api/pb/|main\.go|testsuite\.go|gomock|mocks/|\.gen\.go|\.pb\.go"
 
 export OPENAI_API_KEY=fakekey
 export TAVILY_API_KEY=fakekey

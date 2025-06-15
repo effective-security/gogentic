@@ -1,0 +1,4 @@
+invalid: yaml: content: [
+  this is not valid yaml
+  and should cause an error
+] 
