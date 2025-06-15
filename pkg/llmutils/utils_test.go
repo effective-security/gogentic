@@ -150,3 +150,139 @@ func Test_EnsureNewline(t *testing.T) {
 	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n\n\n"))
 	assert.Equal(t, "Hello\n", llmutils.EnsureEndsWithNewline("Hello\n\n\n\n\n"))
 }
+
+func Test_JSONIndent(t *testing.T) {
+	input := `{"name":"John","age":30}`
+	expected := "{\n\t\"name\": \"John\",\n\t\"age\": 30\n}"
+	assert.Equal(t, expected, llmutils.JSONIndent(input))
+}
+
+func Test_ToJSON(t *testing.T) {
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	p := Person{Name: "John", Age: 30}
+	expected := `{"name":"John","age":30}`
+	assert.Equal(t, expected, llmutils.ToJSON(p))
+}
+
+func Test_ToJSONIndent(t *testing.T) {
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	p := Person{Name: "John", Age: 30}
+	expected := "{\n\t\"name\": \"John\",\n\t\"age\": 30\n}"
+	assert.Equal(t, expected, llmutils.ToJSONIndent(p))
+}
+
+func Test_ToYAML(t *testing.T) {
+	type Person struct {
+		Name string `yaml:"name"`
+		Age  int    `yaml:"age"`
+	}
+	p := Person{Name: "John", Age: 30}
+	expected := "name: John\nage: 30\n"
+	assert.Equal(t, expected, llmutils.ToYAML(p))
+}
+
+func Test_BackticksYAM(t *testing.T) {
+	yaml := "name: John\nage: 30"
+	expected := "\n```yaml\nname: John\nage: 30\n```\n"
+	assert.Equal(t, expected, llmutils.BackticksYAM(yaml))
+}
+
+type CustomString struct{}
+
+func (c CustomString) String() string { return "custom string" }
+
+func Test_Stringify(t *testing.T) {
+	// Test with string
+	assert.Equal(t, "hello", llmutils.Stringify("hello"))
+
+	// Test with struct
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	p := Person{Name: "John", Age: 30}
+	expected := "\n```json\n{\n\t\"name\": \"John\",\n\t\"age\": 30\n}\n```\n"
+	assert.Equal(t, expected, llmutils.Stringify(p))
+
+	// Test with Stringer interface
+	assert.Equal(t, "custom string", llmutils.Stringify(CustomString{}))
+}
+
+func Test_NewContentResponse(t *testing.T) {
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	p := Person{Name: "John", Age: 30}
+	resp := llmutils.NewContentResponse(p)
+	assert.NotNil(t, resp)
+	assert.Len(t, resp.Choices, 1)
+	expected := "\n```json\n{\n\t\"name\": \"John\",\n\t\"age\": 30\n}\n```\n"
+	assert.Equal(t, expected, resp.Choices[0].Content)
+}
+
+func Test_MergeInputs(t *testing.T) {
+	configInputs := map[string]any{
+		"name": "John",
+		"age":  30,
+	}
+	userInputs := map[string]any{
+		"age":  35,
+		"city": "New York",
+	}
+	expected := map[string]any{
+		"name": "John",
+		"age":  35,
+		"city": "New York",
+	}
+	assert.Equal(t, expected, llmutils.MergeInputs(configInputs, userInputs))
+}
+
+func Test_CountMessagesContentSize(t *testing.T) {
+	msgs := []llms.MessageContent{
+		{
+			Role: llms.ChatMessageTypeHuman,
+			Parts: []llms.ContentPart{
+				llms.TextContent{Text: "Hello"},
+			},
+		},
+		{
+			Role: llms.ChatMessageTypeAI,
+			Parts: []llms.ContentPart{
+				llms.TextContent{Text: "Hi there"},
+			},
+		},
+	}
+	size := llmutils.CountMessagesContentSize(msgs)
+	assert.Greater(t, size, uint64(0))
+}
+
+func Test_CountResponseContentSize(t *testing.T) {
+	resp := &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Hello world",
+			},
+		},
+	}
+	size := llmutils.CountResponseContentSize(resp)
+	assert.Greater(t, size, uint64(0))
+}
+
+func Test_PrintChatMessages(t *testing.T) {
+	msgs := []llms.ChatMessage{
+		&llms.HumanChatMessage{Content: "Hello"},
+		&llms.AIChatMessage{Content: "Hi there"},
+	}
+	var buf strings.Builder
+	llmutils.PrintChatMessages(&buf, msgs)
+	output := buf.String()
+	assert.Contains(t, output, "HUMAN: Hello")
+	assert.Contains(t, output, "AI: Hi there")
+}

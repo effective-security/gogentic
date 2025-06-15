@@ -751,3 +751,206 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 		assert.Contains(t, toolCallResults, expectedToolName, "Tool %s result should have been stored", expectedToolName)
 	}
 }
+
+func Test_GetDescriptions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock assistants
+	mockAssistant1 := mockassitants.NewMockIAssistant(ctrl)
+	mockAssistant1.EXPECT().Name().Return("Assistant1").Times(1)
+	mockAssistant1.EXPECT().Description().Return("Description 1 with\nmultiple\nlines").Times(1)
+
+	mockAssistant2 := mockassitants.NewMockIAssistant(ctrl)
+	mockAssistant2.EXPECT().Name().Return("Assistant2").Times(1)
+	mockAssistant2.EXPECT().Description().Return("Description 2").Times(1)
+
+	// Test GetDescriptions
+	desc := assistants.GetDescriptions(mockAssistant1, mockAssistant2)
+	assert.Contains(t, desc, "Assistant1")
+	assert.Contains(t, desc, "Assistant2")
+	assert.Contains(t, desc, "Description 1 with multiple lines")
+	assert.Contains(t, desc, "Description 2")
+}
+
+func Test_GetDescriptionsWithTools(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock tools
+	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool1.EXPECT().Name().Return("Tool1").AnyTimes()
+	mockTool1.EXPECT().Description().Return("Tool Description 1\nwith\nmultiple\nlines").AnyTimes()
+
+	mockTool2 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool2.EXPECT().Name().Return("Tool2").AnyTimes()
+	mockTool2.EXPECT().Description().Return("Tool Description 2").AnyTimes()
+
+	// Create mock assistant with tools
+	mockAssistant := mockassitants.NewMockIAssistant(ctrl)
+	mockAssistant.EXPECT().Name().Return("Assistant1").AnyTimes()
+	mockAssistant.EXPECT().Description().Return("Assistant Description").AnyTimes()
+	mockAssistant.EXPECT().GetTools().Return([]tools.ITool{mockTool1, mockTool2}).AnyTimes()
+
+	// Test GetDescriptionsWithTools
+	desc := assistants.GetDescriptionsWithTools(mockAssistant)
+	assert.Contains(t, desc, "Assistant1")
+	assert.Contains(t, desc, "Assistant Description")
+	assert.Contains(t, desc, "Tool1")
+	assert.Contains(t, desc, "Tool Description 1 with multiple lines")
+	assert.Contains(t, desc, "Tool2")
+	assert.Contains(t, desc, "Tool Description 2")
+}
+
+func Test_MapAssistants(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Test empty list
+	result := assistants.MapAssistants()
+	assert.Nil(t, result)
+
+	// Create mock assistants
+	mockAssistant1 := mockassitants.NewMockIAssistant(ctrl)
+	mockAssistant1.EXPECT().Name().Return("Assistant1").AnyTimes()
+
+	mockAssistant2 := mockassitants.NewMockIAssistant(ctrl)
+	mockAssistant2.EXPECT().Name().Return("Assistant2").AnyTimes()
+
+	// Test with assistants
+	result = assistants.MapAssistants(mockAssistant1, mockAssistant2)
+	assert.NotNil(t, result)
+	assert.Equal(t, 2, len(result))
+	assert.Equal(t, mockAssistant1, result["Assistant1"])
+	assert.Equal(t, mockAssistant2, result["Assistant2"])
+}
+
+func Test_Run_WithCallback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock assistant with callback
+	mockAssistant := mockassitants.NewMockTypeableAssistant[chatmodel.OutputResult](ctrl)
+	mockCallback := mockassitants.NewMockCallback(ctrl)
+	mockAssistant.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
+
+	// Set up expectations
+	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistant, "test input")
+	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistant, "test input", gomock.Any())
+
+	// Mock successful Run
+	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&llms.ContentResponse{
+			Choices: []*llms.ContentChoice{
+				{
+					Content: `{"Content":"Test response"}`,
+				},
+			},
+		}, nil)
+
+	// Test Run
+	var output chatmodel.OutputResult
+	apiResp, err := assistants.Run(context.Background(), mockAssistant, "test input", nil, &output)
+	require.NoError(t, err)
+	assert.NotNil(t, apiResp)
+	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
+}
+
+func Test_Run_WithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock assistant with callback
+	mockAssistant := mockassitants.NewMockTypeableAssistant[chatmodel.OutputResult](ctrl)
+	mockCallback := mockassitants.NewMockCallback(ctrl)
+	mockAssistant.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
+
+	// Set up expectations
+	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistant, "test input")
+	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistant, "test input", gomock.Any())
+
+	// Mock error in Run
+	expectedErr := fmt.Errorf("test error")
+	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, expectedErr)
+
+	// Test Run with error
+	var output chatmodel.OutputResult
+	apiResp, err := assistants.Run(context.Background(), mockAssistant, "test input", nil, &output)
+	assert.Error(t, err)
+	assert.Equal(t, expectedErr, err)
+	assert.Nil(t, apiResp)
+}
+
+func Test_Call_WithCallback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock assistant with callback
+	mockAssistant := mockassitants.NewMockIAssistant(ctrl)
+	mockCallback := mockassitants.NewMockCallback(ctrl)
+
+	// Create a mock that implements both IAssistant and HasCallback
+	mockAssistantWithCallback := struct {
+		*mockassitants.MockIAssistant
+		*mockassitants.MockHasCallback
+	}{
+		MockIAssistant:  mockAssistant,
+		MockHasCallback: mockassitants.NewMockHasCallback(ctrl),
+	}
+	mockAssistantWithCallback.MockHasCallback.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
+
+	// Set up expectations
+	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistantWithCallback, "test input")
+	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
+
+	// Mock successful Call
+	mockAssistant.EXPECT().Call(gomock.Any(), "test input", gomock.Any(), gomock.Any()).
+		Return(&llms.ContentResponse{
+			Choices: []*llms.ContentChoice{
+				{
+					Content: `{"Content":"Test response"}`,
+				},
+			},
+		}, nil)
+
+	// Test Call
+	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, "test input", nil)
+	require.NoError(t, err)
+	assert.NotNil(t, apiResp)
+	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
+}
+
+func Test_Call_WithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create mock assistant with callback
+	mockAssistant := mockassitants.NewMockIAssistant(ctrl)
+	mockCallback := mockassitants.NewMockCallback(ctrl)
+
+	// Create a mock that implements both IAssistant and HasCallback
+	mockAssistantWithCallback := struct {
+		*mockassitants.MockIAssistant
+		*mockassitants.MockHasCallback
+	}{
+		MockIAssistant:  mockAssistant,
+		MockHasCallback: mockassitants.NewMockHasCallback(ctrl),
+	}
+	mockAssistantWithCallback.MockHasCallback.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
+
+	// Set up expectations
+	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistantWithCallback, "test input")
+	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
+
+	// Mock error in Call
+	expectedErr := fmt.Errorf("test error")
+	mockAssistant.EXPECT().Call(gomock.Any(), "test input", gomock.Any(), gomock.Any()).
+		Return(nil, expectedErr)
+
+	// Test Call with error
+	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, "test input", nil)
+	assert.Error(t, err)
+	assert.Equal(t, expectedErr, err)
+	assert.Nil(t, apiResp)
+}

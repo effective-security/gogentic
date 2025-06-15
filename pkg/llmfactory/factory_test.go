@@ -149,6 +149,62 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "openai-dev", fm.provider)
 }
 
+func Test_Load(t *testing.T) {
+	// Test successful load
+	f, err := llmfactory.Load("testdata/llm.yaml")
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	// Test load with non-existent file
+	_, err = llmfactory.Load("testdata/non-existent.yaml")
+	require.Error(t, err)
+}
+
+func Test_CreateLLM(t *testing.T) {
+	cfg := &llmfactory.ProviderConfig{
+		Name: "test-provider",
+		OpenAI: llmfactory.OpenAIConfig{
+			APIType:    "OPEN_AI",
+			APIVersion: "2024-02-15-preview",
+		},
+		AvailableModels: []string{"gpt-4"},
+		DefaultModel:    "gpt-4",
+	}
+
+	// Test OpenAI provider
+	model, err := llmfactory.CreateLLM(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+
+	// Test Azure provider
+	cfg.OpenAI.APIType = "AZURE"
+	model, err = llmfactory.CreateLLM(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+
+	// Test Azure AD provider
+	cfg.OpenAI.APIType = "AZURE_AD"
+	model, err = llmfactory.CreateLLM(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+
+	// Test unsupported provider
+	cfg.OpenAI.APIType = "UNSUPPORTED"
+	_, err = llmfactory.CreateLLM(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported provider type")
+}
+
+func Test_LoadConfig(t *testing.T) {
+	// Test loading non-existent file
+	_, err := llmfactory.LoadConfig("testdata/non-existent.yaml")
+	require.Error(t, err)
+
+	// Test loading invalid YAML
+	_, err = llmfactory.LoadConfig("testdata/invalid.yaml")
+	require.Error(t, err)
+}
+
 type fakeLLM struct {
 	provider string
 	model    string

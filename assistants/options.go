@@ -12,6 +12,13 @@ import (
 // Option is a function that can be used to modify the behavior of the Agent Config.
 type Option func(*Config)
 
+const (
+	DefaultMaxToolCalls   = 50
+	DefaultMaxMessages    = 100
+	DefaultMaxContentSize = 500000
+	DefaultMaxRetries     = 2
+)
+
 type Config struct {
 	// Model is the model to use in an LLM call.
 	Model    string
@@ -85,12 +92,18 @@ type Config struct {
 	IsGeneric bool
 	// EnableFunctionCalls is a flag to indicate that the assistant should enable legacy function calls.
 	EnableFunctionCalls bool
+	// MaxToolCalls is the maximum number of tool calls per run.
+	MaxToolCalls int
+	// MaxMessages is the maximum number of messages per run.
+	MaxMessages int
 }
 
 func NewConfig(opts ...Option) *Config {
 	cfg := &Config{
-		Mode:     encoding.ModeDefault,
-		JSONMode: true,
+		Mode:         encoding.ModeDefault,
+		JSONMode:     true,
+		MaxToolCalls: DefaultMaxToolCalls,
+		MaxMessages:  DefaultMaxMessages,
 	}
 	return cfg.Apply(opts...)
 }
@@ -102,6 +115,18 @@ func (c *Config) Apply(opts ...Option) *Config {
 		opt(&cfg)
 	}
 	return &cfg
+}
+
+func WithMaxToolCalls(maxToolCalls int) Option {
+	return func(o *Config) {
+		o.MaxToolCalls = maxToolCalls
+	}
+}
+
+func WithMaxMessages(maxMessages int) Option {
+	return func(o *Config) {
+		o.MaxMessages = maxMessages
+	}
 }
 
 // WithMessageStore is an option that allows to specify the message store.
