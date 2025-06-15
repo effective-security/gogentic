@@ -47,6 +47,12 @@ func Test_ChainCallOptions(t *testing.T) {
 		assistants.WithMinLength(5),
 		assistants.WithMaxLength(200),
 		assistants.WithRepetitionPenalty(1.2),
+		assistants.WithMaxToolCalls(10),
+		assistants.WithMaxMessages(100),
+		assistants.WithEnableFunctionCalls(true),
+		assistants.WithGeneric(true),
+		assistants.WithSkipMessageHistory(true),
+		assistants.WithPromptInput(map[string]any{"Input": "input"}),
 		assistants.WithStreamingFunc(func(context.Context, []byte) error {
 			// Handle streaming response
 			return nil
