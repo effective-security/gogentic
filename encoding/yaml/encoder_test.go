@@ -1,7 +1,6 @@
 package yaml
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,11 @@ func TestNewEncoder(t *testing.T) {
 	}
 	encoder := NewEncoder(TestStruct{})
 	assert.NotNil(t, encoder)
-	assert.Equal(t, reflect.TypeOf(TestStruct{}), encoder.reqType)
+
+	// Validate behavior using public APIs
+	data, err := encoder.Marshal(TestStruct{Name: "Test"})
+	require.NoError(t, err)
+	assert.Equal(t, "name: Test\n", string(data))
 }
 
 func TestEncoder_Marshal(t *testing.T) {
