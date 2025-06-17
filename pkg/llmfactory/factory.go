@@ -1,6 +1,7 @@
 package llmfactory
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"sync"
@@ -8,6 +9,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/xlog"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/anthropic"
+	"github.com/tmc/langchaingo/llms/bedrock"
+	"github.com/tmc/langchaingo/llms/googleai"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
@@ -20,7 +24,8 @@ var NewLLM = CreateLLM
 type Factory interface {
 	// DefaultModel returns the default LLM model.
 	DefaultModel() (llms.Model, error)
-	// ModelByType returns an LLM model by its type, e.g. OPEN_AI, AZURE, AZURE_AD, CLOUDFLARE
+	// ModelByType returns an LLM model by its type, e.g.
+	// OPEN_AI, AZURE, AZURE_AD, CLOUDFLARE, ANTHROPIC, GOOGLEAI, BEDROCK, PERPLEXITY
 	ModelByType(providerType string) (llms.Model, error)
 	// ModelByName returns an LLM model by its name,
 	// if the model is not found, it will return the default model.
@@ -89,8 +94,16 @@ func CreateLLM(cfg *ProviderConfig, preferredModels ...string) (llms.Model, erro
 	switch provType {
 	case "OPENAI", "OPEN_AI":
 		return newOpenAI(cfg, preferredModels...)
+	case "PERPLEXITY":
+		return newPerplexity(cfg, preferredModels...)
 	case "AZURE", "AZURE_AD":
 		return newAzure(cfg, preferredModels...)
+	case "ANTHROPIC":
+		return newAnthropic(cfg, preferredModels...)
+	case "GOOGLEAI":
+		return newGoogleAI(cfg, preferredModels...)
+	case "BEDROCK":
+		return newBedrock(cfg, preferredModels...)
 	}
 	return nil, errors.Errorf("unsupported provider type: %s", provType)
 }
@@ -99,6 +112,20 @@ func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, erro
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, openai.WithAPIType(openai.APITypeOpenAI), openai.WithModel(model))
+
+	if cfg.Token != "" {
+		opts = append(opts, openai.WithToken(cfg.Token))
+	}
+	if cfg.OpenAI.BaseURL != "" {
+		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
+	}
+	return openai.New(opts...)
+}
+
+func newPerplexity(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []openai.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, openai.WithModel(model))
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -126,6 +153,33 @@ func newAzure(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
 	}
 	return openai.New(opts...)
+}
+
+func newAnthropic(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []anthropic.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, anthropic.WithModel(model))
+	if cfg.Token != "" {
+		opts = append(opts, anthropic.WithToken(cfg.Token))
+	}
+	return anthropic.New(opts...)
+}
+
+func newGoogleAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []googleai.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, googleai.WithDefaultModel(model))
+	if cfg.Token != "" {
+		opts = append(opts, googleai.WithAPIKey(cfg.Token))
+	}
+	return googleai.New(context.Background(), opts...)
+}
+
+func newBedrock(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []bedrock.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, bedrock.WithModel(model))
+	return bedrock.New(opts...)
 }
 
 // Default returns the default OpenAI client
