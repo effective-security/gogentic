@@ -82,7 +82,10 @@ func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, o
 	}
 
 	var res O
-	_, err := t.assistant.Run(ctx, tin.GetContent(), nil, &res, options...)
+	_, err := t.assistant.Run(ctx, &CallInput{
+		Input:   tin.GetContent(),
+		Options: options,
+	}, &res)
 	if err != nil {
 		if val, ok := (any)(&res).(chatmodel.IBaseResult); ok {
 			val.SetClarification(llmutils.AddComment("tool", t.Name(), "error", err.Error()))
@@ -102,7 +105,9 @@ func (t *AssistantTool[I, O]) RunMCP(ctx context.Context, req *I) (*mcp.ToolResp
 	input := chatmodel.Stringify(req)
 
 	var res O
-	_, err := t.assistant.Run(ctx, input, nil, &res)
+	_, err := t.assistant.Run(ctx, &CallInput{
+		Input: input,
+	}, &res)
 	if err != nil {
 		return nil, err
 	}

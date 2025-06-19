@@ -89,7 +89,10 @@ func Test_AssistantTool(t *testing.T) {
 	expPrompt := `You are helpful and friendly AI assistant.`
 	assert.Equal(t, expPrompt, sysPrompt)
 
-	apiResp, err := ag.Call(ctx, "What is a capital of largest country in Europe?", nil)
+	req := &assistants.CallInput{
+		Input: "What is a capital of largest country in Europe?",
+	}
+	apiResp, err := ag.Call(ctx, req)
 	require.NoError(t, err)
 	assert.NotEmpty(t, apiResp.Choices)
 
@@ -307,8 +310,10 @@ func Test_AssistantTool_RunMCP(t *testing.T) {
 	}
 
 	// Mock successful Run
-	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *chatmodel.OutputResult, options ...assistants.Option) (*llms.ContentResponse, error) {
+	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, input *assistants.CallInput, optionalOutputType *chatmodel.OutputResult) (*llms.ContentResponse, error) {
 			if optionalOutputType != nil {
 				*optionalOutputType = chatmodel.OutputResult{
 					Content: "test response",
@@ -331,7 +336,9 @@ func Test_AssistantTool_RunMCP(t *testing.T) {
 
 	// Test error case
 	expectedErr := fmt.Errorf("test error")
-	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any()).
+	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}, gomock.Any()).
 		Return(nil, expectedErr)
 
 	resp, err = at.RunMCP(ctx, input)

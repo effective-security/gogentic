@@ -76,12 +76,18 @@ func Test_Real_Assistant(t *testing.T) {
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	var output chatmodel.OutputResult
-	apiResp, err := assistants.Run(ctx, ag, "What is a capital of largest country in Europe?", nil, &output)
+	req := &assistants.CallInput{
+		Input: "What is a capital of largest country in Europe?",
+	}
+	apiResp, err := assistants.Run(ctx, ag, req, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	apiResp, err = assistants.Run(ctx, ag, "Search for weather there.", nil, &output)
+	req = &assistants.CallInput{
+		Input: "Search for weather there.",
+	}
+	apiResp, err = assistants.Run(ctx, ag, req, &output)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, output.Content)

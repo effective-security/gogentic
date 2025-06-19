@@ -192,12 +192,18 @@ Use the exact field names as they are defined in the schema.`
 	assert.Equal(t, expPrompt, sysPrompt)
 
 	var output chatmodel.OutputResult
-	apiResp, err := ag.Run(ctx, "What is a capital of largest country in Europe?", nil, &output)
+	req := &assistants.CallInput{
+		Input: "What is a capital of largest country in Europe?",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	apiResp, err = ag.Run(ctx, "Search for weather there.", nil, &output)
+	req = &assistants.CallInput{
+		Input: "Search for weather there.",
+	}
+	apiResp, err = ag.Run(ctx, req, &output)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, output.Content)
@@ -356,11 +362,17 @@ func Test_Assistant_Chat(t *testing.T) {
 	expPrompt := `You are helpful and friendly AI assistant.`
 	assert.Equal(t, expPrompt, sysPrompt)
 
-	apiResp, err := ag.Call(ctx, "What is a capital of largest country in Europe?", nil)
+	req := &assistants.CallInput{
+		Input: "What is a capital of largest country in Europe?",
+	}
+	apiResp, err := ag.Call(ctx, req)
 	require.NoError(t, err)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	apiResp, err = ag.Call(ctx, "Search for weather there.", nil)
+	req = &assistants.CallInput{
+		Input: "Search for weather there.",
+	}
+	apiResp, err = ag.Call(ctx, req)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, apiResp.Choices)
@@ -480,7 +492,10 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	var output chatmodel.OutputResult
-	apiResp, err := ag.Run(ctx, "Search for weather in Europe", nil, &output)
+	req := &assistants.CallInput{
+		Input: "Search for weather in Europe",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
@@ -590,7 +605,10 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	// Run the assistant
 	var output chatmodel.OutputResult
 	start := time.Now()
-	apiResp, err := ag.Run(ctx, "Run parallel tools", nil, &output)
+	req := &assistants.CallInput{
+		Input: "Run parallel tools",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
 	duration := time.Since(start)
 
 	// Verify results
@@ -717,7 +735,10 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	// Run the assistant
 	var output chatmodel.OutputResult
 	start := time.Now()
-	apiResp, err := ag.Run(ctx, "Run multiple parallel tools", nil, &output)
+	req := &assistants.CallInput{
+		Input: "Run multiple parallel tools",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
 	duration := time.Since(start)
 
 	// Verify results
@@ -839,7 +860,9 @@ func Test_Run_WithCallback(t *testing.T) {
 	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistant, "test input", gomock.Any())
 
 	// Mock successful Run
-	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any(), gomock.Any()).
+	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}, gomock.Any()).
 		Return(&llms.ContentResponse{
 			Choices: []*llms.ContentChoice{
 				{
@@ -850,7 +873,10 @@ func Test_Run_WithCallback(t *testing.T) {
 
 	// Test Run
 	var output chatmodel.OutputResult
-	apiResp, err := assistants.Run(context.Background(), mockAssistant, "test input", nil, &output)
+	req := &assistants.CallInput{
+		Input: "test input",
+	}
+	apiResp, err := assistants.Run(context.Background(), mockAssistant, req, &output)
 	require.NoError(t, err)
 	assert.NotNil(t, apiResp)
 	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
@@ -871,12 +897,17 @@ func Test_Run_WithError(t *testing.T) {
 
 	// Mock error in Run
 	expectedErr := fmt.Errorf("test error")
-	mockAssistant.EXPECT().Run(gomock.Any(), "test input", gomock.Any(), gomock.Any(), gomock.Any()).
+	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}, gomock.Any()).
 		Return(nil, expectedErr)
 
 	// Test Run with error
 	var output chatmodel.OutputResult
-	apiResp, err := assistants.Run(context.Background(), mockAssistant, "test input", nil, &output)
+	req := &assistants.CallInput{
+		Input: "test input",
+	}
+	apiResp, err := assistants.Run(context.Background(), mockAssistant, req, &output)
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, apiResp)
@@ -905,7 +936,9 @@ func Test_Call_WithCallback(t *testing.T) {
 	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
 
 	// Mock successful Call
-	mockAssistant.EXPECT().Call(gomock.Any(), "test input", gomock.Any(), gomock.Any()).
+	mockAssistant.EXPECT().Call(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}).
 		Return(&llms.ContentResponse{
 			Choices: []*llms.ContentChoice{
 				{
@@ -915,7 +948,10 @@ func Test_Call_WithCallback(t *testing.T) {
 		}, nil)
 
 	// Test Call
-	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, "test input", nil)
+	req := &assistants.CallInput{
+		Input: "test input",
+	}
+	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, req)
 	require.NoError(t, err)
 	assert.NotNil(t, apiResp)
 	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
@@ -945,11 +981,16 @@ func Test_Call_WithError(t *testing.T) {
 
 	// Mock error in Call
 	expectedErr := fmt.Errorf("test error")
-	mockAssistant.EXPECT().Call(gomock.Any(), "test input", gomock.Any(), gomock.Any()).
+	mockAssistant.EXPECT().Call(gomock.Any(), &assistants.CallInput{
+		Input: "test input",
+	}).
 		Return(nil, expectedErr)
 
 	// Test Call with error
-	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, "test input", nil)
+	req := &assistants.CallInput{
+		Input: "test input",
+	}
+	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, req)
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, apiResp)

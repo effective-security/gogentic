@@ -22,7 +22,7 @@ func (a *fakeAssistant) Description() string                                   {
 func (a *fakeAssistant) GetTools() []tools.ITool                               { return nil }
 func (a *fakeAssistant) FormatPrompt(map[string]any) (llms.PromptValue, error) { return nil, nil }
 func (a *fakeAssistant) GetPromptInputVariables() []string                     { return nil }
-func (a *fakeAssistant) Call(context.Context, string, map[string]any, ...assistants.Option) (*llms.ContentResponse, error) {
+func (a *fakeAssistant) Call(context.Context, *assistants.CallInput) (*llms.ContentResponse, error) {
 	return nil, nil
 }
 func (a *fakeAssistant) LastRunMessages() []llms.MessageContent { return nil }
