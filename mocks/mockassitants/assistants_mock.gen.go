@@ -84,23 +84,18 @@ func (m *MockIAssistant) EXPECT() *MockIAssistantMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockIAssistant) Call(ctx context.Context, input string, promptInputs map[string]any, options ...assistants.Option) (*llms.ContentResponse, error) {
+func (m *MockIAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, input, promptInputs}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Call", varargs...)
+	ret := m.ctrl.Call(m, "Call", ctx, input)
 	ret0, _ := ret[0].(*llms.ContentResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Call indicates an expected call of Call.
-func (mr *MockIAssistantMockRecorder) Call(ctx, input, promptInputs any, options ...any) *gomock.Call {
+func (mr *MockIAssistantMockRecorder) Call(ctx, input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, input, promptInputs}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockIAssistant)(nil).Call), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockIAssistant)(nil).Call), ctx, input)
 }
 
 // Description mocks base method.
@@ -338,23 +333,18 @@ func (m *MockTypeableAssistant[O]) EXPECT() *MockTypeableAssistantMockRecorder[O
 }
 
 // Call mocks base method.
-func (m *MockTypeableAssistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any, options ...assistants.Option) (*llms.ContentResponse, error) {
+func (m *MockTypeableAssistant[O]) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, input, promptInputs}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Call", varargs...)
+	ret := m.ctrl.Call(m, "Call", ctx, input)
 	ret0, _ := ret[0].(*llms.ContentResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Call indicates an expected call of Call.
-func (mr *MockTypeableAssistantMockRecorder[O]) Call(ctx, input, promptInputs any, options ...any) *gomock.Call {
+func (mr *MockTypeableAssistantMockRecorder[O]) Call(ctx, input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, input, promptInputs}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockTypeableAssistant[O])(nil).Call), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockTypeableAssistant[O])(nil).Call), ctx, input)
 }
 
 // Description mocks base method.
@@ -443,23 +433,18 @@ func (mr *MockTypeableAssistantMockRecorder[O]) Name() *gomock.Call {
 }
 
 // Run mocks base method.
-func (m *MockTypeableAssistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...assistants.Option) (*llms.ContentResponse, error) {
+func (m *MockTypeableAssistant[O]) Run(ctx context.Context, input *assistants.CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, input, promptInputs, optionalOutputType}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Run", varargs...)
+	ret := m.ctrl.Call(m, "Run", ctx, input, optionalOutputType)
 	ret0, _ := ret[0].(*llms.ContentResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Run indicates an expected call of Run.
-func (mr *MockTypeableAssistantMockRecorder[O]) Run(ctx, input, promptInputs, optionalOutputType any, options ...any) *gomock.Call {
+func (mr *MockTypeableAssistantMockRecorder[O]) Run(ctx, input, optionalOutputType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, input, promptInputs, optionalOutputType}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockTypeableAssistant[O])(nil).Run), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockTypeableAssistant[O])(nil).Run), ctx, input, optionalOutputType)
 }
 
 // MockCallback is a mock of Callback interface.
@@ -619,23 +604,18 @@ func (m *MockIMCPAssistant) EXPECT() *MockIMCPAssistantMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockIMCPAssistant) Call(ctx context.Context, input string, promptInputs map[string]any, options ...assistants.Option) (*llms.ContentResponse, error) {
+func (m *MockIMCPAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, input, promptInputs}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Call", varargs...)
+	ret := m.ctrl.Call(m, "Call", ctx, input)
 	ret0, _ := ret[0].(*llms.ContentResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Call indicates an expected call of Call.
-func (mr *MockIMCPAssistantMockRecorder) Call(ctx, input, promptInputs any, options ...any) *gomock.Call {
+func (mr *MockIMCPAssistantMockRecorder) Call(ctx, input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, input, promptInputs}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockIMCPAssistant)(nil).Call), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockIMCPAssistant)(nil).Call), ctx, input)
 }
 
 // CallMCP mocks base method.

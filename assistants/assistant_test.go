@@ -207,14 +207,14 @@ func Test_Assistant_Run_EdgeCases(t *testing.T) {
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{Choices: []*llms.ContentChoice{}}, nil).AnyTimes()
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
-	_, err := assistant.Run(ctx, "input", nil, nil)
+	_, err := assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
 	assert.Error(t, err)
 
 	// OutputParser returns error
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: "bad json"}}}, nil).AnyTimes()
 	outputParser, _ := encoding.NewTypedOutputParser[chatmodel.OutputResult](chatmodel.OutputResult{}, encoding.ModeJSONSchema)
 	assistant = assistant.WithOutputParser(outputParser)
-	_, err = assistant.Run(ctx, "input", nil, new(chatmodel.OutputResult))
+	_, err = assistant.Run(ctx, &assistants.CallInput{Input: "input"}, new(chatmodel.OutputResult))
 	assert.Error(t, err)
 }
 
@@ -243,7 +243,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 			Content: "I apologize, but I couldn't find the requested tool.",
 		}},
 	}, nil).Times(1)
-	_, err := assistant.Run(ctx, "input", nil, nil)
+	_, err := assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
 	assert.NoError(t, err)
 
 	// Tool returns error case
@@ -266,7 +266,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 			Content: "I encountered an error while trying to use the tool.",
 		}},
 	}, nil).Times(1)
-	_, err = assistant.Run(ctx, "input", nil, nil)
+	_, err = assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
 	assert.NoError(t, err)
 
 	// Tool returns success case
@@ -289,6 +289,6 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 			Content: "Based on the tool result, here is my response.",
 		}},
 	}, nil).Times(1)
-	_, err = assistant.Run(ctx, "input", nil, nil)
+	_, err = assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
 	assert.NoError(t, err)
 }

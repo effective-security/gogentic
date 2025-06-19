@@ -195,7 +195,10 @@ func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequ
 		return nil, err
 	}
 
-	resp, err := a.Run(ctx, input.Input, nil, nil)
+	req := &CallInput{
+		Input: input.Input,
+	}
+	resp, err := a.Run(ctx, req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -209,16 +212,16 @@ func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequ
 	return mcpres, nil
 }
 
-func (a *Assistant[O]) Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*llms.ContentResponse, error) {
 	var output O
-	return a.Run(ctx, input, promptInputs, &output, options...)
+	return a.Run(ctx, input, &output)
 }
 
-func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
 	started := time.Now()
 	defer metricskey.PerfAssistantCall.MeasureSince(started, a.Name())
 
-	resp, err := a.run(ctx, input, promptInputs, optionalOutputType, options...)
+	resp, err := a.run(ctx, input, optionalOutputType)
 	if err != nil {
 		metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name())
 		return nil, err
@@ -228,16 +231,16 @@ func (a *Assistant[O]) Run(ctx context.Context, input string, promptInputs map[s
 }
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
-func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
 	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
 	}
 
 	// create a per call config
-	cfg := a.cfg.Apply(options...)
+	cfg := a.cfg.Apply(input.Options...)
 
-	systemPrompt, err := a.GetSystemPrompt(ctx, input, promptInputs)
+	systemPrompt, err := a.GetSystemPrompt(ctx, input.Input, input.PromptInputs)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to format system prompt")
 	}
@@ -259,10 +262,13 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 			messageHistory = append(messageHistory, llms.TextParts(msg.GetType(), msg.GetContent()))
 		}
 	}
+
+	parsedInput := input.Input
+
 	var userMessage llms.MessageContent
-	if input != "" {
+	if parsedInput != "" {
 		if a.inputParser != nil {
-			input, err = a.inputParser(input)
+			parsedInput, err = a.inputParser(parsedInput)
 			if err != nil {
 				return nil, errors.WithMessage(err, "failed to parse input")
 			}
@@ -270,14 +276,18 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 		role := llms.ChatMessageTypeHuman
 		if !cfg.IsGeneric && cfg.Store != nil {
-			_ = cfg.Store.Add(ctx, &llms.HumanChatMessage{Content: input})
+			_ = cfg.Store.Add(ctx, &llms.HumanChatMessage{Content: parsedInput})
 		}
 		// else {
 		// 	// TODO: keep as Human?
 		// 	// 	role = llms.ChatMessageTypeGeneric
 		// }
-		userMessage = llms.TextParts(role, input)
+		userMessage = llms.TextParts(role, parsedInput)
 		messageHistory = append(messageHistory, userMessage)
+	}
+
+	if len(input.Messages) > 0 {
+		messageHistory = append(messageHistory, input.Messages...)
 	}
 
 	callOpts := cfg.GetCallOptions()
@@ -325,7 +335,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 				logger.ContextKV(ctx, xlog.ERROR,
 					"assistant", a.name,
 					"status", "max_retries_exceeded",
-					"input", slices.StringUpto(input, 32),
+					"input", slices.StringUpto(parsedInput, 64),
 					"retry_count", retryCount,
 				)
 				return nil, errors.Newf("assistant %s: LLM returned empty response after %d retries", a.name, retryCount)
@@ -340,7 +350,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 
 		// Perform Tool call
 		var toolExecuted int
-		toolExecuted, messageHistory, err = a.executeToolCalls(ctx, cfg, messageHistory, resp, options...)
+		toolExecuted, messageHistory, err = a.executeToolCalls(ctx, cfg, messageHistory, resp, input.Options...)
 		if err != nil {
 			return nil, err
 		}
@@ -359,7 +369,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 		logger.ContextKV(ctx, xlog.ERROR,
 			"assistant", a.name,
 			"status", "empty_choices",
-			"input", slices.StringUpto(input, 32),
+			"input", slices.StringUpto(parsedInput, 64),
 		)
 		return nil, errors.Newf("assistant %s: LLM returned empty response with no choices", a.name)
 	}
@@ -398,7 +408,7 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 			)
 
 			if a.cfg.CallbackHandler != nil {
-				a.cfg.CallbackHandler.OnAssistantLLMParseError(ctx, a, input, result, err)
+				a.cfg.CallbackHandler.OnAssistantLLMParseError(ctx, a, input.Input, result, err)
 			}
 
 			return nil, err
@@ -423,8 +433,8 @@ func (a *Assistant[O]) run(ctx context.Context, input string, promptInputs map[s
 			"assistant", a.name,
 			"chat_id", chatID,
 			"status", "added_message_history",
-			"human", slices.StringUpto(input, 32),
-			"ai", slices.StringUpto(result, 32),
+			"human", slices.StringUpto(parsedInput, 64),
+			"ai", slices.StringUpto(result, 64),
 		)
 	}
 

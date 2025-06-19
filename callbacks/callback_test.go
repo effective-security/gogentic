@@ -223,7 +223,7 @@ func (f *fakeAssistant) GetPromptInputVariables() []string {
 	return []string{}
 }
 
-func (f *fakeAssistant) Call(ctx context.Context, input string, promptInputs map[string]any, options ...assistants.Option) (*llms.ContentResponse, error) {
+func (f *fakeAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
 	return nil, nil
 }
 

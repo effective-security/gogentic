@@ -37,7 +37,18 @@ type IAssistant interface {
 
 	// Call executes the assistant with the given input and prompt inputs.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
-	Call(ctx context.Context, input string, promptInputs map[string]any, options ...Option) (*llms.ContentResponse, error)
+	Call(ctx context.Context, input *CallInput) (*llms.ContentResponse, error)
+}
+
+type CallInput struct {
+	// Input is the input to the assistant.
+	Input string
+	// PromptInputs is prompt inputs to be rendered in the system prompt.
+	PromptInputs map[string]any
+	// Options is additional options to be passed to the assistant on run.
+	Options []Option
+	// Messages is additional content to be sent to the LLM.
+	Messages []llms.MessageContent
 }
 
 // IAssistantTool provides an interface for tools that use underlying the Assistants.
@@ -60,7 +71,7 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	// Run executes the assistant with the given input and prompt inputs.
 	// Do not use this method directly, use the Run function instead.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
-	Run(ctx context.Context, input string, promptInputs map[string]any, optionalOutputType *O, options ...Option) (*llms.ContentResponse, error)
+	Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error)
 }
 
 type Callback interface {
@@ -145,10 +156,8 @@ func MapAssistants(list ...IAssistant) map[string]IAssistant {
 func Run[O chatmodel.ContentProvider](
 	ctx context.Context,
 	assistant TypeableAssistant[O],
-	input string,
-	promptInputs map[string]any,
+	input *CallInput,
 	optionalOutputType *O,
-	options ...Option,
 ) (*llms.ContentResponse, error) {
 	var callback Callback
 	if cb, ok := assistant.(HasCallback); ok {
@@ -156,19 +165,19 @@ func Run[O chatmodel.ContentProvider](
 	}
 
 	if callback != nil {
-		callback.OnAssistantStart(ctx, assistant, input)
+		callback.OnAssistantStart(ctx, assistant, input.Input)
 	}
 
-	apiResp, err := assistant.Run(ctx, input, promptInputs, optionalOutputType, options...)
+	apiResp, err := assistant.Run(ctx, input, optionalOutputType)
 	if err != nil {
 		if callback != nil {
-			callback.OnAssistantError(ctx, assistant, input, err)
+			callback.OnAssistantError(ctx, assistant, input.Input, err)
 		}
 		return nil, err
 	}
 
 	if callback != nil {
-		callback.OnAssistantEnd(ctx, assistant, input, apiResp)
+		callback.OnAssistantEnd(ctx, assistant, input.Input, apiResp)
 	}
 	return apiResp, nil
 }
@@ -177,9 +186,7 @@ func Run[O chatmodel.ContentProvider](
 func Call(
 	ctx context.Context,
 	assistant IAssistant,
-	input string,
-	promptInputs map[string]any,
-	options ...Option,
+	input *CallInput,
 ) (*llms.ContentResponse, error) {
 	var callback Callback
 	if cb, ok := assistant.(HasCallback); ok {
@@ -187,19 +194,19 @@ func Call(
 	}
 
 	if callback != nil {
-		callback.OnAssistantStart(ctx, assistant, input)
+		callback.OnAssistantStart(ctx, assistant, input.Input)
 	}
 
-	apiResp, err := assistant.Call(ctx, input, promptInputs, options...)
+	apiResp, err := assistant.Call(ctx, input)
 	if err != nil {
 		if callback != nil {
-			callback.OnAssistantError(ctx, assistant, input, err)
+			callback.OnAssistantError(ctx, assistant, input.Input, err)
 		}
 		return nil, err
 	}
 
 	if callback != nil {
-		callback.OnAssistantEnd(ctx, assistant, input, apiResp)
+		callback.OnAssistantEnd(ctx, assistant, input.Input, apiResp)
 	}
 	return apiResp, nil
 }
