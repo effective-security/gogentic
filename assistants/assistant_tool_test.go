@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
@@ -13,8 +14,10 @@ import (
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockassitants"
 	"github.com/effective-security/gogentic/mocks/mockllms"
+	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/store"
+	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -345,4 +348,291 @@ func Test_AssistantTool_RunMCP(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, resp)
+}
+
+func Test_Assistant_ToolCallIDMapping(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	// Create mock tools
+	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool1.EXPECT().Name().Return("search_tool").AnyTimes()
+	mockTool1.EXPECT().Description().Return("Search tool for testing").AnyTimes()
+	mockTool1.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool1.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		time.Sleep(50 * time.Millisecond)
+		return `{"answer": "Result from search tool"}`, nil
+	}).AnyTimes()
+
+	mockTool2 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool2.EXPECT().Name().Return("analyze_tool").AnyTimes()
+	mockTool2.EXPECT().Description().Return("Analysis tool for testing").AnyTimes()
+	mockTool2.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool2.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		time.Sleep(100 * time.Millisecond) // Longer processing time
+		return `{"answer": "Result from analyze tool"}`, nil
+	}).AnyTimes()
+
+	// Create a mock LLM that returns multiple tool calls with specific IDs
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			// First call: return multiple tool calls with specific IDs
+			if len(messages) == 2 {
+				toolCalls := []llms.ToolCall{
+					{
+						ID:   "call_NAktZKJ3MIME00B4IHvUpNcr", // Specific ID that was causing issues
+						Type: "function",
+						FunctionCall: &llms.FunctionCall{
+							Name:      "search_tool",
+							Arguments: `{"query":"test query 1"}`,
+						},
+					},
+					{
+						ID:   "call_XYZ123456789", // Another specific ID
+						Type: "function",
+						FunctionCall: &llms.FunctionCall{
+							Name:      "analyze_tool",
+							Arguments: `{"query":"test query 2"}`,
+						},
+					},
+				}
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: toolCalls,
+						},
+					},
+				}, nil
+			}
+
+			// Second call: return final response
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"Final response after tool calls"}`,
+					},
+				},
+			}, nil
+		}).Times(2)
+
+	// Create assistant with both tools
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+		WithTools(mockTool1, mockTool2)
+
+	// Create chat context
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	// Run the assistant
+	var output chatmodel.OutputResult
+	req := &assistants.CallInput{
+		Input: "Run tools with specific IDs",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
+
+	// Verify results
+	require.NoError(t, err)
+	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, apiResp.Choices)
+
+	// Verify the final response
+	assert.Contains(t, output.Content, "Final response after tool calls")
+
+	// Verify that the message history contains the correct tool call responses
+	// The assistant should have added tool call responses with the correct IDs
+	runMessages := ag.LastRunMessages()
+
+	// Find tool call responses in the message history
+	toolCallCount := 0
+	for _, msg := range runMessages {
+		if msg.Role == llms.ChatMessageTypeTool {
+			toolCallCount++
+			// Verify that the tool call response has the correct structure
+			require.Len(t, msg.Parts, 1)
+			toolCallResponse, ok := msg.Parts[0].(llms.ToolCallResponse)
+			require.True(t, ok, "Message part should be ToolCallResponse")
+
+			// Verify that the tool call ID is one of the expected IDs
+			expectedIDs := []string{"call_NAktZKJ3MIME00B4IHvUpNcr", "call_XYZ123456789"}
+			assert.Contains(t, expectedIDs, toolCallResponse.ToolCallID,
+				"Tool call response should have correct ID")
+
+			// Verify that the tool name matches
+			expectedNames := []string{"search_tool", "analyze_tool"}
+			assert.Contains(t, expectedNames, toolCallResponse.Name,
+				"Tool call response should have correct tool name")
+		}
+	}
+
+	// Verify that we have exactly 2 tool call responses
+	assert.Equal(t, 2, toolCallCount, "Should have exactly 2 tool call responses")
+}
+
+func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	// Create mock tools
+	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool1.EXPECT().Name().Return("search_tool").AnyTimes()
+	mockTool1.EXPECT().Description().Return("Search tool for testing").AnyTimes()
+	mockTool1.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool1.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		return `{"answer": "Result from search tool"}`, nil
+	}).AnyTimes()
+
+	mockTool2 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
+	mockTool2.EXPECT().Name().Return("analyze_tool").AnyTimes()
+	mockTool2.EXPECT().Description().Return("Analysis tool for testing").AnyTimes()
+	mockTool2.EXPECT().Parameters().Return(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type": "string",
+			},
+		},
+	}).AnyTimes()
+	mockTool2.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
+		return `{"answer": "Result from analyze tool"}`, nil
+	}).AnyTimes()
+
+	// Create a mock LLM that returns multiple tool calls in a single choice
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			// First call: return multiple tool calls in a single choice
+			if len(messages) == 2 {
+				toolCalls := []llms.ToolCall{
+					{
+						ID:   "call_1",
+						Type: "function",
+						FunctionCall: &llms.FunctionCall{
+							Name:      "search_tool",
+							Arguments: `{"query":"test query 1"}`,
+						},
+					},
+					{
+						ID:   "call_2",
+						Type: "function",
+						FunctionCall: &llms.FunctionCall{
+							Name:      "analyze_tool",
+							Arguments: `{"query":"test query 2"}`,
+						},
+					},
+				}
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: toolCalls,
+						},
+					},
+				}, nil
+			}
+
+			// Second call: return final response
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"Final response after tool calls"}`,
+					},
+				},
+			}, nil
+		}).Times(2)
+
+	// Create assistant with both tools
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+		WithTools(mockTool1, mockTool2)
+
+	// Create chat context
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	// Run the assistant
+	var output chatmodel.OutputResult
+	req := &assistants.CallInput{
+		Input: "Run tools with grouped message structure",
+	}
+	apiResp, err := ag.Run(ctx, req, &output)
+
+	// Verify results
+	require.NoError(t, err)
+	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, apiResp.Choices)
+
+	// Verify the final response
+	assert.Contains(t, output.Content, "Final response after tool calls")
+
+	// Verify that the message history contains the correct structure
+	runMessages := ag.LastRunMessages()
+
+	// Find the assistant message with tool calls
+	var assistantMessageWithTools *llms.MessageContent
+	for i, msg := range runMessages {
+		if msg.Role == llms.ChatMessageTypeAI && len(msg.Parts) > 0 {
+			// Check if this message contains tool calls
+			hasToolCalls := false
+			for _, part := range msg.Parts {
+				if _, ok := part.(llms.ToolCall); ok {
+					hasToolCalls = true
+					break
+				}
+			}
+			if hasToolCalls {
+				assistantMessageWithTools = &runMessages[i]
+				break
+			}
+		}
+	}
+
+	require.NotNil(t, assistantMessageWithTools, "Should find assistant message with tool calls")
+
+	// Verify that all tool calls are in a single assistant message
+	assert.Equal(t, llms.ChatMessageTypeAI, assistantMessageWithTools.Role)
+	assert.Equal(t, 2, len(assistantMessageWithTools.Parts), "Should have exactly 2 tool calls in one message")
+
+	// Verify the tool calls have the correct IDs
+	toolCallIDs := make([]string, 0, 2)
+	for _, part := range assistantMessageWithTools.Parts {
+		if toolCall, ok := part.(llms.ToolCall); ok {
+			toolCallIDs = append(toolCallIDs, toolCall.ID)
+		}
+	}
+
+	expectedIDs := []string{"call_1", "call_2"}
+	assert.ElementsMatch(t, expectedIDs, toolCallIDs, "Tool call IDs should match expected values")
+
+	// Verify that tool responses come after the assistant message
+	toolResponseCount := 0
+	for _, msg := range runMessages {
+		if msg.Role == llms.ChatMessageTypeTool {
+			toolResponseCount++
+		}
+	}
+	assert.Equal(t, 2, toolResponseCount, "Should have exactly 2 tool responses")
 }
