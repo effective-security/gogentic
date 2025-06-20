@@ -450,22 +450,20 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 
 	// Create a type to hold tool call results
 	type toolCallResult struct {
-		toolCall   llms.ToolCall
-		response   string
-		err        error
-		sliceIndex int
+		toolCall llms.ToolCall
+		response string
+		err      error
+		index    int // Index in the original toolCalls slice
 	}
 
 	var toolCalls []llms.ToolCall
-	var sliceIndices []int
 
-	// Collect all tool calls first
+	// Collect all tool calls first and add them to message history
 	for _, choice := range resp.Choices {
-		// Handle tool calls
+		// Collect all tool calls from this choice
 		for _, toolCall := range choice.ToolCalls {
 			executedCount++
 			toolCalls = append(toolCalls, toolCall)
-			sliceIndices = append(sliceIndices, len(messageHistory))
 
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", a.name,
@@ -473,31 +471,34 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 				"tool_call_id", toolCall.ID,
 				"tool_call_name", toolCall.FunctionCall.Name,
 			)
+		}
 
-			// Append tool_use to messageHistory
-			assistantResponse := llms.MessageContent{
-				Role: llms.ChatMessageTypeAI,
-				Parts: []llms.ContentPart{
-					llms.ToolCall{
-						ID:   toolCall.ID,
-						Type: toolCall.Type,
-						FunctionCall: &llms.FunctionCall{
-							Name:      toolCall.FunctionCall.Name,
-							Arguments: toolCall.FunctionCall.Arguments,
-						},
-					},
+		// Create a single assistant message with all tool calls
+		parts := make([]llms.ContentPart, len(choice.ToolCalls))
+		for i, toolCall := range choice.ToolCalls {
+			parts[i] = llms.ToolCall{
+				ID:   toolCall.ID,
+				Type: toolCall.Type,
+				FunctionCall: &llms.FunctionCall{
+					Name:      toolCall.FunctionCall.Name,
+					Arguments: toolCall.FunctionCall.Arguments,
 				},
 			}
-			messageHistory = append(messageHistory, assistantResponse)
 		}
+
+		assistantResponse := llms.MessageContent{
+			Role:  llms.ChatMessageTypeAI,
+			Parts: parts,
+		}
+		messageHistory = append(messageHistory, assistantResponse)
 	}
 
 	if executedCount == 0 {
 		return executedCount, messageHistory, nil
 	}
 
-	// Channel to collect results - now we know the size
-	resultChan := make(chan toolCallResult, len(toolCalls)) // Make it buffered
+	// Channel to collect results - buffered to prevent deadlock
+	resultChan := make(chan toolCallResult, len(toolCalls))
 
 	// Create a wait group to ensure all tool calls complete
 	var wg sync.WaitGroup
@@ -505,7 +506,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 
 	// Launch goroutines for each tool call
 	for i, toolCall := range toolCalls {
-		go func(tc llms.ToolCall, sliceIdx int) {
+		go func(index int, tc llms.ToolCall) {
 			defer wg.Done()
 			toolName := tc.FunctionCall.Name
 			toolArgs := tc.FunctionCall.Arguments
@@ -527,9 +528,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 				)
 
 				resultChan <- toolCallResult{
-					toolCall:   tc,
-					response:   fmt.Sprintf("Tool `%s` not found. Please check the tool name and try again with exact match. Available tools: %s", toolName, availableTools),
-					sliceIndex: sliceIdx,
+					toolCall: tc,
+					response: fmt.Sprintf("Tool `%s` not found. Please check the tool name and try again with exact match. Available tools: %s", toolName, availableTools),
+					index:    index,
 				}
 				return
 			}
@@ -560,9 +561,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 					res = llmutils.AddComment("assistant", a.Name(), "error", "Failed to unmarshal input, check the JSON schema and try again.")
 				} else {
 					resultChan <- toolCallResult{
-						toolCall:   tc,
-						err:        errors.WithMessagef(err, "failed to call tool %s", toolName),
-						sliceIndex: sliceIdx,
+						toolCall: tc,
+						err:      errors.WithMessagef(err, "failed to call tool %s", toolName),
+						index:    index,
 					}
 					return
 				}
@@ -574,22 +575,22 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			}
 
 			resultChan <- toolCallResult{
-				toolCall:   tc,
-				response:   res,
-				sliceIndex: sliceIdx,
+				toolCall: tc,
+				response: res,
+				index:    index,
 			}
-		}(toolCall, i)
+		}(i, toolCall)
 	}
 
 	// Wait for all tool calls to complete
 	wg.Wait()
 	close(resultChan)
 
-	// Collect results in order
+	// Collect results in order using the index
 	results := make([]toolCallResult, len(toolCalls))
 	for result := range resultChan {
-		if result.sliceIndex >= 0 && result.sliceIndex < len(results) {
-			results[result.sliceIndex] = result
+		if result.index >= 0 && result.index < len(results) {
+			results[result.index] = result
 		}
 	}
 
@@ -599,10 +600,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			// If we somehow missed a result, create an error response
 			toolCall := toolCalls[i]
 			results[i] = toolCallResult{
-				toolCall:   toolCall,
-				response:   "Tool call failed: No response received",
-				err:        errors.New("no response received from tool"),
-				sliceIndex: sliceIndices[i],
+				toolCall: toolCall,
+				response: "Tool call failed: No response received",
+				err:      errors.New("no response received from tool"),
+				index:    i,
 			}
 			logger.ContextKV(ctx, xlog.WARNING,
 				"assistant", a.name,
@@ -613,7 +614,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 		}
 	}
 
-	// Process results in order
+	// Process results in the same order as the original tool calls
 	for _, result := range results {
 		var content string
 		if result.err != nil {
