@@ -12,7 +12,7 @@ require (
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/effective-security/metrics v0.8.94
 	github.com/effective-security/x v0.14.64
-	github.com/effective-security/xdb v0.23.106
+	github.com/effective-security/xdb v0.23.109
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/google/uuid v1.6.0
