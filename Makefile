@@ -5,6 +5,10 @@ export COVERAGE_EXCLUSIONS="vendor|tests|third_party|api/pb/|main\.go|testsuite\
 
 export OPENAI_API_KEY=fakekey
 export TAVILY_API_KEY=fakekey
+export ANTHROPIC_TOKEN=fakekey
+export PERPLEXITY_TOKEN=fakekey
+export GOOGLEAI_TOKEN=fakekey
+export GEMINI_API_KEY=fakekey
 
 .PHONY: *
 

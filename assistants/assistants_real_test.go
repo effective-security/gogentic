@@ -22,6 +22,9 @@ import (
 )
 
 func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
+	// uncomment to run Real Tests
+	t.Skip("skipping real test")
+
 	// Uncommend to see logs, or change to DEBUG
 	xlog.SetFormatter(xlog.NewStringFormatter(os.Stdout))
 	xlog.SetGlobalLogLevel(xlog.ERROR)
@@ -29,13 +32,6 @@ func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 	cfg, err := llmfactory.LoadConfig("../pkg/llmfactory/testdata/llm.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
-
-	if cfg.Providers[0].Token == "" || cfg.Providers[0].Token == "faketoken" {
-		t.Skip("skipping real test: no token provided")
-		return cfg
-	}
-	// uncomment to run Real Tests
-	t.Skip("skipping real test")
 
 	return cfg
 }

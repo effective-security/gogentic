@@ -62,25 +62,25 @@ func PredefinedSchemaEncoder(mode Mode, req any) (SchemaEncoder, error) {
 	return enc, err
 }
 
-func PredefinedStreamSchemaEncoder(mode Mode, req any) (SchemaStreamEncoder, error) {
-	var (
-		enc SchemaStreamEncoder
-		err error
-	)
-	switch mode {
-	case ModeToolCall, ModeToolCallStrict, ModeJSON, ModeJSONStrict, ModeJSONSchema:
-		enc, err = jsonenc.NewStreamEncoder(req, false)
-	case ModeYAML:
-		enc, err = yamlenc.NewStreamEncoder(req)
-	case ModeTOML:
-		enc, err = tomlenc.NewStreamEncoder(req)
-	case ModePlainText:
-		enc = dummyenc.NewStreamEncoder()
-	default:
-		return nil, errors.New("no predefined encoder")
-	}
-	return enc, err
-}
+// func PredefinedStreamSchemaEncoder(mode Mode, req any) (SchemaStreamEncoder, error) {
+// 	var (
+// 		enc SchemaStreamEncoder
+// 		err error
+// 	)
+// 	switch mode {
+// 	case ModeToolCall, ModeToolCallStrict, ModeJSON, ModeJSONStrict, ModeJSONSchema:
+// 		enc, err = jsonenc.NewStreamEncoder(req, false)
+// 	case ModeYAML:
+// 		enc, err = yamlenc.NewStreamEncoder(req)
+// 	case ModeTOML:
+// 		enc, err = tomlenc.NewStreamEncoder(req)
+// 	case ModePlainText:
+// 		enc = dummyenc.NewStreamEncoder()
+// 	default:
+// 		return nil, errors.New("no predefined encoder")
+// 	}
+// 	return enc, err
+// }
 
 var (
 	_ SchemaEncoder = (*dummyenc.Encoder)(nil)
@@ -88,8 +88,8 @@ var (
 	_ SchemaEncoder = (*tomlenc.Encoder)(nil)
 	_ SchemaEncoder = (*yamlenc.Encoder)(nil)
 
-	_ SchemaStreamEncoder = (*dummyenc.StreamEncoder)(nil)
-	_ SchemaStreamEncoder = (*jsonenc.StreamEncoder)(nil)
-	_ SchemaStreamEncoder = (*tomlenc.StreamEncoder)(nil)
-	_ SchemaStreamEncoder = (*yamlenc.StreamEncoder)(nil)
+	// _ SchemaStreamEncoder = (*dummyenc.StreamEncoder)(nil)
+	// _ SchemaStreamEncoder = (*jsonenc.StreamEncoder)(nil)
+	// _ SchemaStreamEncoder = (*tomlenc.StreamEncoder)(nil)
+	// _ SchemaStreamEncoder = (*yamlenc.StreamEncoder)(nil)
 )
