@@ -145,8 +145,16 @@ func (t *Base) HandleMessage(ctx context.Context, body []byte) (*transport.BaseJ
 	}
 
 	// Block until the response is received
-	responseToUse := <-t.responseMap[key]
+	t.mu.Lock()
+	ch := t.responseMap[key]
+	t.mu.Unlock()
+
+	responseToUse := <-ch
+
+	t.mu.Lock()
 	delete(t.responseMap, key)
+	t.mu.Unlock()
+
 	if prevId != nil {
 		responseToUse.JsonRpcResponse.Id = *prevId
 	}
