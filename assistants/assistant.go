@@ -290,19 +290,16 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 		messageHistory = append(messageHistory, input.Messages...)
 	}
 
-	callOpts := cfg.GetCallOptions()
-	if len(a.llmToolDefs) > 0 {
-		callOpts = append(callOpts, llms.WithTools(a.llmToolDefs))
-	}
+	callOpts := cfg.GetCallOptions(AddTools(a.llmToolDefs))
 
 	var totalToolExecuted int
 	var resp *llms.ContentResponse
 	maxRetries := DefaultMaxRetries
 	retryCount := 0
+	consecutiveNotFoundCount := 0
 
 	bytesLimit := uint64(values.NumbersCoalesce(cfg.MaxLength, DefaultMaxContentSize))
 	toolsLimit := values.NumbersCoalesce(cfg.MaxToolCalls, DefaultMaxToolCalls)
-
 	for {
 		if len(messageHistory) >= cfg.MaxMessages {
 			return nil, errors.Newf("assistant %s: the messages count exceeded limit", a.name)
@@ -350,7 +347,8 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 
 		// Perform Tool call
 		var toolExecuted int
-		toolExecuted, messageHistory, err = a.executeToolCalls(ctx, cfg, messageHistory, resp, input.Options...)
+		var notFoundCount int
+		toolExecuted, notFoundCount, messageHistory, err = a.executeToolCalls(ctx, cfg, messageHistory, resp, input.Options...)
 		if err != nil {
 			return nil, err
 		}
@@ -358,7 +356,13 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 		if toolExecuted == 0 {
 			break
 		}
+		consecutiveNotFoundCount += notFoundCount
 		totalToolExecuted += toolExecuted
+		if consecutiveNotFoundCount > 3 {
+			return nil, errors.Newf("assistant %s: the number of not found tools is exceeded", a.name)
+		}
+		// reset
+		consecutiveNotFoundCount = 0
 		if totalToolExecuted >= toolsLimit {
 			return nil, errors.Newf("assistant %s: the tool calls limit is exceeded", a.name)
 		}
@@ -445,8 +449,9 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 
 // executeToolCalls executes the tool calls in the response and returns the
 // updated message history.
-func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messageHistory []llms.MessageContent, resp *llms.ContentResponse, options ...Option) (int, []llms.MessageContent, error) {
+func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messageHistory []llms.MessageContent, resp *llms.ContentResponse, options ...Option) (int, int, []llms.MessageContent, error) {
 	executedCount := 0
+	notFoundCount := 0
 
 	// Create a type to hold tool call results
 	type toolCallResult struct {
@@ -494,7 +499,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 	}
 
 	if executedCount == 0 {
-		return executedCount, messageHistory, nil
+		return executedCount, notFoundCount, messageHistory, nil
 	}
 
 	// Channel to collect results - buffered to prevent deadlock
@@ -514,6 +519,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			// use lowercase for the key
 			tool := a.toolsByName[strings.ToLower(toolName)]
 			if tool == nil {
+				notFoundCount++
 				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName)
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolNotFound(ctx, a, toolName)
@@ -656,5 +662,5 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 		messageHistory = append(messageHistory, toolCallResponse)
 	}
 
-	return executedCount, messageHistory, nil
+	return executedCount, notFoundCount, messageHistory, nil
 }
