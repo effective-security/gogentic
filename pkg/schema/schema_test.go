@@ -1,12 +1,14 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -169,5 +171,45 @@ func TestSchema(t *testing.T) {
 }`
 		assert.Equal(t, exp, s.String())
 		assert.Equal(t, exp, llmutils.ToJSONIndent(s.Parameters))
+	})
+
+	t.Run("Weather", func(t *testing.T) {
+		t.Parallel()
+
+		type weatherRequest struct {
+			Location string `json:"location" jsonschema:"description=City name"`
+			Unit     string `json:"unit" jsonschema:"description=Unit of measurement,enum=celsius,enum=fahrenheit"`
+		}
+
+		s, err := schema.New(reflect.TypeOf(weatherRequest{}))
+		require.NoError(t, err)
+		exp := `{
+	"properties": {
+		"location": {
+			"type": "string",
+			"description": "City name"
+		},
+		"unit": {
+			"type": "string",
+			"enum": [
+				"celsius",
+				"fahrenheit"
+			],
+			"description": "Unit of measurement"
+		}
+	},
+	"type": "object",
+	"required": [
+		"location",
+		"unit"
+	]
+}`
+		assert.Equal(t, exp, s.String())
+
+		// unmarshal
+		var sc jsonschema.Schema
+		err = json.Unmarshal([]byte(exp), &sc)
+		require.NoError(t, err)
+		assert.Equal(t, 2, sc.Properties.Len())
 	})
 }
