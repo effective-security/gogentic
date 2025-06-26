@@ -31,8 +31,7 @@ func Test_ChainCallOptions(t *testing.T) {
 	assert.Nil(t, cfg.CallbackHandler)
 
 	llmOpts := cfg.GetCallOptions()
-	// Only StreamingFunc is set
-	assert.Equal(t, 1, len(llmOpts))
+	assert.Equal(t, 0, len(llmOpts))
 
 	cfg = assistants.NewConfig(
 		assistants.WithModel("gpt-3.5-turbo"),
@@ -60,6 +59,15 @@ func Test_ChainCallOptions(t *testing.T) {
 		assistants.WithTool(llms.Tool{
 			Type: "tool2",
 		}),
+		assistants.WithTool(llms.Tool{
+			Type: "tool1",
+		}),
+		assistants.WithTools([]llms.Tool{
+			{
+				Type: "tool1",
+			},
+		}),
+		// add again
 		assistants.WithTools([]llms.Tool{
 			{
 				Type: "tool1",
