@@ -289,25 +289,44 @@ func WithCallback(callbackHandler Callback) Option {
 func WithTools(tools []llms.Tool) Option {
 	return func(o *Config) {
 		if len(tools) > 0 {
-			o.Tools = tools
+			// Create a map to track existing tool identifiers for deduplication
+			existingTools := make(map[string]bool)
+			for _, existingTool := range o.Tools {
+				key := getToolKey(existingTool)
+				existingTools[key] = true
+			}
+
+			// Add only unique tools
+			for _, tool := range tools {
+				key := getToolKey(tool)
+				if !existingTools[key] {
+					o.Tools = append(o.Tools, tool)
+					existingTools[key] = true
+				}
+			}
 			o.toolsSet = true
 		}
 	}
 }
 
-// AddTools is an option for LLM.Call, it adds tools to the existing tools.
-func AddTools(tools []llms.Tool) Option {
-	return func(o *Config) {
-		if len(tools) > 0 {
-			o.Tools = append(o.Tools, tools...)
-			o.toolsSet = true
-		}
+// getToolKey returns a unique identifier for a tool based on its Type and Function.Name
+func getToolKey(tool llms.Tool) string {
+	if tool.Function != nil && tool.Function.Name != "" {
+		return tool.Type + ":" + tool.Function.Name
 	}
+	return tool.Type
 }
 
 // WithTool is an option for LLM.Call.
 func WithTool(tool llms.Tool) Option {
 	return func(o *Config) {
+		key := getToolKey(tool)
+		for _, existingTool := range o.Tools {
+			if getToolKey(existingTool) == key {
+				return // Tool already exists, don't add it
+			}
+		}
+
 		o.Tools = append(o.Tools, tool)
 		o.toolsSet = true
 	}
@@ -321,10 +340,13 @@ func WithToolChoice(choice any) Option {
 	}
 }
 
-func (c *Config) GetCallOptions(options ...Option) []llms.CallOption {
-	var chainCallOption []llms.CallOption
-	var tools []llms.Tool
+func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
+	c := *cfg
+	for _, opt := range options {
+		opt(&c)
+	}
 
+	var chainCallOption []llms.CallOption
 	if c.modelSet {
 		chainCallOption = append(chainCallOption, llms.WithModel(c.Model))
 	}
@@ -356,8 +378,7 @@ func (c *Config) GetCallOptions(options ...Option) []llms.CallOption {
 		chainCallOption = append(chainCallOption, llms.WithRepetitionPenalty(c.RepetitionPenalty))
 	}
 	if c.toolsSet {
-		// combine tools with tools from options
-		tools = append(tools, c.Tools...)
+		chainCallOption = append(chainCallOption, llms.WithTools(c.Tools))
 	}
 	if c.toolChoiceSet {
 		chainCallOption = append(chainCallOption, llms.WithToolChoice(c.ToolChoice))
@@ -366,11 +387,9 @@ func (c *Config) GetCallOptions(options ...Option) []llms.CallOption {
 		chainCallOption = append(chainCallOption, llms.WithJSONMode())
 	}
 
-	if len(tools) > 0 {
-		chainCallOption = append(chainCallOption, llms.WithTools(tools))
+	if c.StreamingFunc != nil {
+		chainCallOption = append(chainCallOption, llms.WithStreamingFunc(c.StreamingFunc))
 	}
-
-	chainCallOption = append(chainCallOption, llms.WithStreamingFunc(c.StreamingFunc))
 
 	return chainCallOption
 }

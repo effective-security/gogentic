@@ -290,7 +290,7 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 		messageHistory = append(messageHistory, input.Messages...)
 	}
 
-	callOpts := cfg.GetCallOptions(AddTools(a.llmToolDefs))
+	callOpts := cfg.GetCallOptions(WithTools(a.llmToolDefs))
 
 	var totalToolExecuted int
 	var resp *llms.ContentResponse
