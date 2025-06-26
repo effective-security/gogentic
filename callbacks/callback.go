@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/effective-security/gogentic/assistants"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/xlog"
 	"github.com/tmc/langchaingo/llms"
@@ -200,6 +201,9 @@ func (l *Printer) OnAssistantLLMCall(ctx context.Context, agent assistants.IAssi
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %d messages\n", agent.Name(), len(payload))
+	if l.Mode == ModeVerbose {
+		llmutils.PrintMessageContents(l.Out, payload)
+	}
 }
 
 func (l *Printer) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {

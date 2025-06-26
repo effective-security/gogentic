@@ -27,7 +27,7 @@ providers:
 
 
   - name: ANTHROPIC
-    token: env://ANTHROPIC_TOKEN
+    token: env://ANTHROPIC_API_KEY
     default_model: claude-sonnet-4-20250514
     available_models:
       - claude-sonnet-4-20250514

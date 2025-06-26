@@ -24,7 +24,7 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 	mockLLM := mockllms.NewMockModel(ctrl)
 
 	// Test WithOutputParser
-	outputParser, err := encoding.NewTypedOutputParser[chatmodel.OutputResult](chatmodel.OutputResult{}, encoding.ModeJSONSchema)
+	outputParser, err := encoding.NewTypedOutputParser[chatmodel.OutputResult](chatmodel.OutputResult{}, encoding.ModeJSON)
 	require.NoError(t, err)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 	assistant = assistant.WithOutputParser(outputParser)

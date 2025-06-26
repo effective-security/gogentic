@@ -131,8 +131,8 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/ebitengine/purego v0.8.2 h1:jPPGWs2sZ1UgOSgD2bClL0MJIqu58nOmIcBuXr62z1I=
 github.com/ebitengine/purego v0.8.2/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
-github.com/effective-security/langchaingo v0.0.0-20250625091245-25ed8768939a h1:CfZ8PQCd42x+e/Qv0Y35JyXSNIPJtP4qTGq55nxltYs=
-github.com/effective-security/langchaingo v0.0.0-20250625091245-25ed8768939a/go.mod h1:lktcfqKCWB9a+I9XaAlFEp9WA/O2EZp1gRT+W11Fb1I=
+github.com/effective-security/langchaingo v0.0.0-20250626141537-bbd548259c78 h1:54AgTjvpIbHRv6P3OjRKjc7GW4TkPqTEG6tGhx+BqWE=
+github.com/effective-security/langchaingo v0.0.0-20250626141537-bbd548259c78/go.mod h1:lktcfqKCWB9a+I9XaAlFEp9WA/O2EZp1gRT+W11Fb1I=
 github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5 h1:JNDYMq9vvZWQShXx38oUk7CUuZofrclRHJZ0XgVfmTw=
 github.com/effective-security/mcp-golang v0.0.0-20250519232422-b9b66f9f6da5/go.mod h1:ifLP9ZzKpN1UqFWNTpAHOqSvNkMK6b7d1FSZ5Lu0lN0=
 github.com/effective-security/metrics v0.8.99 h1:CBpQnjB/gTM+T+UJTp0alKUjgkOd9DevHMhadWEfm90=
