@@ -318,7 +318,7 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 
 		resp, err = a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "failed to generate content from LLM")
 		}
 
 		bytesReceived := llmutils.CountResponseContentSize(resp)
@@ -465,10 +465,18 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 
 	// Collect all tool calls first and add them to message history
 	for _, choice := range resp.Choices {
+		var choiceToolCalls []llms.ToolCall
+
 		// Collect all tool calls from this choice
-		for _, toolCall := range choice.ToolCalls {
+		for i, toolCall := range choice.ToolCalls {
 			executedCount++
-			toolCalls = append(toolCalls, toolCall)
+
+			if toolCall.ID == "" {
+				toolCall.ID = fmt.Sprintf("%s_%d", toolCall.FunctionCall.Name, i)
+			}
+			toolCall.Type = values.StringsCoalesce(toolCall.Type, "function")
+
+			choiceToolCalls = append(choiceToolCalls, toolCall)
 
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", a.name,
@@ -478,9 +486,15 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			)
 		}
 
+		if len(choiceToolCalls) == 0 {
+			continue
+		}
+
+		toolCalls = append(toolCalls, choiceToolCalls...)
+
 		// Create a single assistant message with all tool calls
-		parts := make([]llms.ContentPart, len(choice.ToolCalls))
-		for i, toolCall := range choice.ToolCalls {
+		parts := make([]llms.ContentPart, len(choiceToolCalls))
+		for i, toolCall := range choiceToolCalls {
 			parts[i] = llms.ToolCall{
 				ID:   toolCall.ID,
 				Type: toolCall.Type,
@@ -491,11 +505,13 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			}
 		}
 
-		assistantResponse := llms.MessageContent{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: parts,
+		if len(parts) > 0 {
+			assistantResponse := llms.MessageContent{
+				Role:  llms.ChatMessageTypeAI,
+				Parts: parts,
+			}
+			messageHistory = append(messageHistory, assistantResponse)
 		}
-		messageHistory = append(messageHistory, assistantResponse)
 	}
 
 	if executedCount == 0 {

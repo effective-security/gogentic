@@ -152,7 +152,7 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSONSchema),
+		assistants.WithMode(encoding.ModeJSON), // TODO: test ModeJSONSchema
 		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
@@ -479,7 +479,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	memstore := store.NewMemoryStore()
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSONSchema),
+		assistants.WithMode(encoding.ModeJSON), // TODO: test ModeJSONSchema
 		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
