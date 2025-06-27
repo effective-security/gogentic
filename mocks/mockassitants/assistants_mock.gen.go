@@ -15,9 +15,9 @@ import (
 
 	assistants "github.com/effective-security/gogentic/assistants"
 	chatmodel "github.com/effective-security/gogentic/chatmodel"
+	llms "github.com/effective-security/gogentic/pkg/llms"
 	tools "github.com/effective-security/gogentic/tools"
 	mcp_golang "github.com/metoro-io/mcp-golang"
-	llms "github.com/tmc/langchaingo/llms"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/go-playground/validator/v10"
@@ -96,7 +97,7 @@ func (e *Encoder) structToYAMLWithComments(v any) (*yaml.Node, error) {
 
 	// Ensure it is a struct
 	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+		return nil, errors.Errorf("expected struct, got %s", val.Kind())
 	}
 
 	// Create the root YAML node

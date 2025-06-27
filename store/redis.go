@@ -9,9 +9,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/xlog"
 	"github.com/redis/go-redis/v9"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // The redis store implements the MessageStore interface using Redis as the backend.

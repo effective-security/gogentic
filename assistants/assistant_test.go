@@ -9,10 +9,10 @@ import (
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
+	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 	"go.uber.org/mock/gomock"
 )
 

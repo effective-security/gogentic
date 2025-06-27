@@ -5,8 +5,8 @@ import (
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/store"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // Option is a function that can be used to modify the behavior of the Agent Config.

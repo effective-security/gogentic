@@ -2,13 +2,13 @@ package store
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/x/values"
-	"github.com/tmc/langchaingo/llms"
 )
 
 type tenant struct {

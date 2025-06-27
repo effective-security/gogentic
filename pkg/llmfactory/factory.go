@@ -7,12 +7,12 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/llms/anthropic"
+	"github.com/effective-security/gogentic/pkg/llms/bedrock"
+	"github.com/effective-security/gogentic/pkg/llms/googleai"
+	"github.com/effective-security/gogentic/pkg/llms/openai"
 	"github.com/effective-security/xlog"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/anthropic"
-	"github.com/tmc/langchaingo/llms/bedrock"
-	"github.com/tmc/langchaingo/llms/googleai"
-	"github.com/tmc/langchaingo/llms/openai"
 )
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")

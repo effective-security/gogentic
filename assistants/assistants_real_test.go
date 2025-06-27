@@ -15,15 +15,15 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/xlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 )
 
 func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {

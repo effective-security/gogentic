@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
@@ -16,14 +17,14 @@ import (
 	"github.com/effective-security/gogentic/mocks/mockassitants"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 	"go.uber.org/mock/gomock"
 )
 
@@ -43,10 +44,10 @@ func Test_Assistant_Defined(t *testing.T) {
 	mockTool.EXPECT().Parameters().Return(tavilyTool.Parameters()).AnyTimes()
 	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
 		if input == "" {
-			return "", fmt.Errorf("empty query")
+			return "", errors.New("empty query")
 		}
 		if strings.Contains(input, "error") {
-			return "", fmt.Errorf("error")
+			return "", errors.New("error")
 		}
 		if strings.Contains(input, "weather") {
 			return llmutils.ToJSON(tavily.SearchResult{
@@ -100,7 +101,7 @@ func Test_Assistant_Defined(t *testing.T) {
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
-				return nil, fmt.Errorf("error")
+				return nil, errors.New("error")
 			}
 			if !searchCalled && strings.Contains(input, "search") {
 				searchCalled = true
@@ -236,10 +237,10 @@ func Test_Assistant_Chat(t *testing.T) {
 	mockTool.EXPECT().Parameters().Return(tavilyTool.Parameters()).AnyTimes()
 	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
 		if input == "" {
-			return "", fmt.Errorf("empty query")
+			return "", errors.New("empty query")
 		}
 		if strings.Contains(input, "error") {
-			return "", fmt.Errorf("error")
+			return "", errors.New("error")
 		}
 		if strings.Contains(input, "weather") {
 			return llmutils.ToJSON(tavily.SearchResult{
@@ -293,7 +294,7 @@ func Test_Assistant_Chat(t *testing.T) {
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
-				return nil, fmt.Errorf("error")
+				return nil, errors.New("error")
 			}
 			if !searchCalled && strings.Contains(input, "search") {
 				searchCalled = true
@@ -896,7 +897,7 @@ func Test_Run_WithError(t *testing.T) {
 	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistant, "test input", gomock.Any())
 
 	// Mock error in Run
-	expectedErr := fmt.Errorf("test error")
+	expectedErr := errors.New("test error")
 	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
 		Input: "test input",
 	}, gomock.Any()).
@@ -980,7 +981,7 @@ func Test_Call_WithError(t *testing.T) {
 	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
 
 	// Mock error in Call
-	expectedErr := fmt.Errorf("test error")
+	expectedErr := errors.New("test error")
 	mockAssistant.EXPECT().Call(gomock.Any(), &assistants.CallInput{
 		Input: "test input",
 	}).

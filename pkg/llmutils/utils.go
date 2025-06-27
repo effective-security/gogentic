@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tmc/langchaingo/llms"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"gopkg.in/yaml.v3"
 )
 

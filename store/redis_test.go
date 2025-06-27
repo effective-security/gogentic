@@ -8,13 +8,13 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/store"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	rediscon "github.com/testcontainers/testcontainers-go/modules/redis"
-	"github.com/tmc/langchaingo/llms"
 )
 
 func Test_RedisStore(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/stretchr/testify/assert"
-	"github.com/tmc/langchaingo/llms"
 )
 
 func Test_CleanJSON(t *testing.T) {
