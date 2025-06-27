@@ -10,9 +10,9 @@ import (
 
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // ensure ScratchpadCallback implements assistants.Callback

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/xlog"
-	"github.com/tmc/langchaingo/llms"
 )
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "store")

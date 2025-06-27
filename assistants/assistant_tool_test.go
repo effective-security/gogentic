@@ -15,14 +15,14 @@ import (
 	"github.com/effective-security/gogentic/mocks/mockassitants"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 	"go.uber.org/mock/gomock"
 )
 
@@ -212,7 +212,7 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 
 	// Second call - error case
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
-		nil, assert.AnError,
+		nil, errors.New("test error"),
 	).Times(1)
 
 	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
@@ -268,7 +268,7 @@ func Test_AssistantTool_WithName(t *testing.T) {
 	mockAssistant.EXPECT().Name().Return("test-assistant").AnyTimes()
 	mockAssistant.EXPECT().Description().Return("test description").AnyTimes()
 
-	tool, err := assistants.NewAssistantTool[chatmodel.OutputResult, chatmodel.OutputResult](mockAssistant)
+	tool, err := assistants.NewAssistantTool[chatmodel.OutputResult](mockAssistant)
 	require.NoError(t, err)
 
 	// Test WithName
@@ -338,7 +338,7 @@ func Test_AssistantTool_RunMCP(t *testing.T) {
 	assert.Equal(t, "test response", resp.Content[0].TextContent.Text)
 
 	// Test error case
-	expectedErr := fmt.Errorf("test error")
+	expectedErr := errors.New("test error")
 	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
 		Input: "test input",
 	}, gomock.Any()).

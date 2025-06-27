@@ -3,16 +3,16 @@ package callbacks_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
+	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/values"
 	"github.com/stretchr/testify/assert"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 )
 
 func TestCallback(t *testing.T) {

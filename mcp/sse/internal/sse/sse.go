@@ -64,6 +64,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/metoro-io/mcp-golang/transport"
 )
@@ -91,7 +92,7 @@ type SSETransport struct {
 func NewSSETransport(endpoint string, w http.ResponseWriter) (*SSETransport, error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		return nil, fmt.Errorf("streaming not supported")
+		return nil, errors.New("streaming not supported")
 	}
 
 	return &SSETransport{
@@ -108,7 +109,7 @@ func (t *SSETransport) Start(ctx context.Context) error {
 	defer t.mu.Unlock()
 
 	if t.isConnected {
-		return fmt.Errorf("SSE transport already started")
+		return errors.New("SSE transport already started")
 	}
 
 	// Set SSE headers
@@ -180,7 +181,7 @@ func (t *SSETransport) Send(msg *transport.BaseJsonRpcMessage) error {
 	defer t.mu.Unlock()
 
 	if !t.isConnected {
-		return fmt.Errorf("not connected")
+		return errors.New("not connected")
 	}
 
 	data, err := json.Marshal(msg)

@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
 )
 
 func Test_Factory(t *testing.T) {

@@ -3,10 +3,10 @@ package localtransport
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/metoro-io/mcp-golang/transport"
 )
 
@@ -34,7 +34,7 @@ func (t *Base) Send(ctx context.Context, message *transport.BaseJsonRpcMessage) 
 
 	responseChannel := t.responseMap[int64(key)]
 	if responseChannel == nil {
-		return fmt.Errorf("no response channel found for key: %d", key)
+		return errors.Newf("no response channel found for key: %d", key)
 	}
 	responseChannel <- message
 	return nil

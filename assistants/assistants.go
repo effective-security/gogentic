@@ -4,17 +4,17 @@ import (
 	"context"
 
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/format"
 	"github.com/effective-security/xlog"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/tmc/langchaingo/llms"
 )
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "assistants")
 
-//go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/tmc/langchaingo/llms  Model
+//go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/effective-security/gogentic/pkg/llms  Model
 //go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
 
 type McpServerRegistrator interface {

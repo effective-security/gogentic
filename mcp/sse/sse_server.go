@@ -2,10 +2,10 @@ package sse
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/cockroachdb/errors"
 	sse2 "github.com/effective-security/gogentic/mcp/sse/internal/sse"
 	"github.com/metoro-io/mcp-golang/transport"
 )
@@ -35,17 +35,17 @@ func (s *SSEServerTransport) Start(ctx context.Context) error {
 // HandlePostMessage processes an incoming POST request containing a JSON-RPC message
 func (s *SSEServerTransport) HandlePostMessage(r *http.Request) error {
 	if r.Method != http.MethodPost {
-		return fmt.Errorf("method not allowed: %s", r.Method)
+		return errors.Newf("method not allowed: %s", r.Method)
 	}
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
-		return fmt.Errorf("unsupported Content type: %s", contentType)
+		return errors.Newf("unsupported Content type: %s", contentType)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, sse2.MaxMessageSize))
 	if err != nil {
-		return fmt.Errorf("failed to read request body: %w", err)
+		return errors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
 
