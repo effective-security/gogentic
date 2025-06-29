@@ -10,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/anthropic"
 	"github.com/effective-security/gogentic/pkg/llms/bedrock"
+	"github.com/effective-security/gogentic/pkg/llms/cloudflare"
 	"github.com/effective-security/gogentic/pkg/llms/googleai"
 	"github.com/effective-security/gogentic/pkg/llms/openai"
 	"github.com/effective-security/xlog"
@@ -26,7 +27,7 @@ type Factory interface {
 	DefaultModel() (llms.Model, error)
 	// ModelByType returns an LLM model by its type, e.g.
 	// OPEN_AI, AZURE, AZURE_AD, CLOUDFLARE, ANTHROPIC, GOOGLEAI, BEDROCK, PERPLEXITY
-	ModelByType(providerType string) (llms.Model, error)
+	ModelByType(providerType llms.ProviderType) (llms.Model, error)
 	// ModelByName returns an LLM model by its name,
 	// if the model is not found, it will return the default model.
 	ModelByName(preferredModels ...string) (llms.Model, error)
@@ -51,7 +52,7 @@ type factory struct {
 	defaultProvider *ProviderConfig
 	toolModels      map[string][]string
 	assistantModels map[string][]string
-	byType          map[string]llms.Model
+	byType          map[llms.ProviderType]llms.Model
 	byName          map[string]llms.Model
 	lock            sync.Mutex
 }
@@ -60,7 +61,7 @@ type factory struct {
 func New(cfg *Config) Factory {
 	f := &factory{
 		cfg:             cfg,
-		byType:          make(map[string]llms.Model),
+		byType:          make(map[llms.ProviderType]llms.Model),
 		byName:          make(map[string]llms.Model),
 		toolModels:      make(map[string][]string),
 		assistantModels: make(map[string][]string),
@@ -92,18 +93,20 @@ func New(cfg *Config) Factory {
 func CreateLLM(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
 	provType := strings.ToUpper(cfg.OpenAI.APIType)
 	switch provType {
-	case "OPENAI", "OPEN_AI":
+	case string(llms.ProviderOpenAI), "OPEN_AI":
 		return newOpenAI(cfg, preferredModels...)
-	case "PERPLEXITY":
+	case string(llms.ProviderPerplexity):
 		return newPerplexity(cfg, preferredModels...)
-	case "AZURE", "AZURE_AD":
+	case string(llms.ProviderAzure), string(llms.ProviderAzureAD):
 		return newAzure(cfg, preferredModels...)
-	case "ANTHROPIC":
+	case string(llms.ProviderAnthropic):
 		return newAnthropic(cfg, preferredModels...)
-	case "GOOGLEAI":
+	case string(llms.ProviderGoogleAI):
 		return newGoogleAI(cfg, preferredModels...)
-	case "BEDROCK":
+	case string(llms.ProviderBedrock):
 		return newBedrock(cfg, preferredModels...)
+	case string(llms.ProviderCloudflare):
+		return newCloudflare(cfg, preferredModels...)
 	}
 	return nil, errors.Errorf("unsupported provider type: %s", provType)
 }
@@ -182,6 +185,19 @@ func newBedrock(cfg *ProviderConfig, preferredModels ...string) (llms.Model, err
 	return bedrock.New(opts...)
 }
 
+func newCloudflare(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	var opts []cloudflare.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, cloudflare.WithModel(model))
+	if cfg.Token != "" {
+		opts = append(opts, cloudflare.WithToken(cfg.Token))
+	}
+	if cfg.OpenAI.BaseURL != "" {
+		opts = append(opts, cloudflare.WithServerURL(cfg.OpenAI.BaseURL))
+	}
+	return cloudflare.New(opts...)
+}
+
 // Default returns the default OpenAI client
 func (f *factory) DefaultModel() (llms.Model, error) {
 	if len(f.cfg.Providers) == 0 || f.defaultProvider == nil {
@@ -191,7 +207,7 @@ func (f *factory) DefaultModel() (llms.Model, error) {
 	return NewLLM(f.defaultProvider, f.defaultProvider.DefaultModel)
 }
 
-func (f *factory) ModelByType(providerType string) (llms.Model, error) {
+func (f *factory) ModelByType(providerType llms.ProviderType) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
@@ -200,7 +216,7 @@ func (f *factory) ModelByType(providerType string) (llms.Model, error) {
 	}
 
 	for _, cfg := range f.cfg.Providers {
-		if cfg.OpenAI.APIType == providerType {
+		if cfg.OpenAI.APIType == string(providerType) {
 			model, err := NewLLM(cfg)
 			if err != nil {
 				return nil, err

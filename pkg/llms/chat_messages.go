@@ -9,12 +9,12 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ChatMessageType is the type of chat message.
-type ChatMessageType string
-
 // ErrUnexpectedChatMessageType is returned when a chat message is of an
 // unexpected type.
 var ErrUnexpectedChatMessageType = errors.New("unexpected chat message type")
+
+// ChatMessageType is the type of chat message.
+type ChatMessageType string
 
 const (
 	// ChatMessageTypeAI is a message sent by an AI.

@@ -8,16 +8,13 @@ import (
 )
 
 func (mc MessageContent) MarshalJSON() ([]byte, error) {
-	hasSingleTextPart := false
 	if len(mc.Parts) == 1 {
-		_, hasSingleTextPart = mc.Parts[0].(TextContent)
-	}
-	if hasSingleTextPart {
-		tp, _ := mc.Parts[0].(TextContent)
-		return json.Marshal(struct {
-			Role ChatMessageType `json:"role"`
-			Text string          `json:"text"`
-		}{Role: mc.Role, Text: tp.Text})
+		if tp, hasSingleTextPart := mc.Parts[0].(TextContent); hasSingleTextPart {
+			return json.Marshal(struct {
+				Role ChatMessageType `json:"role"`
+				Text string          `json:"text"`
+			}{Role: mc.Role, Text: tp.Text})
+		}
 	}
 
 	return json.Marshal(struct {

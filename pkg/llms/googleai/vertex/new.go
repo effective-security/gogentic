@@ -24,6 +24,11 @@ type Vertex struct {
 
 var _ llms.Model = &Vertex{}
 
+// GetProviderType implements the Model interface.
+func (v *Vertex) GetProviderType() llms.ProviderType {
+	return llms.ProviderGoogleAI
+}
+
 // New creates a new Vertex client.
 func New(ctx context.Context, opts ...googleai.Option) (*Vertex, error) {
 	clientOptions := googleai.DefaultOptions()

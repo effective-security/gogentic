@@ -759,3 +759,7 @@ func (f *fakeLLM) Call(ctx context.Context, prompt string, options ...llms.CallO
 func (f *fakeLLM) GenerateContent(_ context.Context, _ []llms.MessageContent, _ ...llms.CallOption) (*llms.ContentResponse, error) {
 	return nil, nil
 }
+
+func (f *fakeLLM) GetProviderType() llms.ProviderType {
+	return llms.ProviderOpenAI
+}

@@ -32,9 +32,9 @@ const (
 	ResponseMIMETypeJson = "application/json"
 )
 
-// Call implements the [llms.Model] interface.
-func (g *GoogleAI) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return llms.GenerateFromSinglePrompt(ctx, g, prompt, options...)
+// GetProviderType implements the Model interface.
+func (g *GoogleAI) GetProviderType() llms.ProviderType {
+	return llms.ProviderGoogleAI
 }
 
 // GenerateContent implements the [llms.Model] interface.

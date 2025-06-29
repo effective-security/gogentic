@@ -2,52 +2,116 @@ package llms
 
 import (
 	"context"
-
-	"github.com/cockroachdb/errors"
 )
 
-// LLM is an alias for model, for backwards compatibility.
-//
-// Deprecated: This alias may be removed in the future; please use Model
-// instead.
-type LLM = Model
+// ProviderType is the type of provider.
+type ProviderType string
+
+const (
+	// ProviderAnthropic is the type of provider.
+	ProviderAnthropic ProviderType = "ANTHROPIC"
+	// ProviderAzure is the type of provider.
+	ProviderAzure ProviderType = "AZURE"
+	// ProviderAzureAD is the type of provider.
+	ProviderAzureAD ProviderType = "AZURE_AD"
+	// ProviderBedrock is the type of provider.
+	ProviderBedrock ProviderType = "BEDROCK"
+	// ProviderCloudflare is the type of provider.
+	ProviderCloudflare ProviderType = "CLOUDFLARE"
+	// ProviderGoogleAI is the type of provider.
+	ProviderGoogleAI ProviderType = "GOOGLEAI"
+	// ProviderOpenAI is the type of provider.
+	ProviderOpenAI ProviderType = "OPENAI"
+	// ProviderPerplexity is the type of provider.
+	ProviderPerplexity ProviderType = "PERPLEXITY"
+)
 
 // Model is an interface multi-modal models implement.
 type Model interface {
+	// GetProviderType returns the type of provider.
+	GetProviderType() ProviderType
 	// GenerateContent asks the model to generate content from a sequence of
 	// messages. It's the most general interface for multi-modal LLMs that support
 	// chat-like interactions.
 	GenerateContent(ctx context.Context, messages []MessageContent, options ...CallOption) (*ContentResponse, error)
-
-	// Call is a simplified interface for a text-only Model, generating a single
-	// string response from a single string prompt.
-	//
-	// Deprecated: this method is retained for backwards compatibility. Use the
-	// more general [GenerateContent] instead. You can also use
-	// the [GenerateFromSinglePrompt] function which provides a similar capability
-	// to Call and is built on top of the new interface.
-	Call(ctx context.Context, prompt string, options ...CallOption) (string, error)
 }
 
-// GenerateFromSinglePrompt is a convenience function for calling an LLM with
-// a single string prompt, expecting a single string response. It's useful for
-// simple, string-only interactions and provides a slightly more ergonomic API
-// than the more general [llms.Model.GenerateContent].
-func GenerateFromSinglePrompt(ctx context.Context, llm Model, prompt string, options ...CallOption) (string, error) {
-	msg := MessageContent{
-		Role:  ChatMessageTypeHuman,
-		Parts: []ContentPart{TextContent{Text: prompt}},
-	}
+// Capability is a bitmask indicating supported features of an LLM provider.
+type Capability uint64
 
-	resp, err := llm.GenerateContent(ctx, []MessageContent{msg}, options...)
-	if err != nil {
-		return "", err
-	}
+const (
+	// Basic text or chat generation
+	CapabilityText Capability = 1 << iota
 
-	choices := resp.Choices
-	if len(choices) < 1 {
-		return "", errors.New("empty response from model")
-	}
-	c1 := choices[0]
-	return c1.Content, nil
+	// Structured response formats
+	CapabilityJSONResponse
+	CapabilityJSONSchema
+	CapabilityJSONSchemaStrict
+
+	// Function/tool calling
+	CapabilityFunctionCalling
+	CapabilityMultiToolCalling
+	CapabilityToolCallStreaming
+
+	// Multimodal (images, audio, etc.)
+	CapabilityVision
+	CapabilityImageGeneration
+	CapabilityAudioTranscription
+
+	// Open weight models / self-hosted
+	CapabilitySelfHosted
+
+	// System prompt support
+	CapabilitySystemPrompt
+)
+
+var providerCapabilities = map[ProviderType]Capability{
+	ProviderOpenAI: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityJSONSchemaStrict |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilityToolCallStreaming |
+		CapabilitySystemPrompt |
+		CapabilityVision,
+
+	ProviderAnthropic: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilitySystemPrompt,
+
+	ProviderGoogleAI: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityVision,
+
+	ProviderBedrock: CapabilityText |
+		CapabilityFunctionCalling, // Claude only
+
+	ProviderCloudflare: CapabilityText,
+
+	ProviderPerplexity: CapabilityText |
+		CapabilitySystemPrompt |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityJSONSchemaStrict,
+
+	ProviderAzure: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityJSONSchemaStrict |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilitySystemPrompt,
+
+	ProviderAzureAD: CapabilityText, // Proxy passthrough
+}
+
+func ProviderCapabilities(pt ProviderType) Capability {
+	return providerCapabilities[pt]
+}
+
+func (p ProviderType) Supports(cap Capability) bool {
+	return ProviderCapabilities(p)&cap != 0
 }

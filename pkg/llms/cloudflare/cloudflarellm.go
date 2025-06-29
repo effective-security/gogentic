@@ -44,9 +44,9 @@ func New(opts ...Option) (*LLM, error) {
 	return &LLM{client: client, options: o}, nil
 }
 
-// Call Implement the call interface for LLM.
-func (o *LLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return llms.GenerateFromSinglePrompt(ctx, o, prompt, options...)
+// GetProviderType implements the Model interface.
+func (o *LLM) GetProviderType() llms.ProviderType {
+	return llms.ProviderCloudflare
 }
 
 // GenerateContent implements the Model interface.

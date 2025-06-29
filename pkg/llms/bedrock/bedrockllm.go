@@ -50,9 +50,9 @@ func newClient(opts ...Option) (*options, *bedrockclient.Client, error) {
 	return options, bedrockclient.NewClient(options.client), nil
 }
 
-// Call implements llms.Model.
-func (l *LLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return llms.GenerateFromSinglePrompt(ctx, l, prompt, options...)
+// GetProviderType implements the Model interface.
+func (l *LLM) GetProviderType() llms.ProviderType {
+	return llms.ProviderBedrock
 }
 
 // GenerateContent implements llms.Model.
