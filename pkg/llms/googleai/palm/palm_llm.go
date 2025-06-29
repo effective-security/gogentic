@@ -25,9 +25,9 @@ type LLM struct {
 
 var _ llms.Model = (*LLM)(nil)
 
-// Call requests a completion for the given prompt.
-func (o *LLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return llms.GenerateFromSinglePrompt(ctx, o, prompt, options...)
+// GetProviderType implements the Model interface.
+func (o *LLM) GetProviderType() llms.ProviderType {
+	return llms.ProviderGoogleAI
 }
 
 // GenerateContent implements the Model interface.
@@ -102,5 +102,5 @@ func newClient(opts ...Option) (*palmclient.PaLMClient, error) {
 		return nil, ErrMissingLocation
 	}
 
-	return palmclient.New(context.TODO(), options.projectID, options.location, options.clientOptions...)
+	return palmclient.New(context.Background(), options.projectID, options.location, options.clientOptions...)
 }

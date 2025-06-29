@@ -41,26 +41,6 @@ func (m *MockModel) EXPECT() *MockModelMockRecorder {
 	return m.recorder
 }
 
-// Call mocks base method.
-func (m *MockModel) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, prompt}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Call", varargs...)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Call indicates an expected call of Call.
-func (mr *MockModelMockRecorder) Call(ctx, prompt any, options ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, prompt}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockModel)(nil).Call), varargs...)
-}
-
 // GenerateContent mocks base method.
 func (m *MockModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
@@ -79,4 +59,18 @@ func (mr *MockModelMockRecorder) GenerateContent(ctx, messages any, options ...a
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, messages}, options...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateContent", reflect.TypeOf((*MockModel)(nil).GenerateContent), varargs...)
+}
+
+// GetProviderType mocks base method.
+func (m *MockModel) GetProviderType() llms.ProviderType {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetProviderType")
+	ret0, _ := ret[0].(llms.ProviderType)
+	return ret0
+}
+
+// GetProviderType indicates an expected call of GetProviderType.
+func (mr *MockModelMockRecorder) GetProviderType() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProviderType", reflect.TypeOf((*MockModel)(nil).GetProviderType))
 }
