@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/invopop/jsonschema"
 	"google.golang.org/api/iterator"
 )
 
@@ -82,13 +83,8 @@ func (g *Vertex) GenerateContent(
 		return nil, err
 	}
 
-	// set model.ResponseMIMEType from either opts.JSONMode or opts.ResponseMIMEType
-	switch {
-	case opts.ResponseMIMEType != "" && opts.JSONMode:
-		return nil, errors.Errorf("conflicting options, can't use JSONMode and ResponseMIMEType together")
-	case opts.ResponseMIMEType != "" && !opts.JSONMode:
-		model.ResponseMIMEType = opts.ResponseMIMEType
-	case opts.ResponseMIMEType == "" && opts.JSONMode: // TODO: check len(model.Tools)
+	// TODO: test Vertex with Tools and JSON
+	if len(model.Tools) == 0 && opts.ResponseFormat != nil && opts.ResponseFormat.Type == "json_object" {
 		model.ResponseMIMEType = ResponseMIMETypeJson
 	}
 
@@ -358,7 +354,7 @@ DoStream:
 	return convertCandidates([]*genai.Candidate{candidate}, mresp.UsageMetadata)
 }
 
-// convertTools converts from a list of langchaingo tools to a list of genai
+// ConvertTools converts from a list of langchaingo tools to a list of genai
 // tools.
 func convertTools(tools []llms.Tool) ([]*genai.Tool, error) {
 	genaiTools := make([]*genai.Tool, 0, len(tools))
@@ -374,69 +370,16 @@ func convertTools(tools []llms.Tool) ([]*genai.Tool, error) {
 			Description: tool.Function.Description,
 		}
 
-		// Expect the Parameters field to be a map[string]any, from which we will
-		// extract properties to populate the schema.
-		params, ok := tool.Function.Parameters.(map[string]any)
-		if !ok {
-			return nil, errors.Errorf("tool [%d]: unsupported type %T of Parameters", i, tool.Function.Parameters)
-		}
+		if tool.Function.Parameters != nil {
+			var schema *genai.Schema
+			var err error
 
-		schema := &genai.Schema{}
-		if ty, ok := params["type"]; ok {
-			tyString, ok := ty.(string)
-			if !ok {
-				return nil, errors.Errorf("tool [%d]: expected string for type", i)
+			schema, err = convertJSONSchemaDefinition(tool.Function.Parameters)
+			if err != nil {
+				return nil, errors.Wrapf(err, "tool [%d]", i)
 			}
-			schema.Type = convertToolSchemaType(tyString)
+			genaiFuncDecl.Parameters = schema
 		}
-
-		paramProperties, ok := params["properties"].(map[string]any)
-		if !ok {
-			return nil, errors.Errorf("tool [%d]: expected to find a map of properties", i)
-		}
-
-		schema.Properties = make(map[string]*genai.Schema)
-		for propName, propValue := range paramProperties {
-			valueMap, ok := propValue.(map[string]any)
-			if !ok {
-				return nil, errors.Errorf("tool [%d], property [%v]: expect to find a value map", i, propName)
-			}
-			schema.Properties[propName] = &genai.Schema{}
-
-			if ty, ok := valueMap["type"]; ok {
-				tyString, ok := ty.(string)
-				if !ok {
-					return nil, errors.Errorf("tool [%d]: expected string for type", i)
-				}
-				schema.Properties[propName].Type = convertToolSchemaType(tyString)
-			}
-			if desc, ok := valueMap["description"]; ok {
-				descString, ok := desc.(string)
-				if !ok {
-					return nil, errors.Errorf("tool [%d]: expected string for description", i)
-				}
-				schema.Properties[propName].Description = descString
-			}
-		}
-
-		if required, ok := params["required"]; ok {
-			if rs, ok := required.([]string); ok {
-				schema.Required = rs
-			} else if ri, ok := required.([]any); ok {
-				rs := make([]string, 0, len(ri))
-				for _, r := range ri {
-					rString, ok := r.(string)
-					if !ok {
-						return nil, errors.Errorf("tool [%d]: expected string for required", i)
-					}
-					rs = append(rs, rString)
-				}
-				schema.Required = rs
-			} else {
-				return nil, errors.Errorf("tool [%d]: expected string for required", i)
-			}
-		}
-		genaiFuncDecl.Parameters = schema
 
 		genaiTools = append(genaiTools, &genai.Tool{
 			FunctionDeclarations: []*genai.FunctionDeclaration{genaiFuncDecl},
@@ -444,6 +387,42 @@ func convertTools(tools []llms.Tool) ([]*genai.Tool, error) {
 	}
 
 	return genaiTools, nil
+}
+
+// ConvertJSONSchemaDefinition converts a jsonschema.Definition to a genai.Schema.
+func convertJSONSchemaDefinition(jschema *jsonschema.Schema) (*genai.Schema, error) {
+	if jschema == nil {
+		return nil, nil
+	}
+
+	schema := &genai.Schema{
+		Type:        convertToolSchemaType(jschema.Type),
+		Description: jschema.Description,
+		Required:    jschema.Required,
+	}
+
+	// Convert properties
+	if jschema.Properties != nil {
+		schema.Properties = make(map[string]*genai.Schema)
+		for pair := jschema.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			propSchema, err := convertJSONSchemaDefinition(pair.Value)
+			if err != nil {
+				return nil, errors.Wrapf(err, "property [%s]", pair.Key)
+			}
+			schema.Properties[pair.Key] = propSchema
+		}
+	}
+
+	// Convert items for array types
+	if jschema.Items != nil {
+		itemsSchema, err := convertJSONSchemaDefinition(jschema.Items)
+		if err != nil {
+			return nil, errors.Wrap(err, "items")
+		}
+		schema.Items = itemsSchema
+	}
+
+	return schema, nil
 }
 
 // convertToolSchemaType converts a tool's schema type from its langchaingo

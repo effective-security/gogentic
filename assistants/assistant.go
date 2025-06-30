@@ -3,6 +3,7 @@ package assistants
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/metricskey"
 	"github.com/effective-security/gogentic/pkg/prompts"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/x/values"
@@ -64,6 +66,21 @@ func NewAssistant[O chatmodel.ContentProvider](
 
 	var output O
 	ret.OutputParser, _ = encoding.NewTypedOutputParser(output, ret.cfg.Mode)
+
+	prov := llmModel.GetProviderType()
+	strict := ret.cfg.Mode == encoding.ModeJSONSchemaStrict && prov.Supports(llms.CapabilityJSONSchemaStrict)
+	jsonSchema := (ret.cfg.Mode == encoding.ModeJSONSchema || ret.cfg.Mode == encoding.ModeJSONSchemaStrict) &&
+		prov.Supports(llms.CapabilityJSONSchema)
+	if jsonSchema {
+		rf, err := schema.NewResponseFormat(reflect.TypeOf(output), strict)
+		if err != nil {
+			logger.KV(xlog.ERROR,
+				"status", "failed_to_create_response_format",
+				"err", err.Error(),
+			)
+		}
+		ret.cfg.ResponseFormat = rf
+	}
 
 	return ret
 }
@@ -174,11 +191,16 @@ func (a *Assistant[O]) GetSystemPrompt(ctx context.Context, input string, prompt
 
 	// Convert the prompt value to a string.
 	systemPrompt := strings.TrimRight(promptValue.String(), "\n") // Ensure no trailing newline.
-	// Get the output schema instructions and trim any trailing newlines.
-	outputSchema := strings.TrimRight(a.OutputParser.GetFormatInstructions(), "\n")
-	if outputSchema != "" {
-		// Append the output schema to the system prompt with a separating newline.
-		systemPrompt = fmt.Sprintf("%s\n\n# OUTPUT SCHEMA\n%s", systemPrompt, outputSchema)
+
+	if a.cfg.ResponseFormat == nil {
+		// if provider supports json response, but not json_schema,
+		// we need to add the output schema to the system prompt
+		// Get the output schema instructions and trim any trailing newlines.
+		outputSchema := strings.TrimRight(a.OutputParser.GetFormatInstructions(), "\n")
+		if outputSchema != "" {
+			// Append the output schema to the system prompt with a separating newline.
+			systemPrompt = fmt.Sprintf("%s\n\n# OUTPUT SCHEMA\n%s", systemPrompt, outputSchema)
+		}
 	}
 	return systemPrompt, nil
 }
@@ -290,7 +312,15 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 		messageHistory = append(messageHistory, input.Messages...)
 	}
 
-	callOpts := cfg.GetCallOptions(WithTools(a.llmToolDefs))
+	var extraOptions []Option
+	if len(a.llmToolDefs) > 0 {
+		prov := a.LLM.GetProviderType()
+		if !prov.Supports(llms.CapabilityFunctionCalling) {
+			return nil, errors.Newf("assistant %s: the LLM does not support function calling", a.name)
+		}
+		extraOptions = append(extraOptions, WithTools(a.llmToolDefs))
+	}
+	callOpts := cfg.GetCallOptions(extraOptions...)
 
 	var totalToolExecuted int
 	var resp *llms.ContentResponse

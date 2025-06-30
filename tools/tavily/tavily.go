@@ -18,6 +18,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/invopop/jsonschema"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -48,7 +49,7 @@ func (i *SearchResult) GetContent() string {
 type Tool struct {
 	name        string
 	description string
-	funcParams  any
+	funcParams  *jsonschema.Schema
 	apikey      string
 	baseURL     string
 	httpClient  *http.Client
@@ -145,7 +146,7 @@ func (t *Tool) Description() string {
 	return t.description
 }
 
-func (t *Tool) Parameters() any {
+func (t *Tool) Parameters() *jsonschema.Schema {
 	return t.funcParams
 }
 

@@ -17,6 +17,7 @@ import (
 	chatmodel "github.com/effective-security/gogentic/chatmodel"
 	llms "github.com/effective-security/gogentic/pkg/llms"
 	tools "github.com/effective-security/gogentic/tools"
+	jsonschema "github.com/invopop/jsonschema"
 	mcp_golang "github.com/metoro-io/mcp-golang"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -257,10 +258,10 @@ func (mr *MockIAssistantToolMockRecorder) Name() *gomock.Call {
 }
 
 // Parameters mocks base method.
-func (m *MockIAssistantTool) Parameters() any {
+func (m *MockIAssistantTool) Parameters() *jsonschema.Schema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parameters")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(*jsonschema.Schema)
 	return ret0
 }
 

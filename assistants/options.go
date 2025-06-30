@@ -6,6 +6,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/store"
 )
 
@@ -71,7 +72,10 @@ type Config struct {
 	ToolChoice    any
 	toolChoiceSet bool
 
-	JSONMode bool
+	// ResponseFormat is a custom response format.
+	// If it's not set the response MIME type is text/plain.
+	// Otherwise, from response format the JSON mode is derived.
+	ResponseFormat *schema.ResponseFormat
 
 	//
 	// Below are the options for the Agent, not related to LLM call
@@ -84,7 +88,11 @@ type Config struct {
 	Store       store.MessageStore
 	PromptInput map[string]any
 	Examples    chatmodel.FewShotExamples
-	Mode        encoding.Mode
+	// Mode is the encoding mode to use.
+	// If ModeJSON then JSON schema instructions are added to the system prompt.
+	// If ModeJSONSchema or ModeJSONSchemaStrict and the Model supports it,
+	// then the response format is set to json_object.
+	Mode encoding.Mode
 	// SkipMessageHistory is a flag to skip adding Assistant messages to History.
 	SkipMessageHistory bool
 	// IsGeneric is a flag to indicate that the assistant should add a generic message to the history,
@@ -101,7 +109,6 @@ type Config struct {
 func NewConfig(opts ...Option) *Config {
 	cfg := &Config{
 		Mode:         encoding.ModeDefault,
-		JSONMode:     true,
 		MaxToolCalls: DefaultMaxToolCalls,
 		MaxMessages:  DefaultMaxMessages,
 	}
@@ -115,6 +122,12 @@ func (c *Config) Apply(opts ...Option) *Config {
 		opt(&cfg)
 	}
 	return &cfg
+}
+
+func WithResponseFormat(responseFormat *schema.ResponseFormat) Option {
+	return func(o *Config) {
+		o.ResponseFormat = responseFormat
+	}
 }
 
 func WithMaxToolCalls(maxToolCalls int) Option {
@@ -140,11 +153,6 @@ func WithMessageStore(store store.MessageStore) Option {
 func WithMode(mode encoding.Mode) Option {
 	return func(o *Config) {
 		o.Mode = mode
-		if mode == encoding.ModeJSON || mode == encoding.ModeJSONStrict || mode == encoding.ModeJSONSchema {
-			o.JSONMode = true
-		} else {
-			o.JSONMode = false
-		}
 	}
 }
 
@@ -181,13 +189,6 @@ func WithSkipMessageHistory(skip bool) Option {
 func WithPromptInput(input map[string]any) Option {
 	return func(o *Config) {
 		o.PromptInput = input
-	}
-}
-
-// WithJSONMode is an option for LLM.Call that allows the user to specify whether to use JSON mode.
-func WithJSONMode(jsonMode bool) Option {
-	return func(o *Config) {
-		o.JSONMode = jsonMode
 	}
 }
 
@@ -383,8 +384,8 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 	if c.toolChoiceSet {
 		chainCallOption = append(chainCallOption, llms.WithToolChoice(c.ToolChoice))
 	}
-	if c.JSONMode {
-		chainCallOption = append(chainCallOption, llms.WithJSONMode())
+	if c.ResponseFormat != nil {
+		chainCallOption = append(chainCallOption, llms.WithResponseFormat(c.ResponseFormat))
 	}
 
 	if c.StreamingFunc != nil {

@@ -2,35 +2,26 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStructuredOutputObjectSchema(t *testing.T) {
 	t.Parallel()
-	responseFormat := &ResponseFormat{
-		Type: "json_schema",
-		JSONSchema: &ResponseFormatJSONSchema{
-			Name:   "math_schema",
-			Strict: true,
-			Schema: &ResponseFormatJSONSchemaProperty{
-				Type: "object",
-				Properties: map[string]*ResponseFormatJSONSchemaProperty{
-					"final_answer": {
-						Type: "string",
-					},
-				},
-				AdditionalProperties: false,
-				Required:             []string{"final_answer"},
-			},
-		},
+
+	type Input struct {
+		FinalAnswer string `json:"final_answer" description:"The final answer to the question"`
 	}
+	responseFormat, err := schema.NewResponseFormat(reflect.TypeOf(Input{}), true)
+	require.NoError(t, err)
+
 	llm := newTestClient(
 		t,
 		WithModel("gpt-4o-2024-08-06"),
@@ -58,29 +49,14 @@ func TestStructuredOutputObjectSchema(t *testing.T) {
 
 func TestStructuredOutputObjectAndArraySchema(t *testing.T) {
 	t.Parallel()
-	responseFormat := &ResponseFormat{
-		Type: "json_schema",
-		JSONSchema: &ResponseFormatJSONSchema{
-			Name:   "math_schema",
-			Strict: true,
-			Schema: &ResponseFormatJSONSchemaProperty{
-				Type: "object",
-				Properties: map[string]*ResponseFormatJSONSchemaProperty{
-					"steps": {
-						Type: "array",
-						Items: &ResponseFormatJSONSchemaProperty{
-							Type: "string",
-						},
-					},
-					"final_answer": {
-						Type: "string",
-					},
-				},
-				AdditionalProperties: false,
-				Required:             []string{"final_answer", "steps"},
-			},
-		},
+
+	type Input struct {
+		Steps       []string `json:"steps" description:"The steps to solve the problem"`
+		FinalAnswer string   `json:"final_answer" description:"The final answer to the question"`
 	}
+	responseFormat, err := schema.NewResponseFormat(reflect.TypeOf(Input{}), true)
+	require.NoError(t, err)
+
 	llm := newTestClient(
 		t,
 		WithModel("gpt-4o-2024-08-06"),
@@ -113,28 +89,21 @@ func TestStructuredOutputFunctionCalling(t *testing.T) {
 		WithModel("gpt-4o-2024-08-06"),
 	)
 
+	type Search struct {
+		SearchEngine string `json:"search_engine" enum:"google,duckduckgo,bing"`
+		SearchQuery  string `json:"search_query"`
+	}
+	sc, err := schema.New(reflect.TypeOf(Search{}))
+	require.NoError(t, err)
+
 	toolList := []llms.Tool{
 		{
 			Type: string(openaiclient.ToolTypeFunction),
 			Function: &llms.FunctionDefinition{
 				Name:        "search",
 				Description: "Search by the web search engine",
-				Parameters: json.RawMessage(
-					`{
-					"type": "object",
-					"properties" : {
-						"search_engine" : {
-							"type" : "string",
-							"enum" : ["google", "duckduckgo", "bing"]
-						},
-						"search_query" : {
-							"type" : "string"
-						}
-					},
-					"required":["search_engine", "search_query"],
-					"additionalProperties": false
-				}`),
-				Strict: true,
+				Parameters:  sc.Parameters,
+				Strict:      true,
 			},
 		},
 	}

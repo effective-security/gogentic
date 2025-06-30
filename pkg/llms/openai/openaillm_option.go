@@ -2,6 +2,7 @@ package openai
 
 import (
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
+	"github.com/effective-security/gogentic/pkg/schema"
 )
 
 const (
@@ -32,7 +33,7 @@ type options struct {
 	apiType      APIType
 	httpClient   openaiclient.Doer
 
-	responseFormat *ResponseFormat
+	responseFormat *schema.ResponseFormat
 
 	// required when APIType is APITypeAzure or APITypeAzureAD
 	apiVersion     string
@@ -41,18 +42,6 @@ type options struct {
 
 // Option is a functional option for the OpenAI client.
 type Option func(*options)
-
-// ResponseFormat is the response format for the OpenAI client.
-type ResponseFormat = openaiclient.ResponseFormat
-
-// ResponseFormatJSONSchema is the JSON Schema response format in structured output.
-type ResponseFormatJSONSchema = openaiclient.ResponseFormatJSONSchema
-
-// ResponseFormatJSONSchemaProperty is the JSON Schema property in structured output.
-type ResponseFormatJSONSchemaProperty = openaiclient.ResponseFormatJSONSchemaProperty
-
-// ResponseFormatJSON is the JSON response format.
-var ResponseFormatJSON = &ResponseFormat{Type: "json_object"} //nolint:gochecknoglobals
 
 // WithToken passes the OpenAI API token to the client. If not set, the token
 // is read from the OPENAI_API_KEY environment variable.
@@ -120,7 +109,7 @@ func WithHTTPClient(client openaiclient.Doer) Option {
 }
 
 // WithResponseFormat allows setting a custom response format.
-func WithResponseFormat(responseFormat *ResponseFormat) Option {
+func WithResponseFormat(responseFormat *schema.ResponseFormat) Option {
 	return func(opts *options) {
 		opts.responseFormat = responseFormat
 	}

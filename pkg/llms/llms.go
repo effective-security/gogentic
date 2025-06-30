@@ -83,11 +83,12 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilitySystemPrompt,
 
 	ProviderGoogleAI: CapabilityText |
+		CapabilitySystemPrompt |
 		CapabilityJSONResponse |
 		CapabilityVision,
 
 	ProviderBedrock: CapabilityText |
-		CapabilityFunctionCalling, // Claude only
+		CapabilitySystemPrompt,
 
 	ProviderCloudflare: CapabilityText,
 

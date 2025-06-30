@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 )
 
@@ -91,14 +92,12 @@ parts:
 			t.Parallel()
 			var mc MessageContent
 			err := yaml.Unmarshal([]byte(tt.input), &mc)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("UnmarshalYAML() error = %v, wantErr %v", err, tt.wantErr)
-				t.Log("in:", tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if diff := cmp.Diff(tt.want, mc); diff != "" {
-				t.Errorf("UnmarshalYAML() mismatch (-want +got):\n%s", diff)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, mc)
 		})
 	}
 }
@@ -177,13 +176,12 @@ role: user
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := yaml.Marshal(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("MarshalYAML() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
-				t.Errorf("MarshalYAML() mismatch (-want +got):\n%s", diff)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(got))
 		})
 	}
 }
@@ -266,13 +264,12 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 			t.Parallel()
 			var mc MessageContent
 			err := mc.UnmarshalJSON([]byte(tt.input))
-			if (err != nil) != tt.wantErr {
-				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if diff := cmp.Diff(tt.want, mc); diff != "" {
-				t.Errorf("UnmarshalJSON() mismatch (-want +got):\n%s", diff)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, mc)
 		})
 	}
 }
@@ -329,18 +326,13 @@ func TestMarshalJSONMessageContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := json.Marshal(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Errorf("MarshalJSON() error = %v", err)
-			}
+			require.NoError(t, err)
 			gotStr := string(got)
-			if diff := cmp.Diff(tt.want, gotStr); diff != "" {
-				t.Errorf("MarshalJSON() mismatch (-want +got):\n%s", diff)
-				t.Log("got:", gotStr)
-			}
+			assert.Equal(t, tt.want, gotStr)
 		})
 	}
 }
@@ -493,43 +485,414 @@ role: assistant
 			t.Parallel()
 			// JSON
 			jsonBytes, err := json.Marshal(tt.in)
-			if err != nil {
-				t.Errorf("MarshalJSON() error = %v", err)
-				return
-			}
-			if diff := cmp.Diff(tt.assertedJSON, string(jsonBytes)); diff != "" && tt.assertedJSON != "" {
-				t.Errorf("JSON mismatch (-want +got):\n%s", diff)
+			require.NoError(t, err)
+			if tt.assertedJSON != "" {
+				assert.Equal(t, tt.assertedJSON, string(jsonBytes))
 			}
 			var mc MessageContent
 			err = mc.UnmarshalJSON(jsonBytes)
-			if err != nil {
-				t.Errorf("UnmarshalJSON() error = %v", err)
-				return
-			}
-			if diff := cmp.Diff(tt.in, mc); diff != "" {
-				t.Errorf("Roundtrip JSON mismatch (-want +got):\n%s", diff)
-				t.Logf("JSON: %s", jsonBytes)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.in, mc)
 
 			// YAML
 			yamlBytes, err := yaml.Marshal(tt.in)
-			if err != nil {
-				t.Errorf("MarshalYAML() error = %v", err)
-				return
-			}
-			if diff := cmp.Diff(tt.assertedYAML, string(yamlBytes)); diff != "" && tt.assertedYAML != "" {
-				t.Errorf("YAML mismatch (-want +got):\n%s", diff)
-				t.Log("got:", string(yamlBytes))
+			require.NoError(t, err)
+			if tt.assertedYAML != "" {
+				assert.Equal(t, tt.assertedYAML, string(yamlBytes))
 			}
 			mc = MessageContent{}
 			err = yaml.Unmarshal(yamlBytes, &mc)
-			if err != nil {
-				t.Errorf("UnmarshalYAML() error = %v", err)
+			require.NoError(t, err)
+			assert.Equal(t, tt.in, mc)
+		})
+	}
+}
+
+func TestUnmarshalJSONTextContent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    TextContent
+		wantErr bool
+	}{
+		{
+			name:    "valid text content",
+			input:   `{"type":"text","text":"Hello, world!"}`,
+			want:    TextContent{Text: "Hello, world!"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			input:   `{"type":"image_url","text":"Hello, world!"}`,
+			want:    TextContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing type field",
+			input:   `{"text":"Hello, world!"}`,
+			want:    TextContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `{"type":"text","text":"Hello, world!"`,
+			want:    TextContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var tc TextContent
+			err := tc.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if diff := cmp.Diff(tt.in, mc); diff != "" {
-				t.Errorf("Roundtrip YAML mismatch (-want +got):\n%s", diff)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, tc)
+		})
+	}
+}
+
+func TestUnmarshalJSONImageURLContent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    ImageURLContent
+		wantErr bool
+	}{
+		{
+			name:    "valid image URL content",
+			input:   `{"type":"image_url","image_url":{"url":"http://example.com/image.png"}}`,
+			want:    ImageURLContent{URL: "http://example.com/image.png"},
+			wantErr: false,
+		},
+		{
+			name:    "image URL with detail",
+			input:   `{"type":"image_url","image_url":{"url":"http://example.com/image.png","detail":"high"}}`,
+			want:    ImageURLContent{URL: "http://example.com/image.png", Detail: "high"},
+			wantErr: false,
+		},
+		{
+			name:    "missing type field",
+			input:   `{"image_url":{"url":"http://example.com/image.png"}}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing image_url field",
+			input:   `{"type":"image_url"}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid image_url field type",
+			input:   `{"type":"image_url","image_url":"not an object"}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing url field",
+			input:   `{"type":"image_url","image_url":{"detail":"high"}}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid url field type",
+			input:   `{"type":"image_url","image_url":{"url":123}}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `{"type":"image_url","image_url":{"url":"http://example.com/image.png"}`,
+			want:    ImageURLContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var iuc ImageURLContent
+			err := iuc.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, iuc)
+		})
+	}
+}
+
+func TestUnmarshalJSONBinaryContent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    BinaryContent
+		wantErr bool
+	}{
+		{
+			name:    "valid binary content",
+			input:   `{"type":"binary","binary":{"mime_type":"application/octet-stream","data":"SGVsbG8sIHdvcmxkIQ=="}}`,
+			want:    BinaryContent{MIMEType: "application/octet-stream", Data: []byte("Hello, world!")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			input:   `{"type":"text","binary":{"mime_type":"application/octet-stream","data":"SGVsbG8sIHdvcmxkIQ=="}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing binary field",
+			input:   `{"type":"binary"}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid binary field type",
+			input:   `{"type":"binary","binary":"not an object"}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing mime_type field",
+			input:   `{"type":"binary","binary":{"data":"SGVsbG8sIHdvcmxkIQ=="}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "missing data field",
+			input:   `{"type":"binary","binary":{"mime_type":"application/octet-stream"}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid mime_type field type",
+			input:   `{"type":"binary","binary":{"mime_type":123,"data":"SGVsbG8sIHdvcmxkIQ=="}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid data field type",
+			input:   `{"type":"binary","binary":{"mime_type":"application/octet-stream","data":123}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid base64 data",
+			input:   `{"type":"binary","binary":{"mime_type":"application/octet-stream","data":"invalid-base64!"}}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `{"type":"binary","binary":{"mime_type":"application/octet-stream","data":"SGVsbG8sIHdvcmxkIQ=="}`,
+			want:    BinaryContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var bc BinaryContent
+			err := bc.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, bc)
+		})
+	}
+}
+
+func TestUnmarshalJSONToolCall(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    ToolCall
+		wantErr bool
+	}{
+		{
+			name:    "valid tool call with function",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{ID: "t42", Type: "function", FunctionCall: &FunctionCall{Name: "get_current_weather", Arguments: `{ "location": "New York" }`}},
+			wantErr: false,
+		},
+		{
+			name:    "tool call without function",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","type":"function"}}`,
+			want:    ToolCall{ID: "t42", Type: "function", FunctionCall: &FunctionCall{}},
+			wantErr: false,
+		},
+		{
+			name:    "missing type field",
+			input:   `{"tool_call":{"id":"t42","type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "missing tool_call field",
+			input:   `{"type":"tool_call"}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tool_call field type",
+			input:   `{"type":"tool_call","tool_call":"not an object"}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "missing id field",
+			input:   `{"type":"tool_call","tool_call":{"type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "missing type field in tool_call",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid id field type",
+			input:   `{"type":"tool_call","tool_call":{"id":123,"type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid type field type in tool_call",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","type":123,"function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid function field - not json raw message",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","type":"function","function":"invalid function"}}`,
+			want:    ToolCall{ID: "t42", Type: "function", FunctionCall: &FunctionCall{}},
+			wantErr: false,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `{"type":"tool_call","tool_call":{"id":"t42","type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}`,
+			want:    ToolCall{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var tc ToolCall
+			err := tc.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, tc)
+		})
+	}
+}
+
+func TestUnmarshalJSONToolCallResponse(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    ToolCallResponse
+		wantErr bool
+	}{
+		{
+			name:    "valid tool call response",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"hammer","content":"hit"}}`,
+			want:    ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			input:   `{"type":"tool_call","tool_response":{"tool_call_id":"123","name":"hammer","content":"hit"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "missing tool_response field",
+			input:   `{"type":"tool_response"}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tool_response field type",
+			input:   `{"type":"tool_response","tool_response":"not an object"}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "missing tool_call_id field",
+			input:   `{"type":"tool_response","tool_response":{"name":"hammer","content":"hit"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "missing name field",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","content":"hit"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "missing content field",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"hammer"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tool_call_id field type",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":123,"name":"hammer","content":"hit"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid name field type",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","name":123,"content":"hit"}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid content field type",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"hammer","content":123}}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"hammer","content":"hit"}`,
+			want:    ToolCallResponse{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var tcr ToolCallResponse
+			err := tcr.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, tcr)
 		})
 	}
 }

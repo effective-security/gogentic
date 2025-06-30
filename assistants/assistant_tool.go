@@ -10,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/invopop/jsonschema"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -23,7 +24,7 @@ type AssistantTool[I chatmodel.ContentProvider, O chatmodel.ContentProvider] str
 	assistant   TypeableAssistant[O]
 	name        string
 	description string
-	funcParams  any
+	funcParams  *jsonschema.Schema
 }
 
 func NewAssistantTool[I chatmodel.ContentProvider, O chatmodel.ContentProvider](assistant TypeableAssistant[O]) (TypeableAssistantTool[I, O], error) {
@@ -60,7 +61,7 @@ func (t *AssistantTool[I, O]) Description() string {
 	return t.description
 }
 
-func (t *AssistantTool[I, O]) Parameters() any {
+func (t *AssistantTool[I, O]) Parameters() *jsonschema.Schema {
 	return t.funcParams
 }
 
