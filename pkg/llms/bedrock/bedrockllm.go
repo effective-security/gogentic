@@ -93,7 +93,7 @@ func processMessages(messages []llms.MessageContent) ([]bedrockclient.Message, e
 					Role:     m.Role,
 					Content:  string(part.Data),
 					MimeType: part.MIMEType,
-					Type:     "image",
+					Type:     "image", // TODO: wrong
 				})
 			default:
 				return nil, errors.New("unsupported message type")

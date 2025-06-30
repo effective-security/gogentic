@@ -5,6 +5,7 @@ import (
 
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/x/format"
+	"github.com/invopop/jsonschema"
 	mcp "github.com/metoro-io/mcp-golang"
 )
 
@@ -22,7 +23,7 @@ type ITool interface {
 	// Should not exceed LLM model limit.
 	Description() string
 	// Parameters returns the parameters definition of the function, to be used in the prompt.
-	Parameters() any
+	Parameters() *jsonschema.Schema
 
 	// Call executes the tool with the given input and returns the result.
 	// If the tool fails to parse the input, it should return ErrFailedUnmarshalInput error.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,7 +15,7 @@ func Test_ChainCallOptions(t *testing.T) {
 	t.Parallel()
 
 	// Test the default values of ChainCallOptions
-	cfg := assistants.NewConfig(assistants.WithJSONMode(false), assistants.WithMode(encoding.ModePlainText))
+	cfg := assistants.NewConfig()
 	assert.Equal(t, "", cfg.Model)
 	assert.Equal(t, 0, cfg.MaxTokens)
 	assert.Equal(t, 0.0, cfg.Temperature)
@@ -35,8 +35,9 @@ func Test_ChainCallOptions(t *testing.T) {
 
 	cfg = assistants.NewConfig(
 		assistants.WithModel("gpt-3.5-turbo"),
-		assistants.WithMode(encoding.ModeJSON),
-		assistants.WithJSONMode(true),
+		assistants.WithResponseFormat(&schema.ResponseFormat{
+			Type: "json_schema",
+		}),
 		assistants.WithMaxTokens(100),
 		assistants.WithTemperature(0.7),
 		assistants.WithStopWords([]string{"foo", "bar"}),

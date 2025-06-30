@@ -19,6 +19,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/googleai"
 	"github.com/effective-security/gogentic/pkg/llms/googleai/vertex"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -354,22 +355,19 @@ func testTools(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
+	type Input struct {
+		Location string `json:"location"`
+	}
+	sc, err := schema.New(reflect.TypeOf(Input{}))
+	require.NoError(t, err)
+
 	availableTools := []llms.Tool{
 		{
 			Type: "function",
 			Function: &llms.FunctionDefinition{
 				Name:        "getCurrentWeather",
 				Description: "Get the current weather in a given location",
-				Parameters: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"location": map[string]any{
-							"type":        "string",
-							"description": "The city and state, e.g. San Francisco, CA",
-						},
-					},
-					"required": []string{"location"},
-				},
+				Parameters:  sc.Parameters,
 			},
 		},
 	}
@@ -436,23 +434,19 @@ func testToolsWithInterfaceRequired(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
+	type Input struct {
+		Location string `json:"location"`
+	}
+	sc, err := schema.New(reflect.TypeOf(Input{}))
+	require.NoError(t, err)
+
 	availableTools := []llms.Tool{
 		{
 			Type: "function",
 			Function: &llms.FunctionDefinition{
 				Name:        "getCurrentWeather",
 				Description: "Get the current weather in a given location",
-				Parameters: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"location": map[string]any{
-							"type":        "string",
-							"description": "The city and state, e.g. San Francisco, CA",
-						},
-					},
-					// json.Unmarshal() may return []interface{} instead of []string
-					"required": []any{"location"},
-				},
+				Parameters:  sc.Parameters,
 			},
 		},
 	}

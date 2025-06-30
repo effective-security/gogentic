@@ -20,6 +20,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/prompts"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/gogentic/tools/tavily"
@@ -97,6 +98,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	searchCalled := false
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
@@ -153,8 +155,7 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSON), // TODO: test ModeJSONSchema
-		assistants.WithJSONMode(true),
+		assistants.WithMode(encoding.ModeJSONSchema),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
@@ -167,28 +168,7 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	sysPrompt, err := ag.GetSystemPrompt(ctx, "", nil)
 	require.NoError(t, err)
-	expPrompt := `You are helpful and friendly AI assistant.
-
-# OUTPUT SCHEMA
-
-Respond with JSON in the following JSON schema:` +
-		"\n```json" + `
-{
-	"properties": {
-		"content": {
-			"type": "string",
-			"title": "Response Content",
-			"description": "The content returned by agent or tool."
-		}
-	},
-	"type": "object",
-	"required": [
-		"content"
-	]
-}
-` + "```" + `
-Make sure to return an instance of the JSON, not the schema itself.
-Use the exact field names as they are defined in the schema.`
+	expPrompt := `You are helpful and friendly AI assistant.`
 
 	assert.Equal(t, expPrompt, sysPrompt)
 
@@ -290,6 +270,7 @@ func Test_Assistant_Chat(t *testing.T) {
 	searchCalled := false
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
@@ -347,7 +328,6 @@ func Test_Assistant_Chat(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModePlainText),
-		assistants.WithJSONMode(false),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
@@ -426,6 +406,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	// LLM mock: first returns a tool call with invalid input, then with valid input, then the final answer
 	llmCall := 0
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			llmCall++
@@ -480,8 +461,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	memstore := store.NewMemoryStore()
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSON), // TODO: test ModeJSONSchema
-		assistants.WithJSONMode(true),
+		assistants.WithMode(encoding.ModeJSONSchemaStrict),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
@@ -523,14 +503,14 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
 	mockTool1.EXPECT().Name().Return("search_tool").AnyTimes()
 	mockTool1.EXPECT().Description().Return("Search tool for testing").AnyTimes()
-	mockTool1.EXPECT().Parameters().Return(map[string]any{
+	mockTool1.EXPECT().Parameters().Return(schema.MustFromAny(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"query": map[string]any{
 				"type": "string",
 			},
 		},
-	}).AnyTimes()
+	})).AnyTimes()
 	mockTool1.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
 		// Simulate some work
 		time.Sleep(100 * time.Millisecond)
@@ -540,14 +520,14 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	mockTool2 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
 	mockTool2.EXPECT().Name().Return("analyze_tool").AnyTimes()
 	mockTool2.EXPECT().Description().Return("Analysis tool for testing").AnyTimes()
-	mockTool2.EXPECT().Parameters().Return(map[string]any{
+	mockTool2.EXPECT().Parameters().Return(schema.MustFromAny(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"query": map[string]any{
 				"type": "string",
 			},
 		},
-	}).AnyTimes()
+	})).AnyTimes()
 	mockTool2.EXPECT().Call(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, input string) (string, error) {
 		// Simulate some work
 		time.Sleep(100 * time.Millisecond)
@@ -556,6 +536,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 
 	// Create a mock LLM that returns multiple tool calls
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
@@ -645,14 +626,14 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 		toolName := toolNames[i] + "_tool"
 		mockTool.EXPECT().Name().Return(toolName).AnyTimes()
 		mockTool.EXPECT().Description().Return(toolNames[i] + " tool for testing").AnyTimes()
-		mockTool.EXPECT().Parameters().Return(map[string]any{
+		mockTool.EXPECT().Parameters().Return(schema.MustFromAny(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{
 					"type": "string",
 				},
 			},
-		}).AnyTimes()
+		})).AnyTimes()
 
 		// Each tool has a different processing time to better demonstrate parallelism
 		processingTime := time.Duration(50*(i+1)) * time.Millisecond
@@ -672,6 +653,7 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 
 	// Create a mock LLM that returns multiple tool calls
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls

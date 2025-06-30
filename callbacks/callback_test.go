@@ -12,6 +12,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/values"
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -246,7 +247,7 @@ func (f *fakeTool) Name() string {
 func (f *fakeTool) Description() string {
 	return values.StringsCoalesce(f.description, "useful tool")
 }
-func (f *fakeTool) Parameters() any {
+func (f *fakeTool) Parameters() *jsonschema.Schema {
 	return nil
 }
 func (f *fakeTool) Call(context.Context, string) (string, error) {

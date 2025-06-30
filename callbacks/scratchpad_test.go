@@ -11,6 +11,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ type fakeTool struct{ name string }
 
 func (t *fakeTool) Name() string                                           { return t.name }
 func (t *fakeTool) Description() string                                    { return "desc" }
-func (t *fakeTool) Parameters() any                                        { return nil }
+func (t *fakeTool) Parameters() *jsonschema.Schema                         { return nil }
 func (t *fakeTool) Call(ctx context.Context, input string) (string, error) { return "", nil }
 
 func newTestChatContext() (context.Context, chatmodel.ChatContext) {

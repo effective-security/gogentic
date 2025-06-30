@@ -1,13 +1,13 @@
 package schema
 
 import (
+	"encoding/json"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
@@ -24,9 +24,9 @@ var (
 )
 
 type Schema struct {
-	*jsonschema.Schema
+	RawSchema *jsonschema.Schema
 	// Parameters represents the Function parameters definition
-	Parameters any
+	Parameters *jsonschema.Schema
 }
 
 // New creates a new schema from the given type
@@ -48,7 +48,9 @@ func New(t reflect.Type) (*Schema, error) {
 }
 
 func (s *Schema) String() string {
-	return llmutils.ToJSONIndent(s.Parameters)
+	js, _ := json.MarshalIndent(s.Parameters, "", "\t")
+	return string(js)
+
 }
 
 func buildSchema(t reflect.Type) (*Schema, error) {
@@ -56,7 +58,7 @@ func buildSchema(t reflect.Type) (*Schema, error) {
 
 	funcDef := ToFunctionSchema(t, schema)
 	s := &Schema{
-		Schema:     schema,
+		RawSchema:  schema,
 		Parameters: funcDef,
 	}
 
@@ -129,7 +131,7 @@ func resolveRefs(props *orderedmap.OrderedMap[string, *jsonschema.Schema], defs 
 }
 
 func (s *Schema) NameFromRef() string {
-	return strings.Split(s.Ref, "/")[2] // ex: '#/$defs/MyStruct'
+	return strings.Split(s.RawSchema.Ref, "/")[2] // ex: '#/$defs/MyStruct'
 }
 
 // JSONSchema return the json schema of the configuration
@@ -161,4 +163,43 @@ func JSONSchema(t reflect.Type) *jsonschema.Schema {
 	}
 
 	return r.ReflectFromType(t)
+}
+
+// FromAny creates a json schema from any type.
+// It panics if the type is not valid.
+//
+// For example:
+//
+//	map[string]any{
+//		"type": "object",
+//		"properties": map[string]any{
+//			"query": map[string]any{
+//				"type": "string",
+//			},
+//		},
+//	}
+func MustFromAny(t any) *jsonschema.Schema {
+	js, err := json.Marshal(t)
+	if err != nil {
+		panic(err)
+	}
+	schema := &jsonschema.Schema{}
+	err = json.Unmarshal(js, schema)
+	if err != nil {
+		panic(err)
+	}
+	return schema
+}
+
+func FromAny(t any) (*jsonschema.Schema, error) {
+	js, err := json.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+	schema := &jsonschema.Schema{}
+	err = json.Unmarshal(js, schema)
+	if err != nil {
+		return nil, err
+	}
+	return schema, nil
 }

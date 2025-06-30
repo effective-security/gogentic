@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/pkg/schema"
 )
 
 const (
@@ -38,7 +39,7 @@ type Client struct {
 	// required when APIType is APITypeAzure or APITypeAzureAD
 	apiVersion string
 
-	ResponseFormat *ResponseFormat
+	ResponseFormat *schema.ResponseFormat
 }
 
 // Option is an option for the OpenAI client.
@@ -52,7 +53,7 @@ type Doer interface {
 // New returns a new OpenAI client.
 func New(token string, model string, baseURL string, organization string,
 	apiType APIType, apiVersion string, httpClient Doer, embeddingModel string,
-	responseFormat *ResponseFormat,
+	responseFormat *schema.ResponseFormat,
 	opts ...Option,
 ) (*Client, error) {
 	c := &Client{

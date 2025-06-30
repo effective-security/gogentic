@@ -13,7 +13,6 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
@@ -22,6 +21,7 @@ import (
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
 	"github.com/effective-security/xlog"
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,8 +54,6 @@ func Test_Real_Assistant(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSON),
-		assistants.WithJSONMode(true),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		assistants.WithMessageStore(memstore),
 	}
@@ -97,12 +95,12 @@ func Test_Real_Assistant(t *testing.T) {
 }
 
 func Test_Real_Providers(t *testing.T) {
-	//providers := []string{"OPEN_AI","ANTHROPIC", "BEDROCK", "CLOUDFLARE", "GOOGLEAI", "PERPLEXITY"}
+	//providers := []string{"OPEN_AI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY"}
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("GOOGLEAI")
+	llmModel, err := f.ModelByType("BEDROCK")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -115,8 +113,6 @@ func Test_Real_Providers(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
-		assistants.WithMode(encoding.ModeJSON), // TODO: test ModeJSONSchema
-		assistants.WithJSONMode(true),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
@@ -127,13 +123,15 @@ func Test_Real_Providers(t *testing.T) {
 		WithTools(wt)
 
 	req := &assistants.CallInput{
-		Input: "What is the gogentic status for symbol XyZ8978?",
+		Input: "Return the gogentic status for location: 1012340123?",
 	}
 	apiResp, err := assistants.Call(ctx, ag, req)
 	fmt.Println("*** logs")
 	fmt.Println(buf.String())
 
 	require.NoError(t, err)
+
+	assert.Equal(t, 1, wt.called)
 
 	fmt.Println("--------------------------------")
 	fmt.Println(apiResp.Choices[0].Content)
@@ -142,7 +140,8 @@ func Test_Real_Providers(t *testing.T) {
 type weatherTool struct {
 	name        string
 	description string
-	funcParams  any
+	funcParams  *jsonschema.Schema
+	called      int
 }
 
 type WeatherRequest struct {
@@ -179,11 +178,12 @@ func (t *weatherTool) Description() string {
 	return t.description
 }
 
-func (t *weatherTool) Parameters() any {
+func (t *weatherTool) Parameters() *jsonschema.Schema {
 	return t.funcParams
 }
 
 func (t *weatherTool) Run(ctx context.Context, req *WeatherRequest) (*WeatherResult, error) {
+	t.called++
 	return &WeatherResult{
 		Location: req.Location,
 		Forecast: "sunny",

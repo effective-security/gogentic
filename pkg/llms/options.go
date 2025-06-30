@@ -1,6 +1,11 @@
 package llms
 
-import "context"
+import (
+	"context"
+
+	"github.com/effective-security/gogentic/pkg/schema"
+	"github.com/invopop/jsonschema"
+)
 
 // CallOption is a function that configures a CallOptions.
 type CallOption func(*CallOptions)
@@ -9,66 +14,71 @@ type CallOption func(*CallOptions)
 // all options.
 type CallOptions struct {
 	// Model is the model to use.
-	Model string `json:"model"`
+	Model string
 	// CandidateCount is the number of response candidates to generate.
-	CandidateCount int `json:"candidate_count"`
+	CandidateCount int
 	// MaxTokens is the maximum number of tokens to generate.
-	MaxTokens int `json:"max_tokens"`
+	MaxTokens int
 	// Temperature is the temperature for sampling, between 0 and 1.
-	Temperature float64 `json:"temperature"`
+	Temperature float64
 	// StopWords is a list of words to stop on.
-	StopWords []string `json:"stop_words"`
+	StopWords []string
 	// StreamingFunc is a function to be called for each chunk of a streaming response.
 	// Return an error to stop streaming early.
-	StreamingFunc func(ctx context.Context, chunk []byte) error `json:"-"`
+	StreamingFunc func(ctx context.Context, chunk []byte) error
 	// StreamingReasoningFunc is a function to be called for each chunk of a streaming response.
 	// Return an error to stop streaming early.
-	StreamingReasoningFunc func(ctx context.Context, reasoningChunk, chunk []byte) error `json:"-"`
+	StreamingReasoningFunc func(ctx context.Context, reasoningChunk, chunk []byte) error
 	// TopK is the number of tokens to consider for top-k sampling.
-	TopK int `json:"top_k"`
+	TopK int
 	// TopP is the cumulative probability for top-p sampling.
-	TopP float64 `json:"top_p"`
+	TopP float64
 	// Seed is a seed for deterministic sampling.
-	Seed int `json:"seed"`
+	Seed int
 	// MinLength is the minimum length of the generated text.
-	MinLength int `json:"min_length"`
+	MinLength int
 	// MaxLength is the maximum length of the generated text.
-	MaxLength int `json:"max_length"`
+	MaxLength int
 	// N is how many chat completion choices to generate for each input message.
-	N int `json:"n"`
+	N int
 	// RepetitionPenalty is the repetition penalty for sampling.
-	RepetitionPenalty float64 `json:"repetition_penalty"`
+	RepetitionPenalty float64
 	// FrequencyPenalty is the frequency penalty for sampling.
-	FrequencyPenalty float64 `json:"frequency_penalty"`
+	FrequencyPenalty float64
 	// PresencePenalty is the presence penalty for sampling.
-	PresencePenalty float64 `json:"presence_penalty"`
-
-	// JSONMode is a flag to enable JSON mode.
-	JSONMode bool `json:"json"`
+	PresencePenalty float64
 
 	// Tools is a list of tools to use. Each tool can be a specific tool or a function.
-	Tools []Tool `json:"tools,omitempty"`
+	Tools []Tool
 	// ToolChoice is the choice of tool to use, it can either be "none", "auto" (the default behavior), or a specific tool as described in the ToolChoice type.
-	ToolChoice any `json:"tool_choice"`
+	ToolChoice any
 
 	// Function defitions to include in the request.
 	// Deprecated: Use Tools instead.
-	Functions []FunctionDefinition `json:"functions,omitempty"`
+	Functions []FunctionDefinition
 	// FunctionCallBehavior is the behavior to use when calling functions.
 	//
 	// If a specific function should be invoked, use the format:
 	// `{"name": "my_function"}`
 	// Deprecated: Use ToolChoice instead.
-	FunctionCallBehavior FunctionCallBehavior `json:"function_call,omitempty"`
+	FunctionCallBehavior FunctionCallBehavior
 
 	// Metadata is a map of metadata to include in the request.
 	// The meaning of this field is specific to the backend in use.
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Metadata map[string]any
+
+	// ResponseFormat is a custom response format.
+	// If it's not set the response MIME type is text/plain.
+	// Otherwise, from response format the JSON mode is derived.
+	ResponseFormat *schema.ResponseFormat
+
+	// JSONMode is a flag to enable JSON mode.
+	// JSONMode bool `json:"json"`
 
 	// ResponseMIMEType MIME type of the generated candidate text.
 	// Supported MIME types are: text/plain: (default) Text output.
 	// application/json: JSON response in the response candidates.
-	ResponseMIMEType string `json:"response_mime_type,omitempty"`
+	//ResponseMIMEType string `json:"response_mime_type,omitempty"`
 }
 
 // Tool is a tool that can be used by the model.
@@ -86,7 +96,7 @@ type FunctionDefinition struct {
 	// Description is a description of the function.
 	Description string `json:"description"`
 	// Parameters is a list of parameters for the function.
-	Parameters any `json:"parameters,omitempty"`
+	Parameters *jsonschema.Schema `json:"parameters,omitempty"`
 	// Strict is a flag to indicate if the function should be called strictly. Only used for openai llm structured output.
 	Strict bool `json:"strict,omitempty"`
 }
@@ -269,11 +279,11 @@ func WithTools(tools []Tool) CallOption {
 
 // WithJSONMode will add an option to set the response format to JSON.
 // This is useful for models that return structured data.
-func WithJSONMode() CallOption {
-	return func(o *CallOptions) {
-		o.JSONMode = true
-	}
-}
+// func WithJSONMode() CallOption {
+// 	return func(o *CallOptions) {
+// 		o.JSONMode = true
+// 	}
+// }
 
 // WithMetadata will add an option to set metadata to include in the request.
 // The meaning of this field is specific to the backend in use.
@@ -285,8 +295,17 @@ func WithMetadata(metadata map[string]any) CallOption {
 
 // WithResponseMIMEType will add an option to set the ResponseMIMEType
 // Currently only supported by googleai llms.
-func WithResponseMIMEType(responseMIMEType string) CallOption {
+// func WithResponseMIMEType(responseMIMEType string) CallOption {
+// 	return func(o *CallOptions) {
+// 		o.ResponseMIMEType = responseMIMEType
+// 	}
+// }
+
+// WithResponseFormat allows setting a custom response format.
+// If it's not set the response MIME type is text/plain.
+// Otherwise, from response format the JSON mode is derived.
+func WithResponseFormat(responseFormat *schema.ResponseFormat) CallOption {
 	return func(o *CallOptions) {
-		o.ResponseMIMEType = responseMIMEType
+		o.ResponseFormat = responseFormat
 	}
 }

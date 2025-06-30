@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	tools "github.com/effective-security/gogentic/tools"
+	jsonschema "github.com/invopop/jsonschema"
 	mcp_golang "github.com/metoro-io/mcp-golang"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -124,10 +125,10 @@ func (mr *MockIToolMockRecorder) Name() *gomock.Call {
 }
 
 // Parameters mocks base method.
-func (m *MockITool) Parameters() any {
+func (m *MockITool) Parameters() *jsonschema.Schema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parameters")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(*jsonschema.Schema)
 	return ret0
 }
 
@@ -265,10 +266,10 @@ func (mr *MockToolMockRecorder[I, O]) Name() *gomock.Call {
 }
 
 // Parameters mocks base method.
-func (m *MockTool[I, O]) Parameters() any {
+func (m *MockTool[I, O]) Parameters() *jsonschema.Schema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parameters")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(*jsonschema.Schema)
 	return ret0
 }
 
@@ -361,10 +362,10 @@ func (mr *MockIMCPToolMockRecorder) Name() *gomock.Call {
 }
 
 // Parameters mocks base method.
-func (m *MockIMCPTool) Parameters() any {
+func (m *MockIMCPTool) Parameters() *jsonschema.Schema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parameters")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(*jsonschema.Schema)
 	return ret0
 }
 
@@ -456,10 +457,10 @@ func (mr *MockMCPToolMockRecorder[I]) Name() *gomock.Call {
 }
 
 // Parameters mocks base method.
-func (m *MockMCPTool[I]) Parameters() any {
+func (m *MockMCPTool[I]) Parameters() *jsonschema.Schema {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parameters")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(*jsonschema.Schema)
 	return ret0
 }
 

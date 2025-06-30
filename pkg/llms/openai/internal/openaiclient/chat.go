@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 )
 
 const (
@@ -44,7 +45,7 @@ type ChatRequest struct {
 	Seed                int      `json:"seed,omitempty"`
 
 	// ResponseFormat is the format of the response.
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	ResponseFormat *schema.ResponseFormat `json:"response_format,omitempty"`
 
 	// LogProbs indicates whether to return log probabilities of the output tokens or not.
 	// If true, returns the log probabilities of each output token returned in the content of message.
@@ -110,29 +111,6 @@ type ToolCall struct {
 	ID       string       `json:"id,omitempty"`
 	Type     ToolType     `json:"type"`
 	Function ToolFunction `json:"function,omitempty"`
-}
-
-type ResponseFormatJSONSchemaProperty struct {
-	Type                 string                                       `json:"type"`
-	Description          string                                       `json:"description,omitempty"`
-	Enum                 []any                                        `json:"enum,omitempty"`
-	Items                *ResponseFormatJSONSchemaProperty            `json:"items,omitempty"`
-	Properties           map[string]*ResponseFormatJSONSchemaProperty `json:"properties,omitempty"`
-	AdditionalProperties bool                                         `json:"additionalProperties"`
-	Required             []string                                     `json:"required,omitempty"`
-	Ref                  string                                       `json:"$ref,omitempty"`
-}
-
-type ResponseFormatJSONSchema struct {
-	Name   string                            `json:"name"`
-	Strict bool                              `json:"strict"`
-	Schema *ResponseFormatJSONSchemaProperty `json:"schema"`
-}
-
-// ResponseFormat is the format of the response.
-type ResponseFormat struct {
-	Type       string                    `json:"type"`
-	JSONSchema *ResponseFormatJSONSchema `json:"json_schema,omitempty"`
 }
 
 // ChatMessage is a message in a chat request.

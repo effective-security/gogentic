@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -143,11 +145,18 @@ func TestFunctionCall(t *testing.T) {
 		},
 	}
 
+	type Weather struct {
+		Location string `json:"location" description:"The city and state, e.g. San Francisco, CA"`
+		Unit     string `json:"unit" enum:"celsius,fahrenheit"`
+	}
+	sc, err := schema.New(reflect.TypeOf(Weather{}))
+	require.NoError(t, err)
+
 	functions := []llms.FunctionDefinition{
 		{
 			Name:        "getCurrentWeather",
 			Description: "Get the current weather in a given location",
-			Parameters:  json.RawMessage(`{"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]}`),
+			Parameters:  sc.Parameters,
 		},
 	}
 

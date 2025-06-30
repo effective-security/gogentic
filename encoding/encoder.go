@@ -30,17 +30,18 @@ type SchemaStreamEncoder interface {
 type Mode = string
 
 const (
-	// ModeToolCall       Mode = "tool_call_mode"
-	// ModeToolCallStrict Mode = "tool_call_strict_mode"
-	ModeJSON       Mode = "json_mode"
-	ModeJSONStrict Mode = "json_strict_mode"
-	ModeJSONSchema Mode = "json_schema_mode"
-	ModeYAML       Mode = "yaml_mode"
-	ModeTOML       Mode = "toml_mode"
-	ModePlainText  Mode = "plain_text_mode"
-	ModeCustom     Mode = "custom_mode"
-	ModeDefault    Mode = ModeJSONSchema
+	ModeJSON             Mode = "json"
+	ModeJSONSchema       Mode = "json_schema"
+	ModeJSONSchemaStrict Mode = "json_schema_strict" // Not all providers support this and all props must be required
+	ModeYAML             Mode = "yaml"
+	ModeTOML             Mode = "toml"
+	ModePlainText        Mode = "plain_text"
+	ModeCustom           Mode = "custom"
 )
+
+// ModeDefault is the default mode for the encoder.
+// Allow to everride in apps
+var ModeDefault = ModeJSONSchema
 
 func PredefinedSchemaEncoder(mode Mode, req any) (SchemaEncoder, error) {
 	var (
@@ -48,7 +49,7 @@ func PredefinedSchemaEncoder(mode Mode, req any) (SchemaEncoder, error) {
 		err error
 	)
 	switch mode {
-	case ModeJSON, ModeJSONStrict, ModeJSONSchema:
+	case ModeJSON, ModeJSONSchema, ModeJSONSchemaStrict:
 		enc, err = jsonenc.NewEncoder(req)
 	case ModeYAML:
 		enc = yamlenc.NewEncoder(req)

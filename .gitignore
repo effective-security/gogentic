@@ -15,6 +15,7 @@ change_log.txt
 test_log.txt
 build_log.txt
 coverage.out
+debug.log
 
 __debug_bin
 __debug_bin*

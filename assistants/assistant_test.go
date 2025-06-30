@@ -22,9 +22,10 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 
 	// Test WithOutputParser
-	outputParser, err := encoding.NewTypedOutputParser[chatmodel.OutputResult](chatmodel.OutputResult{}, encoding.ModeJSON)
+	outputParser, err := encoding.NewTypedOutputParser(chatmodel.OutputResult{}, encoding.ModeJSON)
 	require.NoError(t, err)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 	assistant = assistant.WithOutputParser(outputParser)
@@ -57,7 +58,7 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 	mockTool := mocktools.NewMockTool[any, any](ctrl)
 	mockTool.EXPECT().Name().Return("test_tool").AnyTimes()
 	mockTool.EXPECT().Description().Return("Test tool description").AnyTimes()
-	mockTool.EXPECT().Parameters().Return(map[string]any{}).AnyTimes()
+	mockTool.EXPECT().Parameters().Return(nil).AnyTimes()
 
 	assistant = assistant.WithTools(mockTool)
 	tools = assistant.GetTools()
@@ -86,6 +87,7 @@ func Test_Assistant_MCPMethods(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 
 	// Setup mock LLM for CallMCP test
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
@@ -137,6 +139,7 @@ func Test_Assistant_GetSystemPrompt_ErrorCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{"input"})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// Simulate onPrompt error
@@ -160,6 +163,7 @@ func Test_Assistant_RegisterMCP_Error(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	registrator := &mockMcpRegistratorError{}
@@ -179,6 +183,7 @@ func Test_Assistant_CallMCP_ErrorCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// SetChatID error (no chat context)
@@ -201,6 +206,7 @@ func Test_Assistant_Run_EdgeCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// LLM returns no choices
@@ -224,6 +230,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -250,7 +257,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 	mockTool := mocktools.NewMockTool[any, any](ctrl)
 	mockTool.EXPECT().Name().Return("err_tool").Times(1)
 	mockTool.EXPECT().Description().Return("desc").Times(1)
-	mockTool.EXPECT().Parameters().Return(map[string]any{}).Times(1)
+	mockTool.EXPECT().Parameters().Return(nil).Times(1)
 	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).Return("", assert.AnError).Times(1)
 	assistant = assistant.WithTools(mockTool)
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{
@@ -273,7 +280,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 	mockTool = mocktools.NewMockTool[any, any](ctrl)
 	mockTool.EXPECT().Name().Return("success_tool").Times(1)
 	mockTool.EXPECT().Description().Return("desc").Times(1)
-	mockTool.EXPECT().Parameters().Return(map[string]any{}).Times(1)
+	mockTool.EXPECT().Parameters().Return(nil).Times(1)
 	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).Return("tool result", nil).Times(1)
 	assistant = assistant.WithTools(mockTool)
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{

@@ -1,4 +1,5 @@
 ---
+# supported provider types: OPEN_AI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
 default_provider: OPEN_AI
 providers:
   # the first provider is the default one if default_provider is not set
@@ -10,7 +11,6 @@ providers:
       - gpt-4
       - gpt-4-mini
     open_ai:
-      # OPEN_AI|AZURE|ANTHROPIC|CLOUDFLARE_AZURE
       api_type: OPEN_AI
 
   - name: AZURE
@@ -24,7 +24,6 @@ providers:
       api_version: 2024-08-01-preview
       org_id: 1234567890
       assistant_version: 2024-08-01-preview
-
 
   - name: ANTHROPIC
     token: env://ANTHROPIC_API_KEY
