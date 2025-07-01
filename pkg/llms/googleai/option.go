@@ -29,10 +29,10 @@ func DefaultOptions() Options {
 	return Options{
 		CloudProject:          "",
 		CloudLocation:         "",
-		DefaultModel:          "gemini-pro",
+		DefaultModel:          "gemini-2.5-pro",
 		DefaultEmbeddingModel: "embedding-001",
 		DefaultCandidateCount: 1,
-		DefaultMaxTokens:      2048,
+		DefaultMaxTokens:      1048576,
 		DefaultTemperature:    0.5,
 		DefaultTopK:           3,
 		DefaultTopP:           0.95,
