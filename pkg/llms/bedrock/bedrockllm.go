@@ -95,6 +95,24 @@ func processMessages(messages []llms.MessageContent) ([]bedrockclient.Message, e
 					MimeType: part.MIMEType,
 					Type:     "image", // TODO: wrong
 				})
+			case llms.ToolCall:
+				// Handle tool calls from AI messages
+				bedrockMsgs = append(bedrockMsgs, bedrockclient.Message{
+					Role:       m.Role,
+					Content:    part.ID, // Tool call ID
+					Type:       "tool_use",
+					ToolCallID: part.ID,
+					ToolName:   part.FunctionCall.Name,
+					ToolInput:  part.FunctionCall.Arguments, // JSON arguments
+				})
+			case llms.ToolCallResponse:
+				// Handle tool call responses
+				bedrockMsgs = append(bedrockMsgs, bedrockclient.Message{
+					Role:       m.Role,
+					Content:    part.Content,
+					Type:       "tool_result",
+					ToolCallID: part.ToolCallID,
+				})
 			default:
 				return nil, errors.New("unsupported message type")
 			}

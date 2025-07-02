@@ -22,14 +22,30 @@ type Client struct {
 type Message struct {
 	Role    llms.ChatMessageType
 	Content string
-	// Type may be "text" or "image"
+	// Type may be "text", "image", "tool_use", "tool_result"
 	Type string
 	// MimeType is the MIME type
 	MimeType string
+	// Tool-specific fields
+	ToolCallID string // For tool results
+	ToolName   string // For tool use
+	ToolInput  string // For tool use (JSON)
 }
 
 func getProvider(modelID string) string {
-	return strings.Split(modelID, ".")[0]
+	// Handle Inference Profiles (e.g., "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
+	// and direct model IDs (e.g., "anthropic.claude-3-sonnet-20240229-v1:0")
+	parts := strings.Split(modelID, ".")
+	if len(parts) >= 2 {
+		// Check if first part is a region (like "us", "eu", etc.)
+		if len(parts[0]) == 2 && strings.ToLower(parts[0]) == parts[0] {
+			// This looks like a region prefix, use the second part as provider
+			return parts[1]
+		}
+		// Otherwise use the first part as provider (direct model ID)
+		return parts[0]
+	}
+	return parts[0]
 }
 
 // NewClient creates a new Bedrock client.
@@ -59,7 +75,7 @@ func (c *Client) CreateCompletion(ctx context.Context,
 	case "meta":
 		return createMetaCompletion(ctx, c.client, modelID, messages, options)
 	default:
-		return nil, errors.New("unsupported provider")
+		return nil, errors.New("bedrock: unsupported provider")
 	}
 }
 

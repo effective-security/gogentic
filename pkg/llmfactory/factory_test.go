@@ -85,7 +85,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "anthropic.claude-3-5-sonnet-20241022-v2:0", fm.model)
+	assert.Equal(t, "us.anthropic.claude-opus-4-20250514-v1:0", fm.model)
 	assert.Equal(t, "BEDROCK", fm.provider)
 
 	model, err = f.ModelByType("PERPLEXITY")

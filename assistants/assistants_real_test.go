@@ -95,12 +95,12 @@ func Test_Real_Assistant(t *testing.T) {
 }
 
 func Test_Real_Providers(t *testing.T) {
-	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY"}
+	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.ModelByType("BEDROCK")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)

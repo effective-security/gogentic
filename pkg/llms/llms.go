@@ -87,7 +87,11 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityJSONResponse |
 		CapabilityVision,
 
+	// Use Bedrock with Anthropic models
 	ProviderBedrock: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt,
 
 	ProviderCloudflare: CapabilityText,

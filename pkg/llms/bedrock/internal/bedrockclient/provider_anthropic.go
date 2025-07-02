@@ -32,12 +32,20 @@ type anthropicBinGenerationInputSource struct {
 // anthropicTextGenerationInputContent is a single message in the input.
 type anthropicTextGenerationInputContent struct {
 	// The type of the content. Required.
-	// One of: "text", "image"
+	// One of: "text", "image", "tool_use", "tool_result"
 	Type string `json:"type"`
 	// The source of the content. Required if type is "image"
 	Source *anthropicBinGenerationInputSource `json:"source,omitempty"`
 	// The text content. Required if type is "text"
 	Text string `json:"text,omitempty"`
+	// Tool use fields
+	ID    string `json:"id,omitempty"`    // Required if type is "tool_use"
+	Name  string `json:"name,omitempty"`  // Required if type is "tool_use"
+	Input any    `json:"input,omitempty"` // Required if type is "tool_use"
+	// Tool result fields
+	ToolUseID string `json:"tool_use_id,omitempty"` // Required if type is "tool_result"
+	Content   string `json:"content,omitempty"`     // Required if type is "tool_result"
+	IsError   bool   `json:"is_error,omitempty"`    // Optional for type "tool_result"
 }
 
 type anthropicTextGenerationInputMessage struct {
@@ -47,6 +55,20 @@ type anthropicTextGenerationInputMessage struct {
 	Role string `json:"role"`
 	// The content of the message. Required
 	Content []anthropicTextGenerationInputContent `json:"content"`
+}
+
+// anthropicTool represents a tool that can be used by the model
+type anthropicTool struct {
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	InputSchema anthropicInputSchema `json:"input_schema"`
+}
+
+// anthropicInputSchema represents the JSON schema for tool input
+type anthropicInputSchema struct {
+	Type       string         `json:"type"`
+	Properties map[string]any `json:"properties,omitempty"`
+	Required   []string       `json:"required,omitempty"`
 }
 
 // anthropicTextGenerationInput is the input to the model.
@@ -69,6 +91,19 @@ type anthropicTextGenerationInput struct {
 	TopK int `json:"top_k,omitempty"`
 	// Sequences that will cause the model to stop generating tokens. Optional
 	StopSequences []string `json:"stop_sequences,omitempty"`
+	// Tools to use. Optional
+	Tools []anthropicTool `json:"tools,omitempty"`
+}
+
+// anthropicTextGenerationOutputContent represents a content block in the output
+type anthropicTextGenerationOutputContent struct {
+	Type string `json:"type"`
+	// Text content fields
+	Text string `json:"text,omitempty"`
+	// Tool use fields
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Input any    `json:"input,omitempty"`
 }
 
 // anthropicTextGenerationOutput is the generated output.
@@ -80,13 +115,10 @@ type anthropicTextGenerationOutput struct {
 	// This will always be "assistant".
 	Role string `json:"role"`
 	// This is an array of content blocks, each of which has a type that determines its shape.
-	// Currently, the only type in responses is "text".
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
+	// Can be "text" or "tool_use".
+	Content []anthropicTextGenerationOutputContent `json:"content"`
 	// The reason for the completion of the generation.
-	// One of: ["end_turn", "max_tokens", "stop_sequence"]
+	// One of: ["end_turn", "max_tokens", "stop_sequence", "tool_use"]
 	StopReason string `json:"stop_reason"`
 	// Which custom stop sequence was matched, if any.
 	StopSequence string `json:"stop_sequence"`
@@ -101,6 +133,7 @@ const (
 	AnthropicCompletionReasonEndTurn      = "end_turn"
 	AnthropicCompletionReasonMaxTokens    = "max_tokens"
 	AnthropicCompletionReasonStopSequence = "stop_sequence"
+	AnthropicCompletionReasonToolUse      = "tool_use"
 )
 
 // The latest version of the model.
@@ -117,8 +150,10 @@ const (
 
 // Type attribute for the anthropic message.
 const (
-	AnthropicMessageTypeText  = "text"
-	AnthropicMessageTypeImage = "image"
+	AnthropicMessageTypeText       = "text"
+	AnthropicMessageTypeImage      = "image"
+	AnthropicMessageTypeToolUse    = "tool_use"
+	AnthropicMessageTypeToolResult = "tool_result"
 )
 
 func createAnthropicCompletion(ctx context.Context,
@@ -132,6 +167,31 @@ func createAnthropicCompletion(ctx context.Context,
 		return nil, err
 	}
 
+	// Convert tools to Anthropic format
+	var tools []anthropicTool
+	if len(options.Tools) > 0 {
+		tools = make([]anthropicTool, len(options.Tools))
+		for i, tool := range options.Tools {
+			var properties map[string]any
+			if tool.Function.Parameters.Properties != nil {
+				properties = make(map[string]any)
+				for pair := tool.Function.Parameters.Properties.Oldest(); pair != nil; pair = pair.Next() {
+					properties[pair.Key] = pair.Value
+				}
+			}
+
+			tools[i] = anthropicTool{
+				Name:        tool.Function.Name,
+				Description: tool.Function.Description,
+				InputSchema: anthropicInputSchema{
+					Type:       "object",
+					Properties: properties,
+					Required:   tool.Function.Parameters.Required,
+				},
+			}
+		}
+	}
+
 	input := anthropicTextGenerationInput{
 		AnthropicVersion: AnthropicLatestVersion,
 		MaxTokens:        getMaxTokens(options.MaxTokens, 2048),
@@ -141,6 +201,7 @@ func createAnthropicCompletion(ctx context.Context,
 		TopP:             options.TopP,
 		TopK:             options.TopK,
 		StopSequences:    options.StopWords,
+		Tools:            tools,
 	}
 
 	body, err := json.Marshal(input)
@@ -177,22 +238,73 @@ func createAnthropicCompletion(ctx context.Context,
 
 	if len(output.Content) == 0 {
 		return nil, errors.New("no results")
-	} else if stopReason := output.StopReason; stopReason != AnthropicCompletionReasonEndTurn && stopReason != AnthropicCompletionReasonStopSequence {
+	} else if stopReason := output.StopReason; stopReason != AnthropicCompletionReasonEndTurn &&
+		stopReason != AnthropicCompletionReasonStopSequence &&
+		stopReason != AnthropicCompletionReasonToolUse {
 		return nil, errors.New("completed due to " + stopReason + ". Maybe try increasing max tokens")
 	}
-	Contentchoices := make([]*llms.ContentChoice, len(output.Content))
-	for i, c := range output.Content {
-		Contentchoices[i] = &llms.ContentChoice{
-			Content:    c.Text,
+
+	// Process content blocks - handle both text and tool use
+	var choices []*llms.ContentChoice
+	var textContent string
+	var toolCalls []llms.ToolCall
+
+	for _, c := range output.Content {
+		switch c.Type {
+		case AnthropicMessageTypeText:
+			textContent += c.Text
+		case AnthropicMessageTypeToolUse:
+			argumentsJSON, err := json.Marshal(c.Input)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to marshal tool arguments")
+			}
+			toolCalls = append(toolCalls, llms.ToolCall{
+				ID: c.ID,
+				FunctionCall: &llms.FunctionCall{
+					Name:      c.Name,
+					Arguments: string(argumentsJSON),
+				},
+			})
+		}
+	}
+
+	// Create appropriate choices based on content type
+	if textContent != "" {
+		choices = append(choices, &llms.ContentChoice{
+			Content:    textContent,
 			StopReason: output.StopReason,
 			GenerationInfo: map[string]any{
 				"input_tokens":  output.Usage.InputTokens,
 				"output_tokens": output.Usage.OutputTokens,
 			},
-		}
+		})
 	}
+
+	if len(toolCalls) > 0 {
+		choices = append(choices, &llms.ContentChoice{
+			ToolCalls:  toolCalls,
+			StopReason: output.StopReason,
+			GenerationInfo: map[string]any{
+				"input_tokens":  output.Usage.InputTokens,
+				"output_tokens": output.Usage.OutputTokens,
+			},
+		})
+	}
+
+	// If we have neither text nor tools, create a single choice with the first content
+	if len(choices) == 0 && len(output.Content) > 0 {
+		choices = append(choices, &llms.ContentChoice{
+			Content:    output.Content[0].Text,
+			StopReason: output.StopReason,
+			GenerationInfo: map[string]any{
+				"input_tokens":  output.Usage.InputTokens,
+				"output_tokens": output.Usage.OutputTokens,
+			},
+		})
+	}
+
 	return &llms.ContentResponse{
-		Choices: Contentchoices,
+		Choices: choices,
 	}, nil
 }
 
@@ -341,7 +453,9 @@ func getAnthropicRole(role llms.ChatMessageType) (string, error) {
 		fallthrough
 	case llms.ChatMessageTypeHuman:
 		return AnthropicRoleUser, nil
-	case llms.ChatMessageTypeFunction, llms.ChatMessageTypeTool:
+	case llms.ChatMessageTypeTool:
+		return AnthropicRoleUser, nil
+	case llms.ChatMessageTypeFunction:
 		fallthrough
 	default:
 		return "", errors.New("role not supported")
@@ -364,6 +478,26 @@ func getAnthropicInputContent(message Message) anthropicTextGenerationInputConte
 				MediaType: message.MimeType,
 				Data:      base64.StdEncoding.EncodeToString([]byte(message.Content)),
 			},
+		}
+	case AnthropicMessageTypeToolUse:
+		// Handle tool use (from AI messages)
+		var input any
+		if message.ToolInput != "" {
+			_ = json.Unmarshal([]byte(message.ToolInput), &input)
+		}
+		c = anthropicTextGenerationInputContent{
+			Type:  message.Type,
+			ID:    message.ToolCallID,
+			Name:  message.ToolName,
+			Input: input,
+		}
+	case AnthropicMessageTypeToolResult:
+		// Handle tool result (from tool response messages)
+		c = anthropicTextGenerationInputContent{
+			Type:      message.Type,
+			ToolUseID: message.ToolCallID,
+			Content:   message.Content,
+			IsError:   false, // TODO: Add error handling
 		}
 	}
 	return c
