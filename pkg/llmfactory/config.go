@@ -35,7 +35,7 @@ type OpenAIConfig struct {
 	BaseURL    string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	APIVersion string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
 	// APIType specifies the type of API to use:
-	// OPEN_AI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
+	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`
 	// OrgID specifies which organization's quota and billing should be used when making API requests.
 	OrgID            string `json:"org_id,omitempty" yaml:"org_id,omitempty"`

@@ -1,23 +1,23 @@
 ---
-# supported provider types: OPEN_AI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
-default_provider: OPEN_AI
+# supported provider types: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
+default_provider: OPENAI
 providers:
   # the first provider is the default one if default_provider is not set
-  - name: OPEN_AI
+  - name: OPENAI
     token: env://OPENAI_API_KEY
-    default_model: gpt-4o
+    default_model: gpt-4.1
     available_models:
+      - gpt-4.1
       - gpt-4o
       - gpt-4
       - gpt-4-mini
     open_ai:
-      api_type: OPEN_AI
+      api_type: OPENAI
 
   - name: AZURE
-    default_model: gpt-41
+    default_model: deployment-gpt-4.1
     available_models:
-      - gpt-41
-      - gpt-41-mini
+      - deployment-gpt-4.1
     open_ai:
       api_type: AZURE
       base_url: https://azure-test.openai.azure.com
@@ -29,6 +29,7 @@ providers:
     token: env://ANTHROPIC_API_KEY
     default_model: claude-sonnet-4-20250514
     available_models:
+      - claude-opus-4-20250514
       - claude-sonnet-4-20250514
     open_ai:
       api_type: ANTHROPIC
@@ -66,4 +67,4 @@ assistant_models:
   default:
     - gpt-4o
   orchestrator:
-    - gpt-41-mini
+    - claude-sonnet-4-20250514
