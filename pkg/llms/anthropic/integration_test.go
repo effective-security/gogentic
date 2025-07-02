@@ -17,8 +17,15 @@ import (
 // Integration tests that require a real API key
 // These tests are skipped when ANTHROPIC_API_KEY is not set
 
+func checkAnthropicAPIKeyOrSkip(t *testing.T) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" || apiKey == "fakekey" {
+		t.Skip("ANTHROPIC_API_KEY not set")
+	}
+}
+
 func TestIntegrationTextGeneration(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -45,8 +52,7 @@ func TestIntegrationTextGeneration(t *testing.T) {
 }
 
 func TestIntegrationChatSequence(t *testing.T) {
-	t.Skip("Skipping real chat sequence test")
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -77,7 +83,7 @@ func TestIntegrationChatSequence(t *testing.T) {
 }
 
 func TestIntegrationStreaming(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -114,7 +120,8 @@ func TestIntegrationStreaming(t *testing.T) {
 }
 
 func TestIntegrationStreamingError(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
+
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -135,7 +142,7 @@ func TestIntegrationStreamingError(t *testing.T) {
 }
 
 func TestIntegrationToolCalling(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	// Define weather function
@@ -164,10 +171,10 @@ func TestIntegrationToolCalling(t *testing.T) {
 
 	resp, err := llm.GenerateContent(context.Background(), content, llms.WithFunctions(functions))
 	require.NoError(t, err)
-	assert.NotEmpty(t, resp.Choices)
+	require.NotEmpty(t, resp.Choices)
 
 	choice := resp.Choices[0]
-	assert.NotEmpty(t, choice.ToolCalls)
+	require.NotEmpty(t, choice.ToolCalls)
 
 	toolCall := choice.ToolCalls[0]
 	assert.Equal(t, "get_current_weather", toolCall.FunctionCall.Name)
@@ -176,7 +183,7 @@ func TestIntegrationToolCalling(t *testing.T) {
 }
 
 func TestIntegrationToolCallAndResponse(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	// Define a simple calculation function
@@ -246,8 +253,7 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 }
 
 func TestIntegrationMultimodalImage(t *testing.T) {
-	t.Skip("Skipping real multimodal image test")
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t, anthropic.WithModel("claude-3-5-sonnet-20241022"))
 
 	// Create a simple red pixel as a test image (1x1 PNG)
@@ -286,7 +292,7 @@ func TestIntegrationMultimodalImage(t *testing.T) {
 }
 
 func TestIntegrationErrorHandling(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 
 	// Test with invalid model
 	llm, err := anthropic.New(
@@ -308,7 +314,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 }
 
 func TestIntegrationModelParameters(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -339,7 +345,7 @@ func TestIntegrationModelParameters(t *testing.T) {
 }
 
 func TestIntegrationStopSequences(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -363,7 +369,7 @@ func TestIntegrationStopSequences(t *testing.T) {
 }
 
 func TestIntegrationMaxTokens(t *testing.T) {
-	t.Parallel()
+	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
 	content := []llms.MessageContent{
@@ -391,7 +397,8 @@ func TestIntegrationMaxTokens(t *testing.T) {
 
 // Benchmark integration tests
 func BenchmarkIntegrationSimpleGeneration(b *testing.B) {
-	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" || apiKey == "fakekey" {
 		b.Skip("ANTHROPIC_API_KEY not set")
 	}
 

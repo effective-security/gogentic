@@ -35,9 +35,10 @@ providers:
       api_type: ANTHROPIC
 
   - name: BEDROCK
-    default_model: anthropic.claude-3-5-sonnet-20241022-v2:0
+    default_model: us.anthropic.claude-opus-4-20250514-v1:0
     available_models:
-      - anthropic.claude-3-5-sonnet-20241022-v2:0
+      - us.anthropic.claude-opus-4-20250514-v1:0
+      - us.anthropic.claude-sonnet-4-20250514-v1:0
     open_ai:
       api_type: BEDROCK
 
