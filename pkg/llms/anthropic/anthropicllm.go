@@ -433,7 +433,7 @@ func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, 
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle human message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
-		case llms.ChatMessageTypeAI:
+		case llms.ChatMessageTypeAI, llms.ChatMessageTypeGeneric:
 			chatMessage, err := HandleAIMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle AI message")
@@ -445,7 +445,7 @@ func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, 
 				return nil, "", errors.WithMessage(err, "anthropic: failed to handle tool message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
-		case llms.ChatMessageTypeGeneric, llms.ChatMessageTypeFunction:
+		case llms.ChatMessageTypeFunction:
 			return nil, "", errors.WithMessagef(ErrUnsupportedMessageType, "anthropic: %v", msg.Role)
 		default:
 			return nil, "", errors.WithMessagef(ErrUnsupportedMessageType, "anthropic: %v", msg.Role)
