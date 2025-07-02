@@ -85,6 +85,8 @@ var providerCapabilities = map[ProviderType]Capability{
 	ProviderGoogleAI: CapabilityText |
 		CapabilitySystemPrompt |
 		CapabilityJSONResponse |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
 		CapabilityVision,
 
 	// Use Bedrock with Anthropic models
