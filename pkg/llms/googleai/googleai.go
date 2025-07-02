@@ -4,8 +4,6 @@ package googleai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -356,25 +354,25 @@ DoStream:
 	return convertCandidates([]*genai.Candidate{candidate}, mresp.UsageMetadata)
 }
 
-// showContent is a debugging helper for genai.Content.
-func showContent(w io.Writer, cs []*genai.Content) {
-	fmt.Fprintf(w, "Content (len=%v)\n", len(cs))
-	for i, c := range cs {
-		fmt.Fprintf(w, "[%d]: Role=%s\n", i, c.Role)
-		for j, p := range c.Parts {
-			fmt.Fprintf(w, "  Parts[%v]: ", j)
-			switch pp := p.(type) {
-			case genai.Text:
-				fmt.Fprintf(w, "Text %q\n", pp)
-			case genai.Blob:
-				fmt.Fprintf(w, "Blob MIME=%q, size=%d\n", pp.MIMEType, len(pp.Data))
-			case genai.FunctionCall:
-				fmt.Fprintf(w, "FunctionCall Name=%v, Args=%v\n", pp.Name, pp.Args)
-			case genai.FunctionResponse:
-				fmt.Fprintf(w, "FunctionResponse Name=%v Response=%v\n", pp.Name, pp.Response)
-			default:
-				fmt.Fprintf(w, "unknown type %T\n", pp)
-			}
-		}
-	}
-}
+// // showContent is a debugging helper for genai.Content.
+// func showContent(w io.Writer, cs []*genai.Content) {
+// 	fmt.Fprintf(w, "Content (len=%v)\n", len(cs))
+// 	for i, c := range cs {
+// 		fmt.Fprintf(w, "[%d]: Role=%s\n", i, c.Role)
+// 		for j, p := range c.Parts {
+// 			fmt.Fprintf(w, "  Parts[%v]: ", j)
+// 			switch pp := p.(type) {
+// 			case genai.Text:
+// 				fmt.Fprintf(w, "Text %q\n", pp)
+// 			case genai.Blob:
+// 				fmt.Fprintf(w, "Blob MIME=%q, size=%d\n", pp.MIMEType, len(pp.Data))
+// 			case genai.FunctionCall:
+// 				fmt.Fprintf(w, "FunctionCall Name=%v, Args=%v\n", pp.Name, pp.Args)
+// 			case genai.FunctionResponse:
+// 				fmt.Fprintf(w, "FunctionResponse Name=%v Response=%v\n", pp.Name, pp.Response)
+// 			default:
+// 				fmt.Fprintf(w, "unknown type %T\n", pp)
+// 			}
+// 		}
+// 	}
+// }

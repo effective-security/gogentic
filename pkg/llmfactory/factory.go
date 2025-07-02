@@ -26,7 +26,7 @@ type Factory interface {
 	// DefaultModel returns the default LLM model.
 	DefaultModel() (llms.Model, error)
 	// ModelByType returns an LLM model by its type, e.g.
-	// OPEN_AI, AZURE, AZURE_AD, CLOUDFLARE, ANTHROPIC, GOOGLEAI, BEDROCK, PERPLEXITY
+	// OPENAI, AZURE, AZURE_AD, CLOUDFLARE, ANTHROPIC, GOOGLEAI, BEDROCK, PERPLEXITY
 	ModelByType(providerType llms.ProviderType) (llms.Model, error)
 	// ModelByName returns an LLM model by its name,
 	// if the model is not found, it will return the default model.
@@ -275,12 +275,12 @@ func (f *factory) ModelByName(modelNames ...string) (llms.Model, error) {
 func (f *factory) ToolModel(toolName string, preferredModels ...string) (llms.Model, error) {
 	// Check if we have a specific model mapping for this tool
 	if modelNames, ok := f.toolModels[toolName]; ok {
-		return f.ModelByName(modelNames...)
+		return f.ModelByName(append(preferredModels, modelNames...)...)
 	}
 
 	// Check for default model mapping
 	if modelNames, ok := f.toolModels["default"]; ok {
-		return f.ModelByName(modelNames...)
+		return f.ModelByName(append(preferredModels, modelNames...)...)
 	}
 
 	// Fallback to default provider
@@ -291,12 +291,12 @@ func (f *factory) ToolModel(toolName string, preferredModels ...string) (llms.Mo
 func (f *factory) AssistantModel(assistantName string, preferredModels ...string) (llms.Model, error) {
 	// Check if we have a specific model mapping for this assistant
 	if modelNames, ok := f.assistantModels[assistantName]; ok {
-		return f.ModelByName(modelNames...)
+		return f.ModelByName(append(preferredModels, modelNames...)...)
 	}
 
 	// Check for default model mapping
 	if modelNames, ok := f.assistantModels["default"]; ok {
-		return f.ModelByName(modelNames...)
+		return f.ModelByName(append(preferredModels, modelNames...)...)
 	}
 
 	// Fallback to default provider

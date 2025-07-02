@@ -4,67 +4,115 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
-	"github.com/effective-security/gogentic/pkg/llms/anthropic/internal/anthropicclient"
+	"github.com/effective-security/x/values"
 )
 
 var (
-	ErrEmptyResponse            = errors.New("no response")
-	ErrMissingToken             = errors.New("missing the Anthropic API key, set it in the ANTHROPIC_API_KEY environment variable")
-	ErrUnexpectedResponseLength = errors.New("unexpected length of response")
-	ErrInvalidContentType       = errors.New("invalid content type")
-	ErrUnsupportedMessageType   = errors.New("unsupported message type")
-	ErrUnsupportedContentType   = errors.New("unsupported content type")
+	ErrEmptyResponse            = errors.New("anthropic: no response")
+	ErrMissingToken             = errors.New("anthropic: missing API key, set it in the ANTHROPIC_API_KEY environment variable")
+	ErrUnexpectedResponseLength = errors.New("anthropic: unexpected length of response")
+	ErrInvalidContentType       = errors.New("anthropic: invalid content type")
+	ErrUnsupportedMessageType   = errors.New("anthropic: unsupported message type")
+	ErrUnsupportedContentType   = errors.New("anthropic: unsupported content type")
 )
 
 const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
+
+	DefaultMaxTokens = 4096
 )
 
 type LLM struct {
-	client *anthropicclient.Client
+	Client  *anthropic.Client
+	Options *Options
 }
 
 var _ llms.Model = (*LLM)(nil)
 
-// New returns a new Anthropic LLM.
+// New creates a new Anthropic LLM client using the official Anthropic SDK.
+//
+// This function initializes an Anthropic client with the provided options.
+// If no token is provided via options, it will attempt to read the API key
+// from the ANTHROPIC_API_KEY environment variable.
+//
+// Required configuration:
+//   - API token (via WithToken option or ANTHROPIC_API_KEY env var)
+//   - Model (via WithModel option)
+//
+// Example usage:
+//
+//	llm, err := anthropic.New(
+//	    anthropic.WithToken("your-api-key"),
+//	    anthropic.WithModel("claude-3-5-sonnet-20241022"),
+//	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Generate content
+//	resp, err := llm.GenerateContent(ctx, messages)
 func New(opts ...Option) (*LLM, error) {
-	c, err := newClient(opts...)
-	if err != nil {
-		return nil, errors.Wrap(err, "anthropic: failed to create client")
-	}
-	return &LLM{
-		client: c,
-	}, nil
-}
-
-func newClient(opts ...Option) (*anthropicclient.Client, error) {
-	options := &options{
-		token:      os.Getenv(tokenEnvVarName),
-		baseURL:    anthropicclient.DefaultBaseURL,
-		httpClient: http.DefaultClient,
+	options := &Options{
+		Token:      os.Getenv(TokenEnvVarName),
+		BaseURL:    "https://api.anthropic.com",
+		HttpClient: http.DefaultClient,
 	}
 
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	if len(options.token) == 0 {
+	if len(options.Token) == 0 {
 		return nil, ErrMissingToken
 	}
+	if options.Model == "" {
+		return nil, errors.New("anthropic: model is required")
+	}
 
-	return anthropicclient.New(options.token, options.model, options.baseURL,
-		anthropicclient.WithHTTPClient(options.httpClient),
-		anthropicclient.WithLegacyTextCompletionsAPI(options.useLegacyTextCompletionsAPI),
-		anthropicclient.WithAnthropicBetaHeader(options.anthropicBetaHeader),
-	)
+	c, err := newClient(options)
+	if err != nil {
+		return nil, errors.Wrap(err, "anthropic: failed to create client")
+	}
+	return &LLM{
+		Client:  c,
+		Options: options,
+	}, nil
+}
+
+func newClient(options *Options) (*anthropic.Client, error) {
+	// Build SDK options
+	sdkOpts := []option.RequestOption{
+		option.WithAPIKey(options.Token),
+		option.WithMaxRetries(2),
+		option.WithRequestTimeout(5 * time.Minute),
+	}
+
+	if options.BaseURL != "" {
+		sdkOpts = append(sdkOpts, option.WithBaseURL(options.BaseURL))
+	}
+
+	if options.HttpClient != nil {
+		sdkOpts = append(sdkOpts, option.WithHTTPClient(options.HttpClient))
+	}
+
+	if options.AnthropicBetaHeader != "" {
+		sdkOpts = append(sdkOpts, option.WithHeader("anthropic-beta", options.AnthropicBetaHeader))
+	}
+
+	client := anthropic.NewClient(sdkOpts...)
+
+	return &client, nil
 }
 
 // GetProviderType implements the Model interface.
@@ -73,121 +121,133 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 }
 
 // GenerateContent implements the Model interface.
+//
+// This method generates content using the Anthropic API. It supports:
+//   - Text and image inputs (multimodal)
+//   - Tool/function calling
+//   - Streaming responses
+//   - Custom parameters (temperature, max tokens, etc.)
+//
+// Example usage:
+//
+//	messages := []llms.MessageContent{
+//	    {
+//	        Role: llms.ChatMessageTypeHuman,
+//	        Parts: []llms.ContentPart{llms.TextPart("Hello, how are you?")},
+//	    },
+//	}
+//
+//	resp, err := llm.GenerateContent(ctx, messages,
+//	    llms.WithTemperature(0.7),
+//	    llms.WithMaxTokens(1000),
+//	)
 func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	opts := &llms.CallOptions{}
+	opts := llms.CallOptions{
+		Model: o.Options.Model,
+	}
 	for _, opt := range options {
-		opt(opts)
+		opt(&opts)
 	}
-
-	if o.client.UseLegacyTextCompletionsAPI {
-		return generateCompletionsContent(ctx, o, messages, opts)
-	}
-	return generateMessagesContent(ctx, o, messages, opts)
+	return GenerateMessagesContent(ctx, o, messages, &opts)
 }
 
-func generateCompletionsContent(ctx context.Context, o *LLM, messages []llms.MessageContent, opts *llms.CallOptions) (*llms.ContentResponse, error) {
-	if len(messages) == 0 || len(messages[0].Parts) == 0 {
-		return nil, ErrEmptyResponse
-	}
-
-	msg0 := messages[0]
-	part := msg0.Parts[0]
-	partText, ok := part.(llms.TextContent)
-	if !ok {
-		return nil, errors.Errorf("anthropic: unexpected message type: %T", part)
-	}
-	prompt := fmt.Sprintf("\n\nHuman: %s\n\nAssistant:", partText.Text)
-	result, err := o.client.CreateCompletion(ctx, &anthropicclient.CompletionRequest{
-		Model:         opts.Model,
-		Prompt:        prompt,
-		MaxTokens:     opts.MaxTokens,
-		StopWords:     opts.StopWords,
-		Temperature:   opts.Temperature,
-		TopP:          opts.TopP,
-		StreamingFunc: opts.StreamingFunc,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "anthropic: failed to create completion")
-	}
-
-	resp := &llms.ContentResponse{
-		Choices: []*llms.ContentChoice{
-			{
-				Content: result.Text,
-			},
-		},
-	}
-	return resp, nil
-}
-
-func generateMessagesContent(ctx context.Context, o *LLM, messages []llms.MessageContent, opts *llms.CallOptions) (*llms.ContentResponse, error) {
-	chatMessages, systemPrompt, err := processMessages(messages)
+// GenerateMessagesContent generates content using the Anthropic API with processed messages.
+//
+// This function handles the core logic for generating content, including:
+//   - Message processing and conversion to Anthropic format
+//   - Tool definition handling
+//   - Parameter setup (temperature, max tokens, etc.)
+//   - Streaming and non-streaming responses
+//
+// The function processes input messages to separate system prompts from conversation
+// messages, converts tools to the Anthropic format, and handles both streaming
+// and non-streaming responses.
+func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.MessageContent, opts *llms.CallOptions) (*llms.ContentResponse, error) {
+	sdkMessages, systemPrompt, err := ProcessMessages(messages)
 	if err != nil {
 		return nil, errors.Wrap(err, "anthropic: failed to process messages")
 	}
 
-	tools := toolsToTools(opts.Tools)
-	result, err := o.client.CreateMessage(ctx, &anthropicclient.MessageRequest{
-		Model:         opts.Model,
-		Messages:      chatMessages,
-		System:        systemPrompt,
-		MaxTokens:     opts.MaxTokens,
-		StopWords:     opts.StopWords,
-		Temperature:   opts.Temperature,
-		TopP:          opts.TopP,
-		Tools:         tools,
-		StreamingFunc: opts.StreamingFunc,
-	})
+	tools := ToTools(opts.Tools)
+
+	// Build message parameters
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(opts.Model),
+		Messages:  sdkMessages,
+		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
+	}
+
+	if systemPrompt != "" {
+		params.System = []anthropic.TextBlockParam{
+			{
+				Type: "text",
+				Text: systemPrompt,
+			},
+		}
+	}
+
+	if opts.Temperature > 0 {
+		params.Temperature = anthropic.Float(opts.Temperature)
+	}
+
+	if opts.TopP > 0 {
+		params.TopP = anthropic.Float(opts.TopP)
+	}
+
+	if len(opts.StopWords) > 0 {
+		params.StopSequences = opts.StopWords
+	}
+
+	if len(tools) > 0 {
+		params.Tools = tools
+	}
+
+	// Handle streaming
+	if opts.StreamingFunc != nil {
+		return GenerateStreamingContent(ctx, o, params, opts.StreamingFunc)
+	}
+
+	// Non-streaming message creation
+	result, err := o.Client.Messages.New(ctx, params)
 	if err != nil {
 		return nil, errors.Wrap(err, "anthropic: failed to create message")
 	}
-	if result == nil {
-		return nil, ErrEmptyResponse
-	}
 
 	choices := make([]*llms.ContentChoice, len(result.Content))
-	for i, content := range result.Content {
-		switch content.GetType() {
-		case "text":
-			if textContent, ok := content.(*anthropicclient.TextContent); ok {
-				choices[i] = &llms.ContentChoice{
-					Content:    textContent.Text,
-					StopReason: result.StopReason,
-					GenerationInfo: map[string]any{
-						"InputTokens":  result.Usage.InputTokens,
-						"OutputTokens": result.Usage.OutputTokens,
-					},
-				}
-			} else {
-				return nil, errors.WithMessagef(ErrInvalidContentType, "anthropic: for text message")
+	for i, contentBlock := range result.Content {
+		switch content := contentBlock.AsAny().(type) {
+		case anthropic.TextBlock:
+			choices[i] = &llms.ContentChoice{
+				Content:    content.Text,
+				StopReason: string(result.StopReason),
+				GenerationInfo: map[string]any{
+					"InputTokens":  result.Usage.InputTokens,
+					"OutputTokens": result.Usage.OutputTokens,
+				},
 			}
-		case "tool_use":
-			if toolUseContent, ok := content.(*anthropicclient.ToolUseContent); ok {
-				argumentsJSON, err := json.Marshal(toolUseContent.Input)
-				if err != nil {
-					return nil, errors.Wrap(err, "anthropic: failed to marshal tool use arguments")
-				}
-				choices[i] = &llms.ContentChoice{
-					ToolCalls: []llms.ToolCall{
-						{
-							ID: toolUseContent.ID,
-							FunctionCall: &llms.FunctionCall{
-								Name:      toolUseContent.Name,
-								Arguments: string(argumentsJSON),
-							},
+		case anthropic.ToolUseBlock:
+			argumentsJSON, err := json.Marshal(content.Input)
+			if err != nil {
+				return nil, errors.Wrap(err, "anthropic: failed to marshal tool use arguments")
+			}
+			choices[i] = &llms.ContentChoice{
+				ToolCalls: []llms.ToolCall{
+					{
+						ID: content.ID,
+						FunctionCall: &llms.FunctionCall{
+							Name:      content.Name,
+							Arguments: string(argumentsJSON),
 						},
 					},
-					StopReason: result.StopReason,
-					GenerationInfo: map[string]any{
-						"InputTokens":  result.Usage.InputTokens,
-						"OutputTokens": result.Usage.OutputTokens,
-					},
-				}
-			} else {
-				return nil, errors.WithMessagef(ErrInvalidContentType, "anthropic: for tool use message")
+				},
+				StopReason: string(result.StopReason),
+				GenerationInfo: map[string]any{
+					"InputTokens":  result.Usage.InputTokens,
+					"OutputTokens": result.Usage.OutputTokens,
+				},
 			}
 		default:
-			return nil, errors.WithMessagef(ErrUnsupportedContentType, "anthropic: %v", content.GetType())
+			return nil, errors.WithMessagef(ErrUnsupportedContentType, "anthropic: %T", content)
 		}
 	}
 
@@ -197,20 +257,160 @@ func generateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	return resp, nil
 }
 
-func toolsToTools(tools []llms.Tool) []anthropicclient.Tool {
-	toolReq := make([]anthropicclient.Tool, len(tools))
-	for i, tool := range tools {
-		toolReq[i] = anthropicclient.Tool{
-			Name:        tool.Function.Name,
-			Description: tool.Function.Description,
-			InputSchema: tool.Function.Parameters,
+// GenerateStreamingContent handles streaming responses from the Anthropic API.
+//
+// This function establishes a streaming connection to the Anthropic API and processes
+// real-time response chunks. It handles:
+//   - Text content streaming (delta updates)
+//   - Tool call streaming (partial JSON assembly)
+//   - Usage statistics collection
+//   - Error handling for streaming failures
+//
+// The streaming function is called for each text chunk received, allowing for
+// real-time display or processing of the generated content.
+func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.MessageNewParams, streamingFunc func(context.Context, []byte) error) (*llms.ContentResponse, error) {
+	stream := o.Client.Messages.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var content strings.Builder
+	var toolCalls []llms.ToolCall
+	var currentToolCall *llms.ToolCall
+	var stopReason string
+	var inputTokens, outputTokens int64
+
+	for stream.Next() {
+		event := stream.Current()
+
+		switch evt := event.AsAny().(type) {
+		case anthropic.MessageStartEvent:
+			inputTokens = evt.Message.Usage.InputTokens
+		case anthropic.ContentBlockStartEvent:
+			switch block := evt.ContentBlock.AsAny().(type) {
+			case anthropic.ToolUseBlock:
+				currentToolCall = &llms.ToolCall{
+					ID: block.ID,
+					FunctionCall: &llms.FunctionCall{
+						Name: block.Name,
+					},
+				}
+			}
+		case anthropic.ContentBlockDeltaEvent:
+			switch delta := evt.Delta.AsAny().(type) {
+			case anthropic.TextDelta:
+				content.WriteString(delta.Text)
+				if streamingFunc != nil {
+					if err := streamingFunc(ctx, []byte(delta.Text)); err != nil {
+						return nil, errors.Wrap(err, "anthropic: streaming function error")
+					}
+				}
+			case anthropic.InputJSONDelta:
+				// Handle partial JSON for tool calls
+				if currentToolCall != nil {
+					currentToolCall.FunctionCall.Arguments += delta.PartialJSON
+				}
+			}
+		case anthropic.ContentBlockStopEvent:
+			if currentToolCall != nil {
+				toolCalls = append(toolCalls, *currentToolCall)
+				currentToolCall = nil
+			}
+		case anthropic.MessageDeltaEvent:
+			stopReason = string(evt.Delta.StopReason)
+			outputTokens = evt.Usage.OutputTokens
 		}
 	}
-	return toolReq
+
+	if err := stream.Err(); err != nil {
+		return nil, errors.Wrap(err, "anthropic: streaming error")
+	}
+
+	// Build response
+	var choices []*llms.ContentChoice
+	if content.Len() > 0 {
+		choices = append(choices, &llms.ContentChoice{
+			Content:    content.String(),
+			StopReason: stopReason,
+			GenerationInfo: map[string]any{
+				"InputTokens":  inputTokens,
+				"OutputTokens": outputTokens,
+			},
+		})
+	}
+
+	if len(toolCalls) > 0 {
+		choices = append(choices, &llms.ContentChoice{
+			ToolCalls:  toolCalls,
+			StopReason: stopReason,
+			GenerationInfo: map[string]any{
+				"InputTokens":  inputTokens,
+				"OutputTokens": outputTokens,
+			},
+		})
+	}
+
+	return &llms.ContentResponse{
+		Choices: choices,
+	}, nil
 }
 
-func processMessages(messages []llms.MessageContent) ([]anthropicclient.ChatMessage, string, error) {
-	chatMessages := make([]anthropicclient.ChatMessage, 0, len(messages))
+// ToTools converts LLM tool definitions to Anthropic SDK tool parameters.
+//
+// This function transforms the generic llms.Tool format into the specific
+// anthropic.ToolUnionParam format required by the Anthropic SDK. It handles:
+//   - Function definition conversion
+//   - JSON schema property mapping from orderedmap to regular map
+//   - Required parameter specification
+//   - Tool description formatting
+//
+// Returns nil if no tools are provided, which is handled gracefully by the API.
+func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
+	if len(tools) == 0 {
+		return nil
+	}
+
+	sdkTools := make([]anthropic.ToolUnionParam, len(tools))
+	for i, tool := range tools {
+		// Convert Properties from orderedmap to regular map for Anthropic SDK
+		var properties map[string]any
+		if tool.Function.Parameters.Properties != nil {
+			properties = make(map[string]any)
+			for pair := tool.Function.Parameters.Properties.Oldest(); pair != nil; pair = pair.Next() {
+				properties[pair.Key] = pair.Value
+			}
+		}
+
+		inputSchema := anthropic.ToolInputSchemaParam{
+			Type:       "object",
+			Properties: properties,
+		}
+		if len(tool.Function.Parameters.Required) > 0 {
+			inputSchema.Required = tool.Function.Parameters.Required
+		}
+
+		sdkTools[i] = anthropic.ToolUnionParam{
+			OfTool: &anthropic.ToolParam{
+				Name:        tool.Function.Name,
+				Description: anthropic.String(tool.Function.Description),
+				InputSchema: inputSchema,
+			},
+		}
+	}
+	return sdkTools
+}
+
+// ProcessMessages converts generic message content to Anthropic SDK message parameters.
+//
+// This function processes an array of message content and converts them to the format
+// expected by the Anthropic API. It handles:
+//   - System message extraction (returned as separate system prompt)
+//   - Human message conversion (text and image content)
+//   - AI message conversion (text and tool calls)
+//   - Tool message conversion (tool call responses)
+//   - Error handling for unsupported message types
+//
+// Returns the converted messages, extracted system prompt, and any error encountered.
+func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, string, error) {
+	chatMessages := make([]anthropic.MessageParam, 0, len(messages))
 	systemPrompt := ""
 	for _, msg := range messages {
 		if len(msg.Parts) == 0 {
@@ -218,25 +418,29 @@ func processMessages(messages []llms.MessageContent) ([]anthropicclient.ChatMess
 		}
 		switch msg.Role {
 		case llms.ChatMessageTypeSystem:
-			content, err := handleSystemMessage(msg)
+			content, err := HandleSystemMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle system message")
 			}
-			systemPrompt += content
+			if systemPrompt != "" {
+				systemPrompt += "\n" + content
+			} else {
+				systemPrompt = content
+			}
 		case llms.ChatMessageTypeHuman:
-			chatMessage, err := handleHumanMessage(msg)
+			chatMessage, err := HandleHumanMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle human message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
 		case llms.ChatMessageTypeAI:
-			chatMessage, err := handleAIMessage(msg)
+			chatMessage, err := HandleAIMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle AI message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
 		case llms.ChatMessageTypeTool:
-			chatMessage, err := handleToolMessage(msg)
+			chatMessage, err := HandleToolMessage(msg)
 			if err != nil {
 				return nil, "", errors.WithMessage(err, "anthropic: failed to handle tool message")
 			}
@@ -250,96 +454,119 @@ func processMessages(messages []llms.MessageContent) ([]anthropicclient.ChatMess
 	return chatMessages, systemPrompt, nil
 }
 
-func handleSystemMessage(msg llms.MessageContent) (string, error) {
+// HandleSystemMessage extracts text content from system messages.
+//
+// System messages in Anthropic are handled separately from conversation messages
+// and are passed as a distinct system parameter. This function validates that
+// the system message contains only text content and returns it as a string.
+func HandleSystemMessage(msg llms.MessageContent) (string, error) {
 	if textContent, ok := msg.Parts[0].(llms.TextContent); ok {
 		return textContent.Text, nil
 	}
 	return "", errors.WithMessagef(ErrInvalidContentType, "anthropic: for system message")
 }
 
-func handleHumanMessage(msg llms.MessageContent) (anthropicclient.ChatMessage, error) {
-	var contents []anthropicclient.Content
+// HandleHumanMessage converts human messages to Anthropic user message format.
+//
+// This function handles human/user messages and converts them to the Anthropic
+// user message format. It supports:
+//   - Text content
+//   - Image content (PNG, JPEG, GIF, WebP)
+//   - Base64 encoding for binary content
+//   - Multiple content parts in a single message
+//
+// Images are automatically base64-encoded and formatted for the Anthropic API.
+func HandleHumanMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+	var contents []anthropic.ContentBlockParamUnion
 
 	for _, part := range msg.Parts {
 		switch p := part.(type) {
 		case llms.TextContent:
-			contents = append(contents, &anthropicclient.TextContent{
-				Type: "text",
-				Text: p.Text,
-			})
+			contents = append(contents, anthropic.NewTextBlock(p.Text))
 		case llms.BinaryContent:
-			contents = append(contents, &anthropicclient.ImageContent{
-				Type: "image",
-				Source: anthropicclient.ImageSource{
-					Type:      "base64",
-					MediaType: p.MIMEType,
-					Data:      base64.StdEncoding.EncodeToString(p.Data),
-				},
-			})
+			if strings.HasPrefix(p.MIMEType, "image/") {
+				encodedData := base64.StdEncoding.EncodeToString(p.Data)
+				contents = append(contents, anthropic.NewImageBlockBase64(p.MIMEType, encodedData))
+			} else {
+				return anthropic.MessageParam{}, errors.Errorf("anthropic: unsupported binary content type: %s", p.MIMEType)
+			}
 		default:
-			return anthropicclient.ChatMessage{}, errors.Errorf("anthropic: unsupported human message part type: %T", part)
+			return anthropic.MessageParam{}, errors.Errorf("anthropic: unsupported human message part type: %T", part)
 		}
 	}
 
 	if len(contents) == 0 {
-		return anthropicclient.ChatMessage{}, errors.New("anthropic: no valid content in human message")
+		return anthropic.MessageParam{}, errors.New("anthropic: no valid content in human message")
 	}
 
-	return anthropicclient.ChatMessage{
-		Role:    RoleUser,
-		Content: contents,
-	}, nil
+	return anthropic.NewUserMessage(contents...), nil
 }
 
-func handleAIMessage(msg llms.MessageContent) (anthropicclient.ChatMessage, error) {
-	if toolCall, ok := msg.Parts[0].(llms.ToolCall); ok {
-		var inputStruct map[string]any
-		err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &inputStruct)
-		if err != nil {
-			return anthropicclient.ChatMessage{}, errors.Wrap(err, "anthropic: failed to unmarshal tool call arguments")
-		}
-		toolUse := anthropicclient.ToolUseContent{
-			Type:  "tool_use",
-			ID:    toolCall.ID,
-			Name:  toolCall.FunctionCall.Name,
-			Input: inputStruct,
-		}
+// HandleAIMessage converts AI assistant messages to Anthropic assistant message format.
+//
+// This function handles AI/assistant messages and converts them to the Anthropic
+// assistant message format. It supports:
+//   - Text responses from the assistant
+//   - Tool calls with function names and JSON arguments
+//   - Mixed content (text + tool calls)
+//
+// Tool call arguments are validated as proper JSON before conversion.
+func HandleAIMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+	var contents []anthropic.ContentBlockParamUnion
 
-		return anthropicclient.ChatMessage{
-			Role:    RoleAssistant,
-			Content: []anthropicclient.Content{toolUse},
-		}, nil
+	for _, part := range msg.Parts {
+		switch p := part.(type) {
+		case llms.ToolCall:
+			var inputJSON json.RawMessage
+			if err := json.Unmarshal([]byte(p.FunctionCall.Arguments), &inputJSON); err != nil {
+				return anthropic.MessageParam{}, errors.Wrap(err, "anthropic: failed to unmarshal tool call arguments")
+			}
+
+			contents = append(contents, anthropic.NewToolUseBlock(
+				p.ID,
+				inputJSON,
+				p.FunctionCall.Name,
+			))
+		case llms.TextContent:
+			contents = append(contents, anthropic.NewTextBlock(p.Text))
+		default:
+			return anthropic.MessageParam{}, errors.Errorf("anthropic: unsupported AI message part type: %T", part)
+		}
 	}
-	if textContent, ok := msg.Parts[0].(llms.TextContent); ok {
-		return anthropicclient.ChatMessage{
-			Role: RoleAssistant,
-			Content: []anthropicclient.Content{&anthropicclient.TextContent{
-				Type: "text",
-				Text: textContent.Text,
-			}},
-		}, nil
+
+	if len(contents) == 0 {
+		return anthropic.MessageParam{}, errors.New("anthropic: no valid content in AI message")
 	}
-	return anthropicclient.ChatMessage{}, errors.WithMessagef(ErrInvalidContentType, "anthropic: for AI message")
+
+	return anthropic.NewAssistantMessage(contents...), nil
 }
 
-type ToolResult struct {
-	Type      string `json:"type"`
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-}
+// HandleToolMessage converts tool response messages to Anthropic user message format.
+//
+// This function handles tool call response messages and converts them to the
+// Anthropic user message format with tool result content. Tool responses
+// in Anthropic are sent as user messages containing tool result blocks.
+//
+// The function validates that the message contains only tool call response
+// content and formats it appropriately for the API.
+func HandleToolMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+	var contents []anthropic.ContentBlockParamUnion
 
-func handleToolMessage(msg llms.MessageContent) (anthropicclient.ChatMessage, error) {
-	if toolCallResponse, ok := msg.Parts[0].(llms.ToolCallResponse); ok {
-		toolContent := anthropicclient.ToolResultContent{
-			Type:      "tool_result",
-			ToolUseID: toolCallResponse.ToolCallID,
-			Content:   toolCallResponse.Content,
+	for _, part := range msg.Parts {
+		if toolCallResponse, ok := part.(llms.ToolCallResponse); ok {
+			contents = append(contents, anthropic.NewToolResultBlock(
+				toolCallResponse.ToolCallID,
+				toolCallResponse.Content,
+				false, // isError
+			))
+		} else {
+			return anthropic.MessageParam{}, errors.WithMessagef(ErrInvalidContentType, "anthropic: for tool message part type: %T", part)
 		}
-
-		return anthropicclient.ChatMessage{
-			Role:    RoleUser,
-			Content: []anthropicclient.Content{toolContent},
-		}, nil
 	}
-	return anthropicclient.ChatMessage{}, errors.WithMessagef(ErrInvalidContentType, "anthropic: for tool message")
+
+	if len(contents) == 0 {
+		return anthropic.MessageParam{}, errors.New("anthropic: no valid content in tool message")
+	}
+
+	return anthropic.NewUserMessage(contents...), nil
 }
