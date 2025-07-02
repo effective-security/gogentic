@@ -246,15 +246,16 @@ func TestProcessMessages(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			name: "unsupported message type",
+			name: "generic message",
 			messages: []llms.MessageContent{
 				{
 					Role:  llms.ChatMessageTypeGeneric,
 					Parts: []llms.ContentPart{llms.TextPart("Generic message")},
 				},
 			},
-			wantErr:     true,
-			errContains: "unsupported message type",
+			wantMessages: 1,
+			wantSystem:   "",
+			wantErr:      false,
 		},
 		{
 			name: "human message with unsupported binary content",
