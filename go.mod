@@ -21,7 +21,7 @@ require (
 	github.com/effective-security/x v0.14.64
 	github.com/effective-security/xdb v0.23.109
 	github.com/effective-security/xlog v0.9.41
-	github.com/go-playground/validator/v10 v10.26.0
+	github.com/go-playground/validator/v10 v10.27.0
 	github.com/google/generative-ai-go v0.20.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
