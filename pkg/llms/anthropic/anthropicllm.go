@@ -115,6 +115,11 @@ func newClient(options *Options) (*anthropic.Client, error) {
 	return &client, nil
 }
 
+// GetName implements the Model interface.
+func (o *LLM) GetName() string {
+	return o.Options.Model
+}
+
 // GetProviderType implements the Model interface.
 func (o *LLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderAnthropic
@@ -223,6 +228,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 				GenerationInfo: map[string]any{
 					"InputTokens":  result.Usage.InputTokens,
 					"OutputTokens": result.Usage.OutputTokens,
+					"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
+					"ID":           result.ID,
+					"Index":        i,
 				},
 			}
 		case anthropic.ToolUseBlock:
@@ -244,6 +252,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 				GenerationInfo: map[string]any{
 					"InputTokens":  result.Usage.InputTokens,
 					"OutputTokens": result.Usage.OutputTokens,
+					"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
+					"ID":           result.ID,
+					"Index":        i,
 				},
 			}
 		default:
@@ -333,6 +344,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			GenerationInfo: map[string]any{
 				"InputTokens":  inputTokens,
 				"OutputTokens": outputTokens,
+				"TotalTokens":  inputTokens + outputTokens,
 			},
 		})
 	}
@@ -344,6 +356,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			GenerationInfo: map[string]any{
 				"InputTokens":  inputTokens,
 				"OutputTokens": outputTokens,
+				"TotalTokens":  inputTokens + outputTokens,
 			},
 		})
 	}

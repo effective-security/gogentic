@@ -9,28 +9,49 @@ var (
 		Type:         metrics.TypeCounter,
 		Name:         "stats_llm_messages_sent",
 		Help:         "stats_llm_messages_sent provides total messages sent to LLM",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsLLMBytesSent = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_llm_bytes_sent",
 		Help:         "stats_llm_bytes_sent provides total bytes sent to LLM",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsLLMBytesReceived = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_llm_bytes_received",
 		Help:         "stats_llm_bytes_received provides total bytes received from LLM",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsLLMBytesTotal = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_llm_bytes_total",
 		Help:         "stats_llm_bytes_total provides total bytes sent and received from LLM",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
+	}
+
+	StatsLLMInputTokens = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_input_tokens",
+		Help:         "stats_llm_input_tokens provides total input tokens sent to LLM",
+		RequiredTags: []string{"agent", "model"},
+	}
+
+	StatsLLMOutputTokens = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_output_tokens",
+		Help:         "stats_llm_output_tokens provides total output tokens received from LLM",
+		RequiredTags: []string{"agent", "model"},
+	}
+
+	StatsLLMTotalTokens = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_total_tokens",
+		Help:         "stats_llm_total_tokens provides total tokens sent and received from LLM",
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsAssistantCallsSucceeded = metrics.Describe{
@@ -112,7 +133,10 @@ var Metrics = []*metrics.Describe{
 	&StatsLLMBytesReceived,
 	&StatsLLMBytesSent,
 	&StatsLLMBytesTotal,
+	&StatsLLMInputTokens,
 	&StatsLLMMessagesSent,
+	&StatsLLMOutputTokens,
+	&StatsLLMTotalTokens,
 	&StatsToolCallsFailed,
 	&StatsToolCallsNotFound,
 	&StatsToolCallsSucceeded,

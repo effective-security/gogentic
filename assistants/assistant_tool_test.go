@@ -61,6 +61,7 @@ func Test_AssistantTool(t *testing.T) {
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			calls++
@@ -182,6 +183,7 @@ func Test_AssistantTool_Call(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 		&llms.ContentResponse{
 			Choices: []*llms.ContentChoice{
@@ -212,6 +214,7 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	// First call - success case
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 		&llms.ContentResponse{
@@ -253,6 +256,7 @@ func Test_AssistantTool_MCPMethods(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 		&llms.ContentResponse{
 			Choices: []*llms.ContentChoice{
@@ -406,6 +410,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 	// Create a mock LLM that returns multiple tool calls with specific IDs
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls with specific IDs
@@ -540,6 +545,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	// Create a mock LLM that returns multiple tool calls in a single choice
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls in a single choice

@@ -154,11 +154,14 @@ func TestIntegrationToolCalling(t *testing.T) {
 	sc, err := schema.New(reflect.TypeOf(WeatherParams{}))
 	require.NoError(t, err)
 
-	functions := []llms.FunctionDefinition{
+	tools := []llms.Tool{
 		{
-			Name:        "get_current_weather",
-			Description: "Get the current weather in a given location",
-			Parameters:  sc.Parameters,
+			Type: "function",
+			Function: &llms.FunctionDefinition{
+				Name:        "get_current_weather",
+				Description: "Get the current weather in a given location",
+				Parameters:  sc.Parameters,
+			},
 		},
 	}
 
@@ -169,7 +172,7 @@ func TestIntegrationToolCalling(t *testing.T) {
 		},
 	}
 
-	resp, err := llm.GenerateContent(context.Background(), content, llms.WithFunctions(functions))
+	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Choices)
 
@@ -194,11 +197,14 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 	sc, err := schema.New(reflect.TypeOf(CalcParams{}))
 	require.NoError(t, err)
 
-	functions := []llms.FunctionDefinition{
+	tools := []llms.Tool{
 		{
-			Name:        "calculate",
-			Description: "Perform mathematical calculations",
-			Parameters:  sc.Parameters,
+			Type: "function",
+			Function: &llms.FunctionDefinition{
+				Name:        "calculate",
+				Description: "Perform mathematical calculations",
+				Parameters:  sc.Parameters,
+			},
 		},
 	}
 
@@ -210,7 +216,7 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 		},
 	}
 
-	resp, err := llm.GenerateContent(context.Background(), content, llms.WithFunctions(functions))
+	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Choices)
 	require.NotEmpty(t, resp.Choices[0].ToolCalls)

@@ -107,8 +107,9 @@ func createAmazonCompletion(ctx context.Context,
 			Content:    result.OutputText,
 			StopReason: result.CompletionReason,
 			GenerationInfo: map[string]any{
-				"input_tokens":  output.InputTextTokenCount,
-				"output_tokens": result.TokenCount,
+				"InputTokens":  output.InputTextTokenCount,
+				"OutputTokens": result.TokenCount,
+				"TotalTokens":  output.InputTextTokenCount + result.TokenCount,
 			},
 		}
 	}

@@ -36,6 +36,11 @@ func New(opts ...Option) (*LLM, error) {
 	}, err
 }
 
+// GetName implements the Model interface.
+func (o *LLM) GetName() string {
+	return o.client.Model
+}
+
 // GetProviderType implements the Model interface.
 func (o *LLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderOpenAI
@@ -102,25 +107,12 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 
 		MaxCompletionTokens: opts.MaxTokens,
 
-		ToolChoice:           opts.ToolChoice,
-		FunctionCallBehavior: openaiclient.FunctionCallBehavior(opts.FunctionCallBehavior),
-		Seed:                 opts.Seed,
-		Metadata:             opts.Metadata,
-		ResponseFormat:       opts.ResponseFormat,
+		ToolChoice:     opts.ToolChoice,
+		Seed:           opts.Seed,
+		Metadata:       opts.Metadata,
+		ResponseFormat: opts.ResponseFormat,
 	}
 
-	// since req.Functions is deprecated, we need to use the new Tools API.
-	for _, fn := range opts.Functions {
-		req.Tools = append(req.Tools, openaiclient.Tool{
-			Type: "function",
-			Function: openaiclient.FunctionDefinition{
-				Name:        fn.Name,
-				Description: fn.Description,
-				Parameters:  fn.Parameters,
-				Strict:      fn.Strict,
-			},
-		})
-	}
 	// if opts.Tools is not empty, append them to req.Tools
 	for _, tool := range opts.Tools {
 		t, err := toolFromTool(tool)
@@ -149,10 +141,10 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 			Content:    c.Message.Content,
 			StopReason: fmt.Sprint(c.FinishReason),
 			GenerationInfo: map[string]any{
-				"CompletionTokens": result.Usage.CompletionTokens,
-				"PromptTokens":     result.Usage.PromptTokens,
-				"TotalTokens":      result.Usage.TotalTokens,
-				"ReasoningTokens":  result.Usage.CompletionTokensDetails.ReasoningTokens,
+				"OutputTokens":    result.Usage.CompletionTokens,
+				"InputTokens":     result.Usage.PromptTokens,
+				"TotalTokens":     result.Usage.TotalTokens,
+				"ReasoningTokens": result.Usage.CompletionTokensDetails.ReasoningTokens,
 			},
 		}
 

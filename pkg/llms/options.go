@@ -53,16 +53,6 @@ type CallOptions struct {
 	// ToolChoice is the choice of tool to use, it can either be "none", "auto" (the default behavior), or a specific tool as described in the ToolChoice type.
 	ToolChoice any
 
-	// Function defitions to include in the request.
-	// Deprecated: Use Tools instead.
-	Functions []FunctionDefinition
-	// FunctionCallBehavior is the behavior to use when calling functions.
-	//
-	// If a specific function should be invoked, use the format:
-	// `{"name": "my_function"}`
-	// Deprecated: Use ToolChoice instead.
-	FunctionCallBehavior FunctionCallBehavior
-
 	// Metadata is a map of metadata to include in the request.
 	// The meaning of this field is specific to the backend in use.
 	Metadata map[string]any
@@ -245,22 +235,6 @@ func WithPresencePenalty(presencePenalty float64) CallOption {
 	}
 }
 
-// WithFunctionCallBehavior will add an option to set the behavior to use when calling functions.
-// Deprecated: Use WithToolChoice instead.
-func WithFunctionCallBehavior(behavior FunctionCallBehavior) CallOption {
-	return func(o *CallOptions) {
-		o.FunctionCallBehavior = behavior
-	}
-}
-
-// WithFunctions will add an option to set the functions to include in the request.
-// Deprecated: Use WithTools instead.
-func WithFunctions(functions []FunctionDefinition) CallOption {
-	return func(o *CallOptions) {
-		o.Functions = functions
-	}
-}
-
 // WithToolChoice will add an option to set the choice of tool to use.
 // It can either be "none", "auto" (the default behavior), or a specific tool as described in the ToolChoice type.
 func WithToolChoice(choice any) CallOption {
@@ -277,14 +251,6 @@ func WithTools(tools []Tool) CallOption {
 	}
 }
 
-// WithJSONMode will add an option to set the response format to JSON.
-// This is useful for models that return structured data.
-// func WithJSONMode() CallOption {
-// 	return func(o *CallOptions) {
-// 		o.JSONMode = true
-// 	}
-// }
-
 // WithMetadata will add an option to set metadata to include in the request.
 // The meaning of this field is specific to the backend in use.
 func WithMetadata(metadata map[string]any) CallOption {
@@ -292,14 +258,6 @@ func WithMetadata(metadata map[string]any) CallOption {
 		o.Metadata = metadata
 	}
 }
-
-// WithResponseMIMEType will add an option to set the ResponseMIMEType
-// Currently only supported by googleai llms.
-// func WithResponseMIMEType(responseMIMEType string) CallOption {
-// 	return func(o *CallOptions) {
-// 		o.ResponseMIMEType = responseMIMEType
-// 	}
-// }
 
 // WithResponseFormat allows setting a custom response format.
 // If it's not set the response MIME type is text/plain.

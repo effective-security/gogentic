@@ -143,8 +143,8 @@ func Example_streamingResponse() {
 	fmt.Printf("\n\nFinal response: %s\n", resp.Choices[0].Content)
 }
 
-// Example_functionCalling demonstrates tool/function calling
-func Example_functionCalling() {
+// Example_toolCalling demonstrates tool/function calling
+func Example_toolCalling() {
 	llm, err := anthropic.New(
 		anthropic.WithModel("claude-3-5-sonnet-20241022"),
 	)
@@ -165,11 +165,14 @@ func Example_functionCalling() {
 	}
 
 	// Define available functions
-	functions := []llms.FunctionDefinition{
+	tools := []llms.Tool{
 		{
-			Name:        "get_weather",
-			Description: "Get current weather information for a location",
-			Parameters:  schema.Parameters,
+			Type: "function",
+			Function: &llms.FunctionDefinition{
+				Name:        "get_weather",
+				Description: "Get current weather information for a location",
+				Parameters:  schema.Parameters,
+			},
 		},
 	}
 
@@ -182,7 +185,7 @@ func Example_functionCalling() {
 
 	// Make the request with functions
 	resp, err := llm.GenerateContent(context.Background(), messages,
-		llms.WithFunctions(functions),
+		llms.WithTools(tools),
 	)
 	if err != nil {
 		log.Fatal(err)

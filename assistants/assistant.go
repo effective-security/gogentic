@@ -322,6 +322,9 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 	}
 	callOpts := cfg.GetCallOptions(extraOptions...)
 
+	assistantName := a.Name()
+	modelName := a.LLM.GetName()
+
 	var totalToolExecuted int
 	var resp *llms.ContentResponse
 	maxRetries := DefaultMaxRetries
@@ -332,43 +335,52 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 	toolsLimit := values.NumbersCoalesce(cfg.MaxToolCalls, DefaultMaxToolCalls)
 	for {
 		if len(messageHistory) >= cfg.MaxMessages {
-			return nil, errors.Newf("assistant %s: the messages count exceeded limit", a.name)
+			return nil, errors.Newf("assistant %s: the messages count exceeded limit", assistantName)
 		}
 		bytesSent := llmutils.CountMessagesContentSize(messageHistory)
 		if bytesSent > bytesLimit {
-			return nil, errors.Newf("assistant %s: the content size exceeded limit", a.name)
+			return nil, errors.Newf("assistant %s: the content size exceeded limit", assistantName)
 		}
 
 		if a.cfg.CallbackHandler != nil {
-			a.cfg.CallbackHandler.OnAssistantLLMCall(ctx, a, messageHistory)
+			a.cfg.CallbackHandler.OnAssistantLLMCallStart(ctx, a, a.LLM, messageHistory)
 		}
 
-		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), a.Name())
-		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), a.Name())
+		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), assistantName, modelName)
+		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), assistantName, modelName)
 
 		resp, err = a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to generate content from LLM")
 		}
 
+		if a.cfg.CallbackHandler != nil {
+			a.cfg.CallbackHandler.OnAssistantLLMCallEnd(ctx, a, a.LLM, resp)
+		}
+
 		bytesReceived := llmutils.CountResponseContentSize(resp)
-		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), a.Name())
-		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), a.Name())
+		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), assistantName, modelName)
+		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), assistantName, modelName)
+
+		tokensIn, tokensOut, tokensTotal := llmutils.CountTokens(resp)
+		metricskey.StatsLLMInputTokens.IncrCounter(float64(tokensIn), assistantName, modelName)
+		metricskey.StatsLLMOutputTokens.IncrCounter(float64(tokensOut), assistantName, modelName)
+		metricskey.StatsLLMTotalTokens.IncrCounter(float64(tokensTotal), assistantName, modelName)
 
 		// Check for empty response and retry if needed
 		if len(resp.Choices) == 0 {
 			retryCount++
 			if retryCount >= maxRetries {
 				logger.ContextKV(ctx, xlog.ERROR,
-					"assistant", a.name,
+					"assistant", assistantName,
 					"status", "max_retries_exceeded",
 					"input", slices.StringUpto(parsedInput, 64),
 					"retry_count", retryCount,
 				)
-				return nil, errors.Newf("assistant %s: LLM returned empty response after %d retries", a.name, retryCount)
+				return nil, errors.Newf("assistant %s: LLM returned empty response after %d retries", assistantName, retryCount)
 			}
 			logger.ContextKV(ctx, xlog.WARNING,
-				"assistant", a.name,
+				"assistant", assistantName,
 				"status", "retrying_empty_response",
 				"retry_count", retryCount,
 			)
@@ -389,28 +401,28 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 		consecutiveNotFoundCount += notFoundCount
 		totalToolExecuted += toolExecuted
 		if consecutiveNotFoundCount > 3 {
-			return nil, errors.Newf("assistant %s: the number of not found tools is exceeded", a.name)
+			return nil, errors.Newf("assistant %s: the number of not found tools is exceeded", assistantName)
 		}
 		// reset
 		consecutiveNotFoundCount = 0
 		if totalToolExecuted >= toolsLimit {
-			return nil, errors.Newf("assistant %s: the tool calls limit is exceeded", a.name)
+			return nil, errors.Newf("assistant %s: the tool calls limit is exceeded", assistantName)
 		}
 	}
 
 	choices := resp.Choices
 	if len(choices) < 1 {
 		logger.ContextKV(ctx, xlog.ERROR,
-			"assistant", a.name,
+			"assistant", assistantName,
 			"status", "empty_choices",
 			"input", slices.StringUpto(parsedInput, 64),
 		)
-		return nil, errors.Newf("assistant %s: LLM returned empty response with no choices", a.name)
+		return nil, errors.Newf("assistant %s: LLM returned empty response with no choices", assistantName)
 	}
 
 	// Log response analysis for debugging
 	logger.ContextKV(ctx, xlog.DEBUG,
-		"assistant", a.name,
+		"assistant", assistantName,
 		"status", "response_analysis",
 		"choices_count", len(choices),
 		"tool_calls", totalToolExecuted,
@@ -432,9 +444,9 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 	if optionalOutputType != nil {
 		finalOutput, err := a.OutputParser.Parse(result)
 		if err != nil {
-			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, a.Name())
+			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName)
 			logger.ContextKV(ctx, xlog.DEBUG,
-				"assistant", a.name,
+				"assistant", assistantName,
 				"status", "failed_to_parse_llm_response",
 				"err", err.Error(),
 				"output_parser", a.OutputParser.Type(),
@@ -458,13 +470,13 @@ func (a *Assistant[O]) run(ctx context.Context, input *CallInput, optionalOutput
 
 	if cfg.Store != nil && !cfg.SkipMessageHistory {
 		if cfg.IsGeneric {
-			_ = cfg.Store.Add(ctx, &llms.GenericChatMessage{Content: llmutils.AddComment("assistant", a.Name(), "observation", result)})
+			_ = cfg.Store.Add(ctx, &llms.GenericChatMessage{Content: llmutils.AddComment("assistant", assistantName, "observation", result)})
 		} else {
 			_ = cfg.Store.Add(ctx, &llms.AIChatMessage{Content: result})
 		}
 
 		logger.ContextKV(ctx, xlog.DEBUG,
-			"assistant", a.name,
+			"assistant", assistantName,
 			"chat_id", chatID,
 			"status", "added_message_history",
 			"human", slices.StringUpto(parsedInput, 64),

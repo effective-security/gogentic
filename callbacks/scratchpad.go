@@ -28,6 +28,9 @@ type RunStats struct {
 	TotalMessages           uint32
 	LLMBytesOut             uint64
 	LLMBytesIn              uint64
+	LLMInputTokens          uint64
+	LLMOutputTokens         uint64
+	LLMTotalTokens          uint64
 	AssistantCalls          uint32
 	AssistantCallsSucceeded uint32
 	AssistantCallsFailed    uint32
@@ -87,12 +90,15 @@ func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 		stats.ToolsCallsFailed,
 		stats.ToolNotFound,
 	))
-	run.print(fmt.Sprintf("LLM calls: %d, Messages: %d,	Bytes Out: %d, Bytes In: %d, Bytes Total: %d",
+	run.print(fmt.Sprintf("LLM calls: %d, Messages: %d,	Bytes Out: %d, Bytes In: %d, Bytes Total: %d, Input Tokens: %d, Output Tokens: %d, Total Tokens: %d",
 		stats.AssistantLLMCalls,
 		stats.TotalMessages,
 		stats.LLMBytesOut,
 		stats.LLMBytesIn,
 		stats.LLMBytesOut+stats.LLMBytesIn,
+		stats.LLMInputTokens,
+		stats.LLMOutputTokens,
+		stats.LLMTotalTokens,
 	))
 
 	run.print(fmt.Sprintf("*** Run Ended. Duration: %s ***", stats.Duration))
@@ -145,7 +151,7 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 	}
 }
 
-func (l *Scratchpad) OnAssistantLLMCall(ctx context.Context, agent assistants.IAssistant, payload []llms.MessageContent) {
+func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
@@ -171,6 +177,18 @@ func (l *Scratchpad) OnAssistantLLMCall(ctx context.Context, agent assistants.IA
 		}
 		run.print(string(msg.Role), fmt.Sprintf("%d text parts, %d tool parts", textParts, toolParts))
 	}
+}
+
+func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAssistant, llm llms.Model, resp *llms.ContentResponse) {
+	run := l.getRun(ctx)
+	if run == nil {
+		return
+	}
+
+	tokensIn, tokensOut, tokensTotal := llmutils.CountTokens(resp)
+	atomic.AddUint64(&run.stats.LLMInputTokens, uint64(tokensIn))
+	atomic.AddUint64(&run.stats.LLMOutputTokens, uint64(tokensOut))
+	atomic.AddUint64(&run.stats.LLMTotalTokens, uint64(tokensTotal))
 }
 
 func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant assistants.IAssistant, input string, response string, err error) {

@@ -763,3 +763,7 @@ func (f *fakeLLM) GenerateContent(_ context.Context, _ []llms.MessageContent, _ 
 func (f *fakeLLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderOpenAI
 }
+
+func (f *fakeLLM) GetName() string {
+	return f.model
+}

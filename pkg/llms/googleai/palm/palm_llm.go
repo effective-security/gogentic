@@ -25,6 +25,12 @@ type LLM struct {
 
 var _ llms.Model = (*LLM)(nil)
 
+// GetName implements the Model interface.
+func (o *LLM) GetName() string {
+	// TODO:
+	return palmclient.TextModelName
+}
+
 // GetProviderType implements the Model interface.
 func (o *LLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderGoogleAI

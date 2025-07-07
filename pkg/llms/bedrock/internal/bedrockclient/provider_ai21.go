@@ -124,9 +124,10 @@ func createAi21Completion(ctx context.Context, client *bedrockruntime.Client, mo
 			Content:    completion.Data.Text,
 			StopReason: completion.FinishReason.Reason,
 			GenerationInfo: map[string]any{
-				"id":            output.ID,
-				"input_tokens":  len(output.Prompt.Tokens),
-				"output_tokens": len(completion.Data.Tokens),
+				"ID":           output.ID,
+				"InputTokens":  len(output.Prompt.Tokens),
+				"OutputTokens": len(completion.Data.Tokens),
+				"TotalTokens":  len(output.Prompt.Tokens) + len(completion.Data.Tokens),
 			},
 		}
 	}

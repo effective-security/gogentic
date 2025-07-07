@@ -109,8 +109,8 @@ func createCohereCompletion(ctx context.Context,
 			Content:    gen.Text,
 			StopReason: gen.FinishReason,
 			GenerationInfo: map[string]any{
-				"generation_id": gen.ID,
-				"index":         i,
+				"ID":    gen.ID,
+				"Index": i,
 			},
 		}
 	}

@@ -50,6 +50,11 @@ func newClient(opts ...Option) (*options, *bedrockclient.Client, error) {
 	return options, bedrockclient.NewClient(options.client), nil
 }
 
+// GetName implements the Model interface.
+func (l *LLM) GetName() string {
+	return l.modelID
+}
+
 // GetProviderType implements the Model interface.
 func (l *LLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderBedrock
