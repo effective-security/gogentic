@@ -16,7 +16,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/docker/docker v28.2.2+incompatible
+	github.com/docker/docker v28.3.1+incompatible
 	github.com/effective-security/metrics v0.8.99
 	github.com/effective-security/x v0.14.64
 	github.com/effective-security/xdb v0.23.109
