@@ -144,9 +144,9 @@ func convertCandidates(candidates []*genai.Candidate, usage *genai.UsageMetadata
 		metadata[SAFETY] = candidate.SafetyRatings
 
 		if usage != nil {
-			metadata["input_tokens"] = usage.PromptTokenCount
-			metadata["output_tokens"] = usage.CandidatesTokenCount
-			metadata["total_tokens"] = usage.TotalTokenCount
+			metadata["InputTokens"] = usage.PromptTokenCount
+			metadata["OutputTokens"] = usage.CandidatesTokenCount
+			metadata["TotalTokens"] = usage.TotalTokenCount
 		}
 
 		contentResponse.Choices = append(contentResponse.Choices,

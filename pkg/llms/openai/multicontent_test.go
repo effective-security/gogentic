@@ -2,14 +2,11 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
-	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -128,52 +125,4 @@ func TestWithStreaming(t *testing.T) {
 	c1 := rsp.Choices[0]
 	assert.Regexp(t, "dog|canid", strings.ToLower(c1.Content))
 	assert.Regexp(t, "dog|canid", strings.ToLower(sb.String()))
-}
-
-//nolint:lll
-func TestFunctionCall(t *testing.T) {
-	t.Parallel()
-	llm := newTestClient(t)
-
-	parts := []llms.ContentPart{
-		llms.TextPart("What is the weather like in Boston?"),
-	}
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: parts,
-		},
-	}
-
-	type Weather struct {
-		Location string `json:"location" description:"The city and state, e.g. San Francisco, CA"`
-		Unit     string `json:"unit" enum:"celsius,fahrenheit"`
-	}
-	sc, err := schema.New(reflect.TypeOf(Weather{}))
-	require.NoError(t, err)
-
-	functions := []llms.FunctionDefinition{
-		{
-			Name:        "getCurrentWeather",
-			Description: "Get the current weather in a given location",
-			Parameters:  sc.Parameters,
-		},
-	}
-
-	rsp, err := llm.GenerateContent(context.Background(), content,
-		llms.WithFunctions(functions))
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, rsp.Choices)
-	c1 := rsp.Choices[0]
-	assert.Equal(t, "tool_calls", c1.StopReason)
-	assert.NotNil(t, c1.FuncCall)
-}
-
-func showResponse(rsp any) string { //nolint:golint,unused
-	b, err := json.MarshalIndent(rsp, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
 }

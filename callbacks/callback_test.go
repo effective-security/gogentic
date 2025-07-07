@@ -164,7 +164,7 @@ func TestFanoutCallback(t *testing.T) {
 	assert.Contains(t, buf2.String(), "Tool Error: test-tool")
 
 	// Test OnAssistantLLMCall
-	fanout.OnAssistantLLMCall(context.Background(), ast, []llms.MessageContent{})
+	fanout.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{})
 	assert.Contains(t, buf1.String(), "Assistant LLM Call: test-assistant")
 	assert.Contains(t, buf2.String(), "Assistant LLM Call: test-assistant")
 
@@ -199,7 +199,7 @@ func TestNoopCallback(t *testing.T) {
 	noop.OnToolStart(context.Background(), tool, "test input")
 	noop.OnToolEnd(context.Background(), tool, "test input", "test output")
 	noop.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
-	noop.OnAssistantLLMCall(context.Background(), ast, []llms.MessageContent{})
+	noop.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{})
 	noop.OnToolNotFound(context.Background(), ast, "missing-tool")
 }
 
@@ -252,4 +252,15 @@ func (f *fakeTool) Parameters() *jsonschema.Schema {
 }
 func (f *fakeTool) Call(context.Context, string) (string, error) {
 	return "", nil
+}
+
+type fakeModel struct {
+	name     string
+	provider llms.ProviderType
+}
+
+func (m *fakeModel) GetName() string                    { return m.name }
+func (m *fakeModel) GetProviderType() llms.ProviderType { return m.provider }
+func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	return nil, nil
 }

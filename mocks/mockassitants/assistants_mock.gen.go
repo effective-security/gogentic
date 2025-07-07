@@ -496,16 +496,28 @@ func (mr *MockCallbackMockRecorder) OnAssistantError(ctx, a, input, err any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantError", reflect.TypeOf((*MockCallback)(nil).OnAssistantError), ctx, a, input, err)
 }
 
-// OnAssistantLLMCall mocks base method.
-func (m *MockCallback) OnAssistantLLMCall(ctx context.Context, a assistants.IAssistant, payload []llms.MessageContent) {
+// OnAssistantLLMCallEnd mocks base method.
+func (m *MockCallback) OnAssistantLLMCallEnd(ctx context.Context, a assistants.IAssistant, llm llms.Model, resp *llms.ContentResponse) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnAssistantLLMCall", ctx, a, payload)
+	m.ctrl.Call(m, "OnAssistantLLMCallEnd", ctx, a, llm, resp)
 }
 
-// OnAssistantLLMCall indicates an expected call of OnAssistantLLMCall.
-func (mr *MockCallbackMockRecorder) OnAssistantLLMCall(ctx, a, payload any) *gomock.Call {
+// OnAssistantLLMCallEnd indicates an expected call of OnAssistantLLMCallEnd.
+func (mr *MockCallbackMockRecorder) OnAssistantLLMCallEnd(ctx, a, llm, resp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantLLMCall", reflect.TypeOf((*MockCallback)(nil).OnAssistantLLMCall), ctx, a, payload)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantLLMCallEnd", reflect.TypeOf((*MockCallback)(nil).OnAssistantLLMCallEnd), ctx, a, llm, resp)
+}
+
+// OnAssistantLLMCallStart mocks base method.
+func (m *MockCallback) OnAssistantLLMCallStart(ctx context.Context, a assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnAssistantLLMCallStart", ctx, a, llm, payload)
+}
+
+// OnAssistantLLMCallStart indicates an expected call of OnAssistantLLMCallStart.
+func (mr *MockCallbackMockRecorder) OnAssistantLLMCallStart(ctx, a, llm, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantLLMCallStart", reflect.TypeOf((*MockCallback)(nil).OnAssistantLLMCallStart), ctx, a, llm, payload)
 }
 
 // OnAssistantLLMParseError mocks base method.

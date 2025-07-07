@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/x/values"
 	"gopkg.in/yaml.v3"
 )
 
@@ -279,6 +280,16 @@ func CountResponseContentSize(resp *llms.ContentResponse) uint64 {
 		}
 	}
 	return size
+}
+
+func CountTokens(resp *llms.ContentResponse) (in, out, total int64) {
+	for _, choice := range resp.Choices {
+		ma := values.MapAny(choice.GenerationInfo)
+		in += ma.Int64("InputTokens")
+		out += ma.Int64("OutputTokens")
+		total += ma.Int64("TotalTokens")
+	}
+	return
 }
 
 func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage, filter ...llms.ChatMessageType) {

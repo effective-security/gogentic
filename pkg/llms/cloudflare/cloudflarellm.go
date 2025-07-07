@@ -44,6 +44,11 @@ func New(opts ...Option) (*LLM, error) {
 	return &LLM{client: client, options: o}, nil
 }
 
+// GetName implements the Model interface.
+func (o *LLM) GetName() string {
+	return o.options.model
+}
+
 // GetProviderType implements the Model interface.
 func (o *LLM) GetProviderType() llms.ProviderType {
 	return llms.ProviderCloudflare

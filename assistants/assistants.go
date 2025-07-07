@@ -79,7 +79,8 @@ type Callback interface {
 	OnAssistantStart(ctx context.Context, a IAssistant, input string)
 	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *llms.ContentResponse)
 	OnAssistantError(ctx context.Context, a IAssistant, input string, err error)
-	OnAssistantLLMCall(ctx context.Context, a IAssistant, payload []llms.MessageContent)
+	OnAssistantLLMCallStart(ctx context.Context, a IAssistant, llm llms.Model, payload []llms.MessageContent)
+	OnAssistantLLMCallEnd(ctx context.Context, a IAssistant, llm llms.Model, resp *llms.ContentResponse)
 	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
 	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
 }

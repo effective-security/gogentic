@@ -35,6 +35,17 @@ func (t *fakeTool) Description() string                                    { ret
 func (t *fakeTool) Parameters() *jsonschema.Schema                         { return nil }
 func (t *fakeTool) Call(ctx context.Context, input string) (string, error) { return "", nil }
 
+type fakeModel struct {
+	name     string
+	provider llms.ProviderType
+}
+
+func (m *fakeModel) GetName() string                    { return m.name }
+func (m *fakeModel) GetProviderType() llms.ProviderType { return m.provider }
+func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	return nil, nil
+}
+
 func newTestChatContext() (context.Context, chatmodel.ChatContext) {
 	tenantID := "tenant1"
 	chatID := "chatid"
@@ -98,7 +109,7 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	// Test various callbacks
 	sp.OnAssistantStart(ctx, ast, "input")
 	sp.OnAssistantEnd(ctx, ast, "input", resp)
-	sp.OnAssistantLLMCall(ctx, ast, []llms.MessageContent{
+	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{
 		{Role: llms.ChatMessageTypeHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parseerr"))
@@ -122,13 +133,16 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	// test callback methods again: should still work if no run
 	sp.OnAssistantStart(ctx, ast, "input")
 	sp.OnAssistantEnd(ctx, ast, "input", resp)
-	sp.OnAssistantLLMCall(ctx, ast, nil)
+	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{
+		{Role: llms.ChatMessageTypeHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parse2"))
 	sp.OnAssistantError(ctx, ast, "input", errors.New("fail2"))
 	sp.OnToolStart(ctx, tool, "tinput")
 	sp.OnToolEnd(ctx, tool, "tinput", "toutput")
 	sp.OnToolError(ctx, tool, "tinput", errors.New("terr2"))
 	sp.OnToolNotFound(ctx, ast, "T3")
+	sp.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, resp)
 }
 
 func Test_run_print_format(t *testing.T) {

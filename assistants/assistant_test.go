@@ -88,6 +88,7 @@ func Test_Assistant_MCPMethods(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 
 	// Setup mock LLM for CallMCP test
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
@@ -140,6 +141,7 @@ func Test_Assistant_GetSystemPrompt_ErrorCases(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{"input"})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// Simulate onPrompt error
@@ -184,6 +186,7 @@ func Test_Assistant_CallMCP_ErrorCases(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// SetChatID error (no chat context)
@@ -207,6 +210,7 @@ func Test_Assistant_Run_EdgeCases(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	// LLM returns no choices
@@ -231,6 +235,7 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)

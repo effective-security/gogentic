@@ -28,6 +28,8 @@ const (
 
 // Model is an interface multi-modal models implement.
 type Model interface {
+	// GetName returns the name of the model.
+	GetName() string
 	// GetProviderType returns the type of provider.
 	GetProviderType() ProviderType
 	// GenerateContent asks the model to generate content from a sequence of

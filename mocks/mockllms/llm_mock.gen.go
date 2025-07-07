@@ -61,6 +61,20 @@ func (mr *MockModelMockRecorder) GenerateContent(ctx, messages any, options ...a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateContent", reflect.TypeOf((*MockModel)(nil).GenerateContent), varargs...)
 }
 
+// GetName mocks base method.
+func (m *MockModel) GetName() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetName indicates an expected call of GetName.
+func (mr *MockModelMockRecorder) GetName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetName", reflect.TypeOf((*MockModel)(nil).GetName))
+}
+
 // GetProviderType mocks base method.
 func (m *MockModel) GetProviderType() llms.ProviderType {
 	m.ctrl.T.Helper()

@@ -99,6 +99,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
@@ -271,6 +272,7 @@ func Test_Assistant_Chat(t *testing.T) {
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
@@ -407,6 +409,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	llmCall := 0
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			llmCall++
@@ -537,6 +540,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	// Create a mock LLM that returns multiple tool calls
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
@@ -654,6 +658,7 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	// Create a mock LLM that returns multiple tool calls
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
@@ -703,7 +708,8 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	mockCallback.EXPECT().OnAssistantLLMCall(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantLLMCallStart(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantLLMCallEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantLLMParseError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnToolNotFound(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 

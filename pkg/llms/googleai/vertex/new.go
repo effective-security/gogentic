@@ -24,6 +24,11 @@ type Vertex struct {
 
 var _ llms.Model = &Vertex{}
 
+// GetName implements the Model interface.
+func (v *Vertex) GetName() string {
+	return v.opts.DefaultModel
+}
+
 // GetProviderType implements the Model interface.
 func (v *Vertex) GetProviderType() llms.ProviderType {
 	return llms.ProviderGoogleAI
