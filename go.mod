@@ -28,7 +28,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/metoro-io/mcp-golang v0.11.0
 	github.com/nikolalohinski/gonja v1.5.3
-	github.com/redis/go-redis/v9 v9.10.0
+	github.com/redis/go-redis/v9 v9.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
