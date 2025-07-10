@@ -61,6 +61,48 @@ type cohereTextGenerationOutputGeneration struct {
 	Text string `json:"text"`
 }
 
+// cohereEmbeddingRequest is the input for the embedding request for Cohere Models.
+type cohereEmbeddingRequest struct {
+	Texts     []string `json:"texts"`
+	InputType string   `json:"input_type"`
+}
+
+// cohereEmbeddingResponse is the output for the embedding request for Cohere Models.
+type cohereEmbeddingResponse struct {
+	Embeddings [][]float32 `json:"embeddings"`
+}
+
+func createCohereEmbedding(ctx context.Context,
+	client *bedrockruntime.Client,
+	modelID string,
+	texts []string,
+) ([][]float32, error) {
+	body, err := json.Marshal(cohereEmbeddingRequest{
+		Texts:     texts,
+		InputType: "search_document",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
+		ModelId:     aws.String(modelID),
+		Body:        body,
+		Accept:      aws.String("application/json"),
+		ContentType: aws.String("application/json"),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var embeddingResp cohereEmbeddingResponse
+	if err := json.Unmarshal(resp.Body, &embeddingResp); err != nil {
+		return nil, err
+	}
+
+	return embeddingResp.Embeddings, nil
+}
+
 func createCohereCompletion(ctx context.Context,
 	client *bedrockruntime.Client,
 	modelID string,

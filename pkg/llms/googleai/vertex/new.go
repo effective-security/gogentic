@@ -22,7 +22,10 @@ type Vertex struct {
 	palmClient *palmclient.PaLMClient
 }
 
-var _ llms.Model = &Vertex{}
+var (
+	_ llms.Model    = (*Vertex)(nil)
+	_ llms.Embedder = (*Vertex)(nil)
+)
 
 // GetName implements the Model interface.
 func (v *Vertex) GetName() string {

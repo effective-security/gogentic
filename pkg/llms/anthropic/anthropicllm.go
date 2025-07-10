@@ -38,7 +38,9 @@ type LLM struct {
 	Options *Options
 }
 
-var _ llms.Model = (*LLM)(nil)
+var (
+	_ llms.Model = (*LLM)(nil)
+)
 
 // New creates a new Anthropic LLM client using the official Anthropic SDK.
 //

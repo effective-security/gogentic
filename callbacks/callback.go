@@ -207,7 +207,7 @@ func (l *Printer) OnToolError(ctx context.Context, tool tools.ITool, input strin
 func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %d messages\n", agent.Name(), len(payload))
+	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(payload))
 	// if l.Mode == ModeVerbose {
 	// 	llmutils.PrintMessageContents(l.Out, payload)
 	// }
@@ -216,7 +216,7 @@ func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.
 func (l *Printer) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAssistant, llm llms.Model, resp *llms.ContentResponse) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant LLM Call End: %s: %d messages\n", agent.Name(), len(resp.Choices))
+	fmt.Fprintf(l.Out, "Assistant LLM Call End: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(resp.Choices))
 }
 
 func (l *Printer) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {

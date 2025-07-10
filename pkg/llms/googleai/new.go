@@ -15,7 +15,10 @@ type GoogleAI struct {
 	opts   Options
 }
 
-var _ llms.Model = &GoogleAI{}
+var (
+	_ llms.Model    = (*GoogleAI)(nil)
+	_ llms.Embedder = (*GoogleAI)(nil)
+)
 
 // New creates a new GoogleAI client.
 func New(ctx context.Context, opts ...Option) (*GoogleAI, error) {

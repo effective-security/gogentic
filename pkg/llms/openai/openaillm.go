@@ -23,7 +23,10 @@ const (
 	RoleTool      = "tool"
 )
 
-var _ llms.Model = (*LLM)(nil)
+var (
+	_ llms.Model    = (*LLM)(nil)
+	_ llms.Embedder = (*LLM)(nil)
+)
 
 // New returns a new OpenAI LLM.
 func New(opts ...Option) (*LLM, error) {

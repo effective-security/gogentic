@@ -161,21 +161,25 @@ func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistan
 	atomic.AddUint32(&run.stats.AssistantLLMCalls, 1)
 	count := uint32(len(payload))
 	atomic.AddUint32(&run.stats.TotalMessages, count)
-	run.print(agent.Name(), "*** LLM Call ***", fmt.Sprintf("%d messages", count))
+
+	run.print(agent.Name(), "*** LLM Call ***", fmt.Sprintf("%s model, %d messages", llm.GetName(), count))
 
 	// count payload messages by role and print
 	for _, msg := range payload {
 		textParts := 0
 		toolParts := 0
+		toolResponseParts := 0
 		for _, part := range msg.Parts {
-			if _, ok := part.(llms.TextContent); ok {
+			switch part.(type) {
+			case llms.TextContent, *llms.TextContent:
 				textParts++
-			}
-			if _, ok := part.(llms.ToolCall); ok {
+			case llms.ToolCall, *llms.ToolCall:
 				toolParts++
+			case llms.ToolCallResponse, *llms.ToolCallResponse:
+				toolResponseParts++
 			}
 		}
-		run.print(string(msg.Role), fmt.Sprintf("%d text parts, %d tool parts", textParts, toolParts))
+		run.print(string(msg.Role), fmt.Sprintf("%d text parts, %d tool parts, %d tool response parts", textParts, toolParts, toolResponseParts))
 	}
 }
 
@@ -189,6 +193,8 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 	atomic.AddUint64(&run.stats.LLMInputTokens, uint64(tokensIn))
 	atomic.AddUint64(&run.stats.LLMOutputTokens, uint64(tokensOut))
 	atomic.AddUint64(&run.stats.LLMTotalTokens, uint64(tokensTotal))
+
+	run.print(agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens", llm.GetName(), tokensIn, tokensOut, tokensTotal))
 }
 
 func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant assistants.IAssistant, input string, response string, err error) {

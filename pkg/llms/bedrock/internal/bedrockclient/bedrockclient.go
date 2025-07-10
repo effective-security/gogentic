@@ -79,6 +79,23 @@ func (c *Client) CreateCompletion(ctx context.Context,
 	}
 }
 
+// CreateEmbedding creates a new embedding response from the provider.
+func (c *Client) CreateEmbedding(ctx context.Context,
+	modelID string,
+	texts []string,
+) ([][]float32, error) {
+	provider := getProvider(modelID)
+	switch provider {
+	case "amazon":
+		return createAmazonEmbedding(ctx, c.client, modelID, texts)
+	// TODO: add other providers
+	case "cohere":
+		return createCohereEmbedding(ctx, c.client, modelID, texts)
+	default:
+		return nil, errors.New("bedrock: unsupported provider for embeddings")
+	}
+}
+
 // Helper function to process input text chat
 // messages as a single string.
 func processInputMessagesGeneric(messages []Message) string {
