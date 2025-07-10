@@ -20,7 +20,10 @@ type LLM struct {
 	options options
 }
 
-var _ llms.Model = (*LLM)(nil)
+var (
+	_ llms.Model    = (*LLM)(nil)
+	_ llms.Embedder = (*LLM)(nil)
+)
 
 // New creates a new cloudflare LLM implementation.
 func New(opts ...Option) (*LLM, error) {

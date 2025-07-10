@@ -81,6 +81,11 @@ func (l *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 	return res, nil
 }
 
+// CreateEmbedding creates embeddings for the given input texts.
+func (l *LLM) CreateEmbedding(ctx context.Context, texts []string) ([][]float32, error) {
+	return l.client.CreateEmbedding(ctx, l.modelID, texts)
+}
+
 func processMessages(messages []llms.MessageContent) ([]bedrockclient.Message, error) {
 	bedrockMsgs := make([]bedrockclient.Message, 0, len(messages))
 
@@ -126,4 +131,7 @@ func processMessages(messages []llms.MessageContent) ([]bedrockclient.Message, e
 	return bedrockMsgs, nil
 }
 
-var _ llms.Model = (*LLM)(nil)
+var (
+	_ llms.Model    = (*LLM)(nil)
+	_ llms.Embedder = (*LLM)(nil)
+)

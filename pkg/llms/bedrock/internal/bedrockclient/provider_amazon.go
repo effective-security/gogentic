@@ -49,12 +49,57 @@ type amazonTextGenerationOutput struct {
 	} `json:"results"`
 }
 
+// amazonEmbeddingRequest is the input for the embedding request for Amazon Models.
+type amazonEmbeddingRequest struct {
+	InputText string `json:"inputText"`
+}
+
+// amazonEmbeddingResponse is the output for the embedding request for Amazon Models.
+type amazonEmbeddingResponse struct {
+	Embedding           []float32 `json:"embedding"`
+	InputTextTokenCount int       `json:"inputTextTokenCount"`
+}
+
 // Finish reason for the completion of the generation for Amazon Models.
 const (
 	AmazonCompletionReasonFinish          = "FINISH"
 	AmazonCompletionReasonMaxTokens       = "LENGTH"
 	AmazonCompletionReasonContentFiltered = "CONTENT_FILTERED"
 )
+
+func createAmazonEmbedding(ctx context.Context,
+	client *bedrockruntime.Client,
+	modelID string,
+	texts []string,
+) ([][]float32, error) {
+	embeddings := make([][]float32, 0, len(texts))
+	for _, text := range texts {
+		body, err := json.Marshal(amazonEmbeddingRequest{
+			InputText: text,
+		})
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		resp, err := client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
+			ModelId:     aws.String(modelID),
+			Body:        body,
+			Accept:      aws.String("application/json"),
+			ContentType: aws.String("application/json"),
+		})
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		var embeddingResp amazonEmbeddingResponse
+		if err := json.Unmarshal(resp.Body, &embeddingResp); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		embeddings = append(embeddings, embeddingResp.Embedding)
+	}
+
+	return embeddings, nil
+}
 
 func createAmazonCompletion(ctx context.Context,
 	client *bedrockruntime.Client,

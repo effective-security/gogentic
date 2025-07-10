@@ -129,4 +129,26 @@ const (
 	// Languages: English(Over 5% of the Llama 3 pretraining dataset consists of high-quality non-English data that covers over 30 languages.
 	// However, we do not expect the same level of performance in these languages as in English.)
 	ModelMetaLlama370bInstructV1 = "meta.llama3-70b-instruct-v1:0"
+
+	// Amazon Titan Embeddings is a text embedding model that creates a vector
+	// representation of a given text to be used for applications like search,
+	// personalization, and clustering.
+	//
+	// Max tokens: 8k
+	// Languages: English.
+	ModelAmazonTitanEmbedTextV1 = "amazon.titan-embed-text-v1"
+
+	// Cohere's multilingual model is a language-agnostic text-understanding model
+	// that can be used for search, classification, and clustering.
+	//
+	// Max tokens: 4000
+	// Languages: English, French, Spanish, German, Italian, Portuguese, Japanese, Korean, Chinese (simplified), and more.
+	ModelCohereEmbedMultilingualV3 = "cohere.embed-multilingual-v3"
+
+	// Cohere's English-only model is a language-agnostic text-understanding model
+	// that can be used for search, classification, and clustering.
+	//
+	// Max tokens: 4000
+	// Languages: English.
+	ModelCohereEmbedEnglishV3 = "cohere.embed-english-v3"
 )

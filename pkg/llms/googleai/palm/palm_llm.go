@@ -23,7 +23,10 @@ type LLM struct {
 	client *palmclient.PaLMClient
 }
 
-var _ llms.Model = (*LLM)(nil)
+var (
+	_ llms.Model    = (*LLM)(nil)
+	_ llms.Embedder = (*LLM)(nil)
+)
 
 // GetName implements the Model interface.
 func (o *LLM) GetName() string {

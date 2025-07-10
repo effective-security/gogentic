@@ -38,6 +38,12 @@ type Model interface {
 	GenerateContent(ctx context.Context, messages []MessageContent, options ...CallOption) (*ContentResponse, error)
 }
 
+// Embedder is an interface for models that can create embeddings.
+type Embedder interface {
+	// CreateEmbedding creates embeddings for the given input texts.
+	CreateEmbedding(ctx context.Context, texts []string) ([][]float32, error)
+}
+
 // Capability is a bitmask indicating supported features of an LLM provider.
 type Capability uint64
 
