@@ -38,7 +38,7 @@ const (
 // GenerateContent implements the [llms.Model] interface.
 func (g *Vertex) GenerateContent(
 	ctx context.Context,
-	messages []llms.MessageContent,
+	messages []llms.Message,
 	options ...llms.CallOption,
 ) (*llms.ContentResponse, error) {
 	opts := llms.CallOptions{
@@ -92,7 +92,7 @@ func (g *Vertex) GenerateContent(
 
 	if len(messages) == 1 {
 		theMessage := messages[0]
-		if theMessage.Role != llms.ChatMessageTypeHuman {
+		if theMessage.Role != llms.RoleHuman {
 			return nil, errors.Errorf("got %v message role, want human", theMessage.Role)
 		}
 		response, err = generateFromSingleMessage(ctx, model, theMessage.Parts, &opts)
@@ -202,7 +202,7 @@ func convertParts(parts []llms.ContentPart) ([]genai.Part, error) {
 }
 
 // convertContent converts between a langchain MessageContent and genai content.
-func convertContent(content llms.MessageContent) (*genai.Content, error) {
+func convertContent(content llms.Message) (*genai.Content, error) {
 	parts, err := convertParts(content.Parts)
 	if err != nil {
 		return nil, err
@@ -213,18 +213,16 @@ func convertContent(content llms.MessageContent) (*genai.Content, error) {
 	}
 
 	switch content.Role {
-	case llms.ChatMessageTypeSystem:
+	case llms.RoleSystem:
 		c.Role = RoleSystem
-	case llms.ChatMessageTypeAI:
+	case llms.RoleAI:
 		c.Role = RoleModel
-	case llms.ChatMessageTypeHuman:
+	case llms.RoleHuman:
 		c.Role = RoleUser
-	case llms.ChatMessageTypeGeneric:
+	case llms.RoleGeneric:
 		c.Role = RoleUser
-	case llms.ChatMessageTypeTool:
+	case llms.RoleTool:
 		c.Role = RoleUser
-	case llms.ChatMessageTypeFunction:
-		fallthrough
 	default:
 		return nil, errors.Errorf("role %v not supported", content.Role)
 	}
@@ -265,7 +263,7 @@ func generateFromSingleMessage(
 func generateFromMessages(
 	ctx context.Context,
 	model *genai.GenerativeModel,
-	messages []llms.MessageContent,
+	messages []llms.Message,
 	opts *llms.CallOptions,
 ) (*llms.ContentResponse, error) {
 	history := make([]*genai.Content, 0, len(messages))

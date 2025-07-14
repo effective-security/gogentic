@@ -26,7 +26,7 @@ func (p ChatPromptTemplate) FormatPrompt(values map[string]any) (llms.PromptValu
 		return nil, err
 	}
 
-	formattedMessages := make([]llms.ChatMessage, 0, len(p.Messages))
+	formattedMessages := make([]llms.Message, 0, len(p.Messages))
 	for _, m := range p.Messages {
 		curFormattedMessages, err := m.FormatMessages(resolvedValues)
 		if err != nil {
@@ -46,7 +46,7 @@ func (p ChatPromptTemplate) Format(values map[string]any) (string, error) {
 }
 
 // FormatMessages formats the messages with the values and returns the formatted messages.
-func (p ChatPromptTemplate) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p ChatPromptTemplate) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	promptValue, err := p.FormatPrompt(values)
 	if promptValue == nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -27,6 +28,7 @@ import (
 type redisStore struct {
 	client *redis.Client
 	prefix string
+	mu     sync.RWMutex // Protects concurrent access to chat metadata operations
 }
 
 func NewRedisStore(client *redis.Client, prefix string) MessageStore {
@@ -48,11 +50,11 @@ func (m *redisStore) getRedisChatListKey(tenantID string) string {
 	return path.Join(m.prefix, "chatstore", tenantID, "chats")
 }
 
-func (m *redisStore) Messages(ctx context.Context) []llms.ChatMessage {
-	return ToChatMessages(m.messages(ctx))
+func (m *redisStore) Messages(ctx context.Context) []llms.Message {
+	return m.messages(ctx)
 }
 
-func (m *redisStore) messages(ctx context.Context) []llms.ChatMessageModel {
+func (m *redisStore) messages(ctx context.Context) []llms.Message {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		logger.ContextKV(ctx, xlog.ERROR, "reason", "GetTenantAndChatID", "err", err.Error())
@@ -67,9 +69,9 @@ func (m *redisStore) messages(ctx context.Context) []llms.ChatMessageModel {
 		return nil
 	}
 
-	var messages []llms.ChatMessageModel
+	var messages []llms.Message
 	for _, item := range data {
-		var msg llms.ChatMessageModel
+		var msg llms.Message
 		if err := json.Unmarshal([]byte(item), &msg); err != nil {
 			logger.ContextKV(ctx, xlog.ERROR, "reason", "unmarshal message", "err", err.Error())
 			continue
@@ -79,26 +81,34 @@ func (m *redisStore) messages(ctx context.Context) []llms.ChatMessageModel {
 	return messages
 }
 
-func (m *redisStore) Add(ctx context.Context, msg llms.ChatMessage) error {
+func (m *redisStore) Add(ctx context.Context, msgs ...llms.Message) error {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
 	}
 
-	model := llms.ConvertChatMessageToModel(msg)
-	data, err := json.Marshal(model)
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal message")
+	if len(msgs) == 0 {
+		return nil
 	}
 
 	key := m.getRedisMessagesKey(tenantID, chatID)
 	pipe := m.client.Pipeline()
-	pipe.RPush(ctx, key, data)
+
+	// Marshal and add all messages to the pipeline
+	for _, msg := range msgs {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return errors.Wrap(err, "failed to marshal message")
+		}
+		pipe.RPush(ctx, key, data)
+	}
+
 	// Keep only the last 50 messages
 	pipe.LTrim(ctx, key, -50, -1)
+
 	_, err = pipe.Exec(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to store message in Redis")
+		return errors.Wrap(err, "failed to store messages in Redis")
 	}
 
 	// Update the time
@@ -110,6 +120,10 @@ func (m *redisStore) Reset(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Use local mutex to prevent race conditions within this instance
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	messageKey := m.getRedisMessagesKey(tenantID, chatID)
 	chatKey := m.getRedisChatInfoKey(tenantID, chatID)
@@ -133,6 +147,10 @@ func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[
 	if err != nil {
 		return err
 	}
+
+	// Use local mutex to prevent race conditions within this instance
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	chat, err := m.getChatInfo(ctx, chatID)
 	if err != nil {
@@ -196,10 +214,15 @@ func (m *redisStore) ListChats(ctx context.Context) ([]string, error) {
 }
 
 func (m *redisStore) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error) {
+	// Use read lock for getting existing chat info
+	m.mu.RLock()
 	info, err := m.getChatInfo(ctx, id)
+	m.mu.RUnlock()
+
 	if err != nil {
 		return nil, err
 	}
+
 	info.Messages = m.Messages(ctx)
 	return info, nil
 }
@@ -222,6 +245,10 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 		if err != redis.Nil && !errors.Is(err, redis.Nil) {
 			return nil, errors.Wrap(err, "failed to get chat info from Redis")
 		}
+
+		// Chat doesn't exist, create it
+		// Note: This method is called from UpdateChat which already holds the lock
+		// so we don't need additional locking here
 		chat = &ChatInfo{
 			TenantID:  tenantID,
 			ChatID:    chatID,

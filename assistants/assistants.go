@@ -38,6 +38,9 @@ type IAssistant interface {
 	// Call executes the assistant with the given input and prompt inputs.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
 	Call(ctx context.Context, input *CallInput) (*llms.ContentResponse, error)
+
+	// LastRunMessages returns the messages added to the message history from the last run.
+	LastRunMessages() []llms.Message
 }
 
 type CallInput struct {
@@ -48,7 +51,7 @@ type CallInput struct {
 	// Options is additional options to be passed to the assistant on run.
 	Options []Option
 	// Messages is additional content to be sent to the LLM.
-	Messages []llms.MessageContent
+	Messages []llms.Message
 }
 
 // IAssistantTool provides an interface for tools that use underlying the Assistants.
@@ -61,13 +64,8 @@ type IAssistantTool interface {
 
 type ProvidePromptInputsFunc func(ctx context.Context, input string) (map[string]any, error)
 
-type HasCallback interface {
-	GetCallback() Callback
-}
-
 type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	IAssistant
-	HasCallback
 	// Run executes the assistant with the given input and prompt inputs.
 	// Do not use this method directly, use the Run function instead.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
@@ -77,9 +75,9 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 type Callback interface {
 	tools.Callback
 	OnAssistantStart(ctx context.Context, a IAssistant, input string)
-	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *llms.ContentResponse)
-	OnAssistantError(ctx context.Context, a IAssistant, input string, err error)
-	OnAssistantLLMCallStart(ctx context.Context, a IAssistant, llm llms.Model, payload []llms.MessageContent)
+	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message)
+	OnAssistantError(ctx context.Context, a IAssistant, input string, err error, messages []llms.Message)
+	OnAssistantLLMCallStart(ctx context.Context, a IAssistant, llm llms.Model, payload []llms.Message)
 	OnAssistantLLMCallEnd(ctx context.Context, a IAssistant, llm llms.Model, resp *llms.ContentResponse)
 	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
 	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
@@ -151,63 +149,4 @@ func MapAssistants(list ...IAssistant) map[string]IAssistant {
 		m[a.Name()] = a
 	}
 	return m
-}
-
-// Run executes the assistant with the given input and prompt inputs.
-func Run[O chatmodel.ContentProvider](
-	ctx context.Context,
-	assistant TypeableAssistant[O],
-	input *CallInput,
-	optionalOutputType *O,
-) (*llms.ContentResponse, error) {
-	var callback Callback
-	if cb, ok := assistant.(HasCallback); ok {
-		callback = cb.GetCallback()
-	}
-
-	if callback != nil {
-		callback.OnAssistantStart(ctx, assistant, input.Input)
-	}
-
-	apiResp, err := assistant.Run(ctx, input, optionalOutputType)
-	if err != nil {
-		if callback != nil {
-			callback.OnAssistantError(ctx, assistant, input.Input, err)
-		}
-		return nil, err
-	}
-
-	if callback != nil {
-		callback.OnAssistantEnd(ctx, assistant, input.Input, apiResp)
-	}
-	return apiResp, nil
-}
-
-// Call executes a generic assistant without typed output.
-func Call(
-	ctx context.Context,
-	assistant IAssistant,
-	input *CallInput,
-) (*llms.ContentResponse, error) {
-	var callback Callback
-	if cb, ok := assistant.(HasCallback); ok {
-		callback = cb.GetCallback()
-	}
-
-	if callback != nil {
-		callback.OnAssistantStart(ctx, assistant, input.Input)
-	}
-
-	apiResp, err := assistant.Call(ctx, input)
-	if err != nil {
-		if callback != nil {
-			callback.OnAssistantError(ctx, assistant, input.Input, err)
-		}
-		return nil, err
-	}
-
-	if callback != nil {
-		callback.OnAssistantEnd(ctx, assistant, input.Input, apiResp)
-	}
-	return apiResp, nil
 }

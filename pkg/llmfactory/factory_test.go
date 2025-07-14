@@ -756,7 +756,7 @@ func (f *fakeLLM) Name() string {
 func (f *fakeLLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
 	return "", nil
 }
-func (f *fakeLLM) GenerateContent(_ context.Context, _ []llms.MessageContent, _ ...llms.CallOption) (*llms.ContentResponse, error) {
+func (f *fakeLLM) GenerateContent(_ context.Context, _ []llms.Message, _ ...llms.CallOption) (*llms.ContentResponse, error) {
 	return nil, nil
 }
 

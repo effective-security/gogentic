@@ -63,7 +63,7 @@ func Test_AssistantTool(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			calls++
 			return &llms.ContentResponse{
 				Choices: []*llms.ContentChoice{
@@ -103,9 +103,11 @@ func Test_AssistantTool(t *testing.T) {
 	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
 	exp := `Human: What is a capital of largest country in Europe?
-AI: This is a test answer 1.`
-	chat, err := llms.GetBufferString(history, "Human", "AI")
-	require.NoError(t, err)
+AI: This is a test answer 1.
+`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	chat := buf.String()
 	assert.Equal(t, exp, chat)
 
 	tool, err := assistants.NewAssistantTool[chatmodel.InputRequest](ag)
@@ -412,7 +414,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls with specific IDs
 			if len(messages) == 2 {
 				toolCalls := []llms.ToolCall{
@@ -482,7 +484,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 	// Find tool call responses in the message history
 	toolCallCount := 0
 	for _, msg := range runMessages {
-		if msg.Role == llms.ChatMessageTypeTool {
+		if msg.Role == llms.RoleTool {
 			toolCallCount++
 			// Verify that the tool call response has the correct structure
 			require.Len(t, msg.Parts, 1)
@@ -547,7 +549,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls in a single choice
 			if len(messages) == 2 {
 				toolCalls := []llms.ToolCall{
@@ -614,9 +616,9 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	runMessages := ag.LastRunMessages()
 
 	// Find the assistant message with tool calls
-	var assistantMessageWithTools *llms.MessageContent
+	var assistantMessageWithTools *llms.Message
 	for i, msg := range runMessages {
-		if msg.Role == llms.ChatMessageTypeAI && len(msg.Parts) > 0 {
+		if msg.Role == llms.RoleAI && len(msg.Parts) > 0 {
 			// Check if this message contains tool calls
 			hasToolCalls := false
 			for _, part := range msg.Parts {
@@ -635,7 +637,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	require.NotNil(t, assistantMessageWithTools, "Should find assistant message with tool calls")
 
 	// Verify that all tool calls are in a single assistant message
-	assert.Equal(t, llms.ChatMessageTypeAI, assistantMessageWithTools.Role)
+	assert.Equal(t, llms.RoleAI, assistantMessageWithTools.Role)
 	assert.Equal(t, 2, len(assistantMessageWithTools.Parts), "Should have exactly 2 tool calls in one message")
 
 	// Verify the tool calls have the correct IDs
@@ -652,7 +654,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	// Verify that tool responses come after the assistant message
 	toolResponseCount := 0
 	for _, msg := range runMessages {
-		if msg.Role == llms.ChatMessageTypeTool {
+		if msg.Role == llms.RoleTool {
 			toolResponseCount++
 		}
 	}

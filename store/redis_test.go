@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	rediscon "github.com/testcontainers/testcontainers-go/modules/redis"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func Test_RedisStore(t *testing.T) {
@@ -57,8 +59,8 @@ func Test_RedisStore(t *testing.T) {
 	tenantID := "tenant1"
 	chatID := "chat1"
 	appData := map[string]string{"key": "value"}
-	msg1 := &llms.HumanChatMessage{Content: "Hello"}
-	msg2 := &llms.AIChatMessage{Content: "Hi there!"}
+	msg1 := llms.MessageFromTextParts(llms.RoleHuman, "Hello")
+	msg2 := llms.MessageFromTextParts(llms.RoleAI, "Hi there!")
 
 	expErr := "invalid chat context"
 	assert.EqualError(t, st.Reset(ctx), expErr)
@@ -105,8 +107,8 @@ func Test_RedisStore(t *testing.T) {
 	// Retrieve messages from the store
 	messages := st.Messages(ctx)
 	require.Equal(t, 2, len(messages))
-	assert.Equal(t, msg1.Content, messages[0].GetContent())
-	assert.Equal(t, msg2.Content, messages[1].GetContent())
+	assert.Equal(t, msg1, messages[0])
+	assert.Equal(t, msg2, messages[1])
 
 	chi, err := st.GetChatInfo(ctx, cID)
 	require.NoError(t, err)
@@ -202,8 +204,8 @@ func Test_RedisStoreManager(t *testing.T) {
 	tenantID := "tenant1"
 	chatID := "chat1"
 	appData := map[string]string{"key": "value"}
-	msg1 := &llms.HumanChatMessage{Content: "Hello"}
-	msg2 := &llms.AIChatMessage{Content: "Hi there!"}
+	msg1 := llms.MessageFromTextParts(llms.RoleHuman, "Hello")
+	msg2 := llms.MessageFromTextParts(llms.RoleAI, "Hi there!")
 
 	chatCtx := chatmodel.NewChatContext(tenantID, chatID, appData)
 	ctx = chatmodel.WithChatContext(ctx, chatCtx)
@@ -272,4 +274,160 @@ func Test_RedisStoreManager(t *testing.T) {
 	chats, err = st.ListChats(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(chats))
+}
+
+func Test_RedisStore_ConcurrentUpdateChat(t *testing.T) {
+	ctx := context.Background()
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "redis:7",
+			ExposedPorts: []string{"6379/tcp"},
+			WaitingFor:   wait.ForLog("Ready to accept connections"),
+		},
+		Started: true,
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := container.Terminate(ctx)
+		require.NoError(t, err)
+	}()
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, "6379")
+	require.NoError(t, err)
+
+	client := redis.NewClient(&redis.Options{
+		Addr: host + ":" + port.Port(),
+	})
+	defer client.Close()
+
+	st := store.NewRedisStore(client, "test")
+
+	// Test concurrent UpdateChat calls
+	tenantID := "tenant1"
+	chatID := "chat1"
+	chatCtx := chatmodel.NewChatContext(tenantID, chatID, nil)
+	ctx = chatmodel.WithChatContext(ctx, chatCtx)
+
+	const numGoroutines = 10
+	const updatesPerGoroutine = 5
+	var wg sync.WaitGroup
+	errors := make(chan error, numGoroutines*updatesPerGoroutine)
+
+	// Launch concurrent goroutines that update the same chat
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			for j := 0; j < updatesPerGoroutine; j++ {
+				metadata := map[string]any{
+					"goroutine": goroutineID,
+					"update":    j,
+					"timestamp": time.Now().UnixNano(),
+				}
+				err := st.UpdateChat(ctx, fmt.Sprintf("Title from goroutine %d", goroutineID), metadata)
+				if err != nil {
+					errors <- err
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check for any errors
+	for err := range errors {
+		t.Errorf("Concurrent UpdateChat failed: %v", err)
+	}
+
+	// Verify that the chat was updated (should have the last update's metadata)
+	chatInfo, err := st.GetChatInfo(ctx, chatID)
+	require.NoError(t, err)
+	require.NotNil(t, chatInfo)
+	require.NotEmpty(t, chatInfo.Title)
+	require.NotNil(t, chatInfo.Metadata)
+}
+
+func Test_RedisStore_ConcurrentChatCreation(t *testing.T) {
+	ctx := context.Background()
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "redis:7",
+			ExposedPorts: []string{"6379/tcp"},
+			WaitingFor:   wait.ForLog("Ready to accept connections"),
+		},
+		Started: true,
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := container.Terminate(ctx)
+		require.NoError(t, err)
+	}()
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, "6379")
+	require.NoError(t, err)
+
+	client := redis.NewClient(&redis.Options{
+		Addr: host + ":" + port.Port(),
+	})
+	defer client.Close()
+
+	st := store.NewRedisStore(client, "test")
+
+	// Test concurrent chat creation
+	tenantID := "tenant2"
+	chatID := "chat2"
+	chatCtx := chatmodel.NewChatContext(tenantID, chatID, nil)
+	ctx = chatmodel.WithChatContext(ctx, chatCtx)
+
+	const numGoroutines = 10
+	var wg sync.WaitGroup
+	errors := make(chan error, numGoroutines)
+	chatInfos := make(chan *store.ChatInfo, numGoroutines)
+
+	// Launch concurrent goroutines that try to get/create the same chat
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			chatInfo, err := st.GetChatInfo(ctx, chatID)
+			if err != nil {
+				errors <- err
+				return
+			}
+			chatInfos <- chatInfo
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+	close(chatInfos)
+
+	// Check for any errors
+	for err := range errors {
+		t.Errorf("Concurrent GetChatInfo failed: %v", err)
+	}
+
+	// Verify that only one chat was created and all goroutines got the same chat
+	var firstChatInfo *store.ChatInfo
+	chatCount := 0
+	for chatInfo := range chatInfos {
+		chatCount++
+		if firstChatInfo == nil {
+			firstChatInfo = chatInfo
+		} else {
+			// All chat infos should be identical (except timestamps which may vary slightly)
+			assert.Equal(t, firstChatInfo.ChatID, chatInfo.ChatID)
+			assert.Equal(t, firstChatInfo.TenantID, chatInfo.TenantID)
+			assert.Equal(t, firstChatInfo.Title, chatInfo.Title)
+			// Don't compare timestamps as they may vary slightly due to creation time
+		}
+	}
+
+	require.Equal(t, numGoroutines, chatCount, "All goroutines should have received chat info")
+	require.NotNil(t, firstChatInfo, "Chat should have been created")
 }

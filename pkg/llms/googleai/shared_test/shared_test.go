@@ -124,15 +124,8 @@ func testMultiContentText(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
-	parts := []llms.ContentPart{
-		llms.TextPart("I'm a pomeranian"),
-		llms.TextPart("What kind of mammal am I?"),
-	}
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: parts,
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "I'm a pomeranian", "What kind of mammal am I?"),
 	}
 
 	rsp, err := llm.GenerateContent(context.Background(), content)
@@ -149,13 +142,13 @@ func testMultiContentTextUsingTextParts(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
-	content := llms.TextParts(
-		llms.ChatMessageTypeHuman,
+	content := llms.MessageFromTextParts(
+		llms.RoleHuman,
 		"I'm a pomeranian",
 		"What kind of mammal am I?",
 	)
 
-	rsp, err := llm.GenerateContent(context.Background(), []llms.MessageContent{content})
+	rsp, err := llm.GenerateContent(context.Background(), []llms.Message{content})
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, rsp.Choices)
@@ -178,19 +171,10 @@ func testMultiContentTextChatSequence(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Name some countries")},
-		},
-		{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: []llms.ContentPart{llms.TextPart("Spain and Lesotho")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Which if these is larger?")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Name some countries"),
+		llms.MessageFromTextParts(llms.RoleAI, "Spain and Lesotho"),
+		llms.MessageFromTextParts(llms.RoleHuman, "Which if these is larger?"),
 	}
 
 	rsp, err := llm.GenerateContent(context.Background(), content, llms.WithModel("gemini-1.5-flash"))
@@ -205,15 +189,9 @@ func testMultiContentWithSystemMessage(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{llms.TextPart("You are a Spanish teacher; answer in Spanish")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Name the 5 most common fruits")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You are a Spanish teacher; answer in Spanish"),
+		llms.MessageFromTextParts(llms.RoleHuman, "Name the 5 most common fruits"),
 	}
 
 	rsp, err := llm.GenerateContent(context.Background(), content, llms.WithModel("gemini-1.5-flash"))
@@ -234,9 +212,9 @@ func testMultiContentImageLink(t *testing.T, llm llms.Model) {
 		),
 		llms.TextPart("describe this image in detail"),
 	}
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: parts,
 		},
 	}
@@ -266,9 +244,9 @@ func testMultiContentImageBinary(t *testing.T, llm llms.Model) {
 		llms.BinaryPart("image/png", b),
 		llms.TextPart("what does this image show? please use detail"),
 	}
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: parts,
 		},
 	}
@@ -303,14 +281,8 @@ func testMultiContentImageBinary(t *testing.T, llm llms.Model) {
 func testCandidateCountSetting(t *testing.T, llm llms.Model) {
 	t.Helper()
 
-	parts := []llms.ContentPart{
-		llms.TextPart("Name five countries in Africa"),
-	}
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: parts,
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Name five countries in Africa"),
 	}
 
 	{
@@ -328,8 +300,8 @@ func testWithStreaming(t *testing.T, llm llms.Model) {
 	t.Helper()
 	t.Parallel()
 
-	content := llms.TextParts(
-		llms.ChatMessageTypeHuman,
+	content := llms.MessageFromTextParts(
+		llms.RoleHuman,
 		"I'm a pomeranian",
 		"Tell me more about my taxonomy",
 	)
@@ -337,7 +309,7 @@ func testWithStreaming(t *testing.T, llm llms.Model) {
 	var sb strings.Builder
 	rsp, err := llm.GenerateContent(
 		context.Background(),
-		[]llms.MessageContent{content},
+		[]llms.Message{content},
 		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
 			sb.Write(chunk)
 			return nil
@@ -372,8 +344,8 @@ func testTools(t *testing.T, llm llms.Model) {
 		},
 	}
 
-	content := []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeHuman, "What is the weather like in Chicago?"),
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "What is the weather like in Chicago?"),
 	}
 	resp, err := llm.GenerateContent(
 		context.Background(),
@@ -385,8 +357,8 @@ func testTools(t *testing.T, llm llms.Model) {
 	c1 := resp.Choices[0]
 
 	// Update chat history with assistant's response, with its tool calls.
-	assistantResp := llms.MessageContent{
-		Role: llms.ChatMessageTypeAI,
+	assistantResp := llms.Message{
+		Role: llms.RoleAI,
 	}
 	for _, tc := range c1.ToolCalls {
 		assistantResp.Parts = append(assistantResp.Parts, tc)
@@ -404,8 +376,8 @@ func testTools(t *testing.T, llm llms.Model) {
 				t.Fatal(err)
 			}
 			if strings.Contains(args.Location, "Chicago") {
-				toolResponse := llms.MessageContent{
-					Role: llms.ChatMessageTypeTool,
+				toolResponse := llms.Message{
+					Role: llms.RoleTool,
 					Parts: []llms.ContentPart{
 						llms.ToolCallResponse{
 							Name:    tc.FunctionCall.Name,
@@ -451,8 +423,8 @@ func testToolsWithInterfaceRequired(t *testing.T, llm llms.Model) {
 		},
 	}
 
-	content := []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeHuman, "What is the weather like in Chicago?"),
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "What is the weather like in Chicago?"),
 	}
 	resp, err := llm.GenerateContent(
 		context.Background(),
@@ -466,8 +438,8 @@ func testToolsWithInterfaceRequired(t *testing.T, llm llms.Model) {
 	assert.NotZero(t, c1.GenerationInfo["output_tokens"])
 
 	// Update chat history with assistant's response, with its tool calls.
-	assistantResp := llms.MessageContent{
-		Role: llms.ChatMessageTypeAI,
+	assistantResp := llms.Message{
+		Role: llms.RoleAI,
 	}
 	for _, tc := range c1.ToolCalls {
 		assistantResp.Parts = append(assistantResp.Parts, tc)
@@ -485,8 +457,8 @@ func testToolsWithInterfaceRequired(t *testing.T, llm llms.Model) {
 				t.Fatal(err)
 			}
 			if strings.Contains(args.Location, "Chicago") {
-				toolResponse := llms.MessageContent{
-					Role: llms.ChatMessageTypeTool,
+				toolResponse := llms.Message{
+					Role: llms.RoleTool,
 					Parts: []llms.ContentPart{
 						llms.ToolCallResponse{
 							Name:    tc.FunctionCall.Name,
@@ -519,9 +491,9 @@ func testMaxTokensSetting(t *testing.T, llm llms.Model) {
 		llms.TextPart("I'm a pomeranian"),
 		llms.TextPart("Describe my taxonomy, health and care"),
 	}
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: parts,
 		},
 	}
@@ -559,7 +531,7 @@ func testWithHTTPClient(t *testing.T, llm llms.Model) {
 
 	resp, err := llm.GenerateContent(
 		context.TODO(),
-		[]llms.MessageContent{llms.TextParts(llms.ChatMessageTypeHuman, "testing")},
+		[]llms.Message{llms.MessageFromTextParts(llms.RoleHuman, "testing")},
 	)
 	require.NoError(t, err)
 	require.EqualValues(t, "test-ok", resp.Choices[0].Content)

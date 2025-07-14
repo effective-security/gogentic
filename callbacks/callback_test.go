@@ -30,11 +30,11 @@ func TestCallback(t *testing.T) {
 				Content: "test output",
 			},
 		},
-	})
-	cb.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"))
-	cb.OnToolStart(context.Background(), tool, "test input")
-	cb.OnToolEnd(context.Background(), tool, "test input", "test output")
-	cb.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
+	}, []llms.Message{})
+	cb.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), []llms.Message{})
+	cb.OnToolStart(context.Background(), tool, "test-assistant", "test input")
+	cb.OnToolEnd(context.Background(), tool, "test-assistant", "test input", "test output")
+	cb.OnToolError(context.Background(), tool, "test-assistant", "test input", errors.New("test error"))
 
 	res := buf.String()
 	assert.Contains(t, res, "Assistant Start: test-assistant")
@@ -43,7 +43,7 @@ func TestCallback(t *testing.T) {
 	assert.Contains(t, res, "Tool Start: test-tool")
 	assert.Contains(t, res, "Tool End: test-tool")
 	assert.Contains(t, res, "Output: test output")
-	assert.Contains(t, res, "Tool Error: test-tool: ")
+	assert.Contains(t, res, "Tool Error: test-tool (test-assistant): test error")
 }
 
 func TestDescriptions(t *testing.T) {
@@ -139,32 +139,32 @@ func TestFanoutCallback(t *testing.T) {
 				Content: "test output",
 			},
 		},
-	})
+	}, []llms.Message{})
 	assert.Contains(t, buf1.String(), "Assistant End: test-assistant")
 	assert.Contains(t, buf2.String(), "Assistant End: test-assistant")
 
 	// Test OnAssistantError
-	fanout.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"))
+	fanout.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), []llms.Message{})
 	assert.Contains(t, buf1.String(), "Assistant Error: test-assistant")
 	assert.Contains(t, buf2.String(), "Assistant Error: test-assistant")
 
 	// Test OnToolStart
-	fanout.OnToolStart(context.Background(), tool, "test input")
-	assert.Contains(t, buf1.String(), "Tool Start: test-tool")
-	assert.Contains(t, buf2.String(), "Tool Start: test-tool")
+	fanout.OnToolStart(context.Background(), tool, "test-assistant", "test input")
+	assert.Contains(t, buf1.String(), "Tool Start: test-tool (test-assistant)")
+	assert.Contains(t, buf2.String(), "Tool Start: test-tool (test-assistant)")
 
 	// Test OnToolEnd
-	fanout.OnToolEnd(context.Background(), tool, "test input", "test output")
-	assert.Contains(t, buf1.String(), "Tool End: test-tool")
-	assert.Contains(t, buf2.String(), "Tool End: test-tool")
+	fanout.OnToolEnd(context.Background(), tool, "test-assistant", "test input", "test output")
+	assert.Contains(t, buf1.String(), "Tool End: test-tool (test-assistant)")
+	assert.Contains(t, buf2.String(), "Tool End: test-tool (test-assistant)")
 
 	// Test OnToolError
-	fanout.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
-	assert.Contains(t, buf1.String(), "Tool Error: test-tool")
-	assert.Contains(t, buf2.String(), "Tool Error: test-tool")
+	fanout.OnToolError(context.Background(), tool, "test-assistant", "test input", errors.New("test error"))
+	assert.Contains(t, buf1.String(), "Tool Error: test-tool (test-assistant)")
+	assert.Contains(t, buf2.String(), "Tool Error: test-tool (test-assistant)")
 
 	// Test OnAssistantLLMCall
-	fanout.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{})
+	fanout.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{})
 	assert.Contains(t, buf1.String(), "Assistant LLM Call: test-assistant")
 	assert.Contains(t, buf2.String(), "Assistant LLM Call: test-assistant")
 
@@ -193,13 +193,13 @@ func TestNoopCallback(t *testing.T) {
 
 	// Test all methods - they should not panic
 	noop.OnAssistantStart(context.Background(), ast, "test input")
-	noop.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{})
-	noop.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"))
+	noop.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{}, []llms.Message{})
+	noop.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), []llms.Message{})
 	noop.OnAssistantLLMParseError(context.Background(), ast, "test input", "test response", errors.New("parse error"))
-	noop.OnToolStart(context.Background(), tool, "test input")
-	noop.OnToolEnd(context.Background(), tool, "test input", "test output")
-	noop.OnToolError(context.Background(), tool, "test input", errors.New("test error"))
-	noop.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{})
+	noop.OnToolStart(context.Background(), tool, "test-assistant", "test input")
+	noop.OnToolEnd(context.Background(), tool, "test-assistant", "test input", "test output")
+	noop.OnToolError(context.Background(), tool, "test-assistant", "test input", errors.New("test error"))
+	noop.OnAssistantLLMCallStart(context.Background(), ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{})
 	noop.OnToolNotFound(context.Background(), ast, "missing-tool")
 }
 
@@ -228,7 +228,7 @@ func (f *fakeAssistant) Call(ctx context.Context, input *assistants.CallInput) (
 	return nil, nil
 }
 
-func (f *fakeAssistant) LastRunMessages() []llms.MessageContent {
+func (f *fakeAssistant) LastRunMessages() []llms.Message {
 	return nil
 }
 
@@ -261,6 +261,6 @@ type fakeModel struct {
 
 func (m *fakeModel) GetName() string                    { return m.name }
 func (m *fakeModel) GetProviderType() llms.ProviderType { return m.provider }
-func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	return nil, nil
 }

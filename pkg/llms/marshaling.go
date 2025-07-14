@@ -11,8 +11,8 @@ import (
 
 // MessageContentJSON represents the JSON structure for MessageContent
 type MessageContentJSON struct {
-	Role ChatMessageType `json:"role"`
-	Text string          `json:"text,omitempty"`
+	Role Role   `json:"role"`
+	Text string `json:"text,omitempty"`
 }
 
 // ContentPartJSON represents the JSON structure for content parts
@@ -83,12 +83,12 @@ type ToolResponseContentJSON struct {
 
 // MessageContentWithPartsJSON represents the JSON structure for MessageContent with parts
 type MessageContentWithPartsJSON struct {
-	Role  ChatMessageType `json:"role"`
-	Parts []ContentPart   `json:"parts"`
+	Role  Role          `json:"role"`
+	Parts []ContentPart `json:"parts"`
 }
 
 // ToMessageContentWithPartsJSON converts MessageContent to MessageContentWithPartsJSON
-func (mc *MessageContent) ToMessageContentWithPartsJSON() *MessageContentWithPartsJSON {
+func (mc *Message) ToMessageContentWithPartsJSON() *MessageContentWithPartsJSON {
 	return &MessageContentWithPartsJSON{
 		Role:  mc.Role,
 		Parts: mc.Parts,
@@ -105,7 +105,7 @@ func (tc *ToolCallResponse) ToToolResponseJSONOrdered() *ToolResponseJSONOrdered
 }
 
 // MarshalJSON implements json.Marshaler for MessageContent
-func (mc MessageContent) MarshalJSON() ([]byte, error) {
+func (mc Message) MarshalJSON() ([]byte, error) {
 	// Special case: single text part can be simplified
 	if len(mc.Parts) == 1 {
 		if tp, hasSingleTextPart := mc.Parts[0].(TextContent); hasSingleTextPart {
@@ -121,7 +121,7 @@ func (mc MessageContent) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for MessageContent
-func (mc *MessageContent) UnmarshalJSON(data []byte) error {
+func (mc *Message) UnmarshalJSON(data []byte) error {
 	var msgJSON MessageContentJSON
 	if err := json.Unmarshal(data, &msgJSON); err != nil {
 		return err

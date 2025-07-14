@@ -26,7 +26,7 @@ func (a *fakeAssistant) GetPromptInputVariables() []string                     {
 func (a *fakeAssistant) Call(context.Context, *assistants.CallInput) (*llms.ContentResponse, error) {
 	return nil, nil
 }
-func (a *fakeAssistant) LastRunMessages() []llms.MessageContent { return nil }
+func (a *fakeAssistant) LastRunMessages() []llms.Message { return nil }
 
 type fakeTool struct{ name string }
 
@@ -42,7 +42,7 @@ type fakeModel struct {
 
 func (m *fakeModel) GetName() string                    { return m.name }
 func (m *fakeModel) GetProviderType() llms.ProviderType { return m.provider }
-func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	return nil, nil
 }
 
@@ -108,15 +108,19 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 		Choices: []*llms.ContentChoice{{Content: "Answer 1"}}}
 	// Test various callbacks
 	sp.OnAssistantStart(ctx, ast, "input")
-	sp.OnAssistantEnd(ctx, ast, "input", resp)
-	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{
-		{Role: llms.ChatMessageTypeHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
+	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parseerr"))
-	sp.OnAssistantError(ctx, ast, "input", errors.New("fail"))
-	sp.OnToolStart(ctx, tool, "tinput")
-	sp.OnToolEnd(ctx, tool, "tinput", "toutput")
-	sp.OnToolError(ctx, tool, "tinput", errors.New("terr"))
+	sp.OnAssistantError(ctx, ast, "input", errors.New("fail"), []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
+	sp.OnToolStart(ctx, tool, "A1", "tinput")
+	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
+	sp.OnToolError(ctx, tool, "A1", "tinput", errors.New("terr"))
 	sp.OnToolNotFound(ctx, ast, "T2")
 	// EndRun shows these calls
 	stats, output := sp.EndRun(ctx)
@@ -132,15 +136,19 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	assert.Contains(t, outStr, "A1 *** Tool Not Found ***")
 	// test callback methods again: should still work if no run
 	sp.OnAssistantStart(ctx, ast, "input")
-	sp.OnAssistantEnd(ctx, ast, "input", resp)
-	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.MessageContent{
-		{Role: llms.ChatMessageTypeHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
+	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parse2"))
-	sp.OnAssistantError(ctx, ast, "input", errors.New("fail2"))
-	sp.OnToolStart(ctx, tool, "tinput")
-	sp.OnToolEnd(ctx, tool, "tinput", "toutput")
-	sp.OnToolError(ctx, tool, "tinput", errors.New("terr2"))
+	sp.OnAssistantError(ctx, ast, "input", errors.New("fail2"), []llms.Message{
+		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
+	sp.OnToolStart(ctx, tool, "A1", "tinput")
+	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
+	sp.OnToolError(ctx, tool, "A1", "tinput", errors.New("terr2"))
 	sp.OnToolNotFound(ctx, ast, "T3")
 	sp.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, resp)
 }

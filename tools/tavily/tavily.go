@@ -14,7 +14,6 @@ import (
 	tavilygo "github.com/diverged/tavily-go"
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/chatmodel"
-	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
@@ -35,10 +34,6 @@ type SearchRequest struct {
 type SearchResult struct {
 	Results []tavilyModels.SearchResult `json:"results" yaml:"Results" jsonschema:"title=Search Results,description=The results from a web pages."`
 	Answer  string                      `json:"answer,omitempty" yaml:"Answer" jsonschema:"title=Final Answer,description=The aggregated answer from a web search."`
-}
-
-func (i *SearchResult) GetType() llms.ChatMessageType {
-	return llms.ChatMessageTypeAI
 }
 
 func (i *SearchResult) GetContent() string {

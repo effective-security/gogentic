@@ -27,15 +27,8 @@ func TestMultiContentText(t *testing.T) {
 	t.Parallel()
 	llm := newTestClient(t)
 
-	parts := []llms.ContentPart{
-		llms.TextPart("I'm a pomeranian"),
-		llms.TextPart("What kind of mammal am I?"),
-	}
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: parts,
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "I'm a pomeranian", "What kind of mammal am I?"),
 	}
 
 	rsp, err := llm.GenerateContent(context.Background(), content)
@@ -50,19 +43,10 @@ func TestMultiContentTextChatSequence(t *testing.T) {
 	t.Parallel()
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Name some countries")},
-		},
-		{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: []llms.ContentPart{llms.TextPart("Spain and Lesotho")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Which if these is larger?")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Name some countries"),
+		llms.MessageFromTextParts(llms.RoleAI, "Spain and Lesotho"),
+		llms.MessageFromTextParts(llms.RoleHuman, "Which if these is larger?"),
 	}
 
 	rsp, err := llm.GenerateContent(context.Background(), content)
@@ -82,9 +66,9 @@ func TestMultiContentImage(t *testing.T) {
 		llms.ImageURLPart("https://github.com/tmc/langchaingo/blob/main/docs/static/img/parrot-icon.png?raw=true"),
 		llms.TextPart("describe this image in detail"),
 	}
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: parts,
 		},
 	}
@@ -105,9 +89,9 @@ func TestWithStreaming(t *testing.T) {
 		llms.TextPart("I'm a pomeranian"),
 		llms.TextPart("Tell me more about my taxonomy"),
 	}
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: parts,
 		},
 	}

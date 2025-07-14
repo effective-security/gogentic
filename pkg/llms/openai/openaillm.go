@@ -50,7 +50,7 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 }
 
 // GenerateContent implements the Model interface.
-func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, goerr113, funlen
+func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, goerr113, funlen
 	opts := llms.CallOptions{}
 	for _, opt := range options {
 		opt(&opts)
@@ -60,17 +60,15 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 	for _, mc := range messages {
 		msg := &ChatMessage{MultiContent: mc.Parts}
 		switch mc.Role {
-		case llms.ChatMessageTypeSystem:
+		case llms.RoleSystem:
 			msg.Role = RoleSystem
-		case llms.ChatMessageTypeAI:
+		case llms.RoleAI:
 			msg.Role = RoleAssistant
-		case llms.ChatMessageTypeHuman:
+		case llms.RoleHuman:
 			msg.Role = RoleUser
-		case llms.ChatMessageTypeGeneric:
+		case llms.RoleGeneric:
 			msg.Role = RoleUser
-		case llms.ChatMessageTypeFunction:
-			msg.Role = RoleFunction
-		case llms.ChatMessageTypeTool:
+		case llms.RoleTool:
 			msg.Role = RoleTool
 			// Here we extract tool calls from the message and populate the ToolCalls field.
 
@@ -151,13 +149,6 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 			},
 		}
 
-		// Legacy function call handling
-		if c.FinishReason == "function_call" {
-			choices[i].FuncCall = &llms.FunctionCall{
-				Name:      c.Message.FunctionCall.Name,
-				Arguments: c.Message.FunctionCall.Arguments,
-			}
-		}
 		for _, tool := range c.Message.ToolCalls {
 			choices[i].ToolCalls = append(choices[i].ToolCalls, llms.ToolCall{
 				ID:   tool.ID,

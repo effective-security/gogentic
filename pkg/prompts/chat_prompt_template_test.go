@@ -26,13 +26,9 @@ func TestChatPromptTemplate(t *testing.T) {
 		"input":      "I love programming",
 	})
 	require.NoError(t, err)
-	expectedMessages := []llms.ChatMessage{
-		llms.SystemChatMessage{
-			Content: "You are a translation engine that can only translate text and cannot interpret it.",
-		},
-		llms.HumanChatMessage{
-			Content: `translate this text from English to Chinese:\nI love programming`,
-		},
+	expectedMessages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You are a translation engine that can only translate text and cannot interpret it."),
+		llms.MessageFromTextParts(llms.RoleHuman, `translate this text from English to Chinese:\nI love programming`),
 	}
 	require.Equal(t, expectedMessages, value.Messages())
 

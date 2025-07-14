@@ -95,6 +95,8 @@ type Config struct {
 	Mode encoding.Mode
 	// SkipMessageHistory is a flag to skip adding Assistant messages to History.
 	SkipMessageHistory bool
+	// SkipToolHistory is a flag to skip adding Tool messages to History.
+	SkipToolHistory bool
 	// IsGeneric is a flag to indicate that the assistant should add a generic message to the history,
 	// instead of the human
 	IsGeneric bool
@@ -168,6 +170,13 @@ func WithEnableFunctionCalls(val bool) Option {
 func WithGeneric(val bool) Option {
 	return func(o *Config) {
 		o.IsGeneric = val
+	}
+}
+
+// WithSkipToolHistory is an option that allows to skip adding Tool messages to History.
+func WithSkipToolHistory(skip bool) Option {
+	return func(o *Config) {
+		o.SkipToolHistory = skip
 	}
 }
 

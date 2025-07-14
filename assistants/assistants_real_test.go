@@ -14,7 +14,6 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
-	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/pkg/schema"
@@ -75,7 +74,7 @@ func Test_Real_Assistant(t *testing.T) {
 	req := &assistants.CallInput{
 		Input: "What is a capital of largest country in Europe?",
 	}
-	apiResp, err := assistants.Run(ctx, ag, req, &output)
+	apiResp, err := ag.Run(ctx, req, &output)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
@@ -83,7 +82,7 @@ func Test_Real_Assistant(t *testing.T) {
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
 	}
-	apiResp, err = assistants.Run(ctx, ag, req, &output)
+	apiResp, err = ag.Run(ctx, req, &output)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, output.Content)
@@ -91,7 +90,9 @@ func Test_Real_Assistant(t *testing.T) {
 
 	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
-	fmt.Println(llms.GetBufferString(history, "Human", "AI"))
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	fmt.Println(buf.String())
 }
 
 func Test_Real_Providers(t *testing.T) {
@@ -100,7 +101,7 @@ func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("GOOGLEAI")
+	llmModel, err := f.ModelByType("OPENAI")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -125,16 +126,33 @@ func Test_Real_Providers(t *testing.T) {
 	req := &assistants.CallInput{
 		Input: "Return the gogentic status for location: 1012340123?",
 	}
-	apiResp, err := assistants.Call(ctx, ag, req)
-	fmt.Println("*** logs")
-	fmt.Println(buf.String())
-
+	apiResp, err := ag.Call(ctx, req)
 	require.NoError(t, err)
+	fmt.Println(apiResp.Choices[0].Content)
 
-	assert.Equal(t, 1, wt.called)
+	req = &assistants.CallInput{
+		Input: "Return the gogentic status for location: 1012340123?",
+	}
+	apiResp, err = ag.Call(ctx, req)
+	require.NoError(t, err)
+	fmt.Println(apiResp.Choices[0].Content)
+
+	assert.Equal(t, 2, wt.called)
 
 	fmt.Println("--------------------------------")
-	fmt.Println(apiResp.Choices[0].Content)
+	fmt.Println(buf.String())
+
+	history := memstore.Messages(ctx)
+	assert.NotEmpty(t, history)
+	exp := `Human: Return the gogentic status for location: 1012340123?
+AI: 
+Tool: {"location":"1012340123","forecast":"sunny"}
+AI: {"location":"1012340123","forecast":"sunny"}`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	chat := buf.String()
+	require.NoError(t, err)
+	assert.Equal(t, exp, chat)
 }
 
 type weatherTool struct {

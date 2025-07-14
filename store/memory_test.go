@@ -20,8 +20,8 @@ func Test_MemoryStore(t *testing.T) {
 	tenantID := "tenant1"
 	chatID := "chat1"
 	appData := map[string]string{"key": "value"}
-	msg1 := &llms.HumanChatMessage{Content: "Hello"}
-	msg2 := &llms.AIChatMessage{Content: "Hi there!"}
+	msg1 := llms.MessageFromTextParts(llms.RoleHuman, "Hello")
+	msg2 := llms.MessageFromTextParts(llms.RoleAI, "Hi there!")
 
 	ctx := context.Background()
 	expErr := "invalid chat context"
@@ -54,8 +54,8 @@ func Test_MemoryStore(t *testing.T) {
 	// Retrieve messages from the store
 	messages := st.Messages(ctx)
 	require.Equal(t, 2, len(messages))
-	assert.Equal(t, msg1.Content, messages[0].GetContent())
-	assert.Equal(t, msg2.Content, messages[1].GetContent())
+	assert.Equal(t, msg1, messages[0])
+	assert.Equal(t, msg2, messages[1])
 
 	chi, err := st.GetChatInfo(ctx, cID)
 	require.NoError(t, err)
@@ -138,12 +138,25 @@ func Test_MemoryStoreManager(t *testing.T) {
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	st := store.NewMemoryStore()
-	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "Hello"})
-	_ = st.Add(ctx, &llms.AIChatMessage{Content: "Hi there!"})
-	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "How are you?"})
-	_ = st.Add(ctx, &llms.AIChatMessage{Content: "I'm good, thank you!"})
-	_ = st.Add(ctx, &llms.HumanChatMessage{Content: "What is your name?"})
-	_ = st.Add(ctx, &llms.AIChatMessage{Content: "My name is John Doe."})
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleHuman, "Hello"))
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleAI, "Hi there!"))
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleHuman, "How are you?"))
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleAI, "I'm good, thank you!"))
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleHuman, "What is your name?"))
+	_ = st.Add(ctx, llms.MessageFromTextParts(llms.RoleAI, "My name is John Doe."))
+	_ = st.Add(ctx, llms.MessageFromParts(llms.RoleAI, llms.ToolCall{
+		ID:   "123",
+		Type: "function",
+		FunctionCall: &llms.FunctionCall{
+			Name:      "add",
+			Arguments: `{"a":1,"b":2}`,
+		},
+	}))
+	_ = st.Add(ctx, llms.MessageFromParts(llms.RoleAI, llms.ToolCallResponse{
+		ToolCallID: "123",
+		Name:       "add",
+		Content:    "42",
+	}))
 
 	mgr := store.NewMemoryStoreManager(st)
 

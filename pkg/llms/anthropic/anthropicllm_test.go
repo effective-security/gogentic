@@ -140,7 +140,7 @@ func TestProcessMessages(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		messages     []llms.MessageContent
+		messages     []llms.Message
 		wantMessages int
 		wantSystem   string
 		wantErr      bool
@@ -148,16 +148,16 @@ func TestProcessMessages(t *testing.T) {
 	}{
 		{
 			name:         "empty messages",
-			messages:     []llms.MessageContent{},
+			messages:     []llms.Message{},
 			wantMessages: 0,
 			wantSystem:   "",
 			wantErr:      false,
 		},
 		{
 			name: "system message only",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role:  llms.ChatMessageTypeSystem,
+					Role:  llms.RoleSystem,
 					Parts: []llms.ContentPart{llms.TextPart("You are a helpful assistant.")},
 				},
 			},
@@ -167,13 +167,13 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "multiple system messages",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role:  llms.ChatMessageTypeSystem,
+					Role:  llms.RoleSystem,
 					Parts: []llms.ContentPart{llms.TextPart("You are a helpful assistant.")},
 				},
 				{
-					Role:  llms.ChatMessageTypeSystem,
+					Role:  llms.RoleSystem,
 					Parts: []llms.ContentPart{llms.TextPart("Always be polite and respectful.")},
 				},
 			},
@@ -183,9 +183,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "human message with text",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role:  llms.ChatMessageTypeHuman,
+					Role:  llms.RoleHuman,
 					Parts: []llms.ContentPart{llms.TextPart("Hello, how are you?")},
 				},
 			},
@@ -195,9 +195,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "human message with image",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role: llms.ChatMessageTypeHuman,
+					Role: llms.RoleHuman,
 					Parts: []llms.ContentPart{
 						llms.TextPart("What's in this image?"),
 						llms.BinaryPart("image/jpeg", []byte("fake-image-data")),
@@ -210,9 +210,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "AI message with tool call",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role: llms.ChatMessageTypeAI,
+					Role: llms.RoleAI,
 					Parts: []llms.ContentPart{
 						llms.ToolCall{
 							ID: "call_123",
@@ -230,9 +230,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "tool message",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role: llms.ChatMessageTypeTool,
+					Role: llms.RoleTool,
 					Parts: []llms.ContentPart{
 						llms.ToolCallResponse{
 							ToolCallID: "call_123",
@@ -247,9 +247,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "generic message",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role:  llms.ChatMessageTypeGeneric,
+					Role:  llms.RoleGeneric,
 					Parts: []llms.ContentPart{llms.TextPart("Generic message")},
 				},
 			},
@@ -259,9 +259,9 @@ func TestProcessMessages(t *testing.T) {
 		},
 		{
 			name: "human message with unsupported binary content",
-			messages: []llms.MessageContent{
+			messages: []llms.Message{
 				{
-					Role: llms.ChatMessageTypeHuman,
+					Role: llms.RoleHuman,
 					Parts: []llms.ContentPart{
 						llms.BinaryPart("application/pdf", []byte("fake-pdf-data")),
 					},
@@ -383,14 +383,14 @@ func TestHandleSystemMessage(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		msg         llms.MessageContent
+		msg         llms.Message
 		want        string
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "valid text content",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{llms.TextPart("You are a helpful assistant.")},
 			},
 			want:    "You are a helpful assistant.",
@@ -398,7 +398,7 @@ func TestHandleSystemMessage(t *testing.T) {
 		},
 		{
 			name: "invalid content type",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{llms.BinaryPart("image/jpeg", []byte("data"))},
 			},
 			wantErr:     true,
@@ -427,20 +427,20 @@ func TestHandleHumanMessage(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		msg         llms.MessageContent
+		msg         llms.Message
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "text only",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{llms.TextPart("Hello!")},
 			},
 			wantErr: false,
 		},
 		{
 			name: "text and image",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{
 					llms.TextPart("What's in this image?"),
 					llms.BinaryPart("image/jpeg", []byte("fake-image-data")),
@@ -450,7 +450,7 @@ func TestHandleHumanMessage(t *testing.T) {
 		},
 		{
 			name: "unsupported binary type",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{
 					llms.BinaryPart("application/pdf", []byte("pdf-data")),
 				},
@@ -460,7 +460,7 @@ func TestHandleHumanMessage(t *testing.T) {
 		},
 		{
 			name: "empty parts",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{},
 			},
 			wantErr:     true,
@@ -489,20 +489,20 @@ func TestHandleAIMessage(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		msg         llms.MessageContent
+		msg         llms.Message
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "text content",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{llms.TextPart("I'm doing well, thank you!")},
 			},
 			wantErr: false,
 		},
 		{
 			name: "tool call",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{
 					llms.ToolCall{
 						ID: "call_123",
@@ -517,7 +517,7 @@ func TestHandleAIMessage(t *testing.T) {
 		},
 		{
 			name: "invalid JSON in tool call",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{
 					llms.ToolCall{
 						ID: "call_123",
@@ -533,7 +533,7 @@ func TestHandleAIMessage(t *testing.T) {
 		},
 		{
 			name: "empty parts",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{},
 			},
 			wantErr:     true,
@@ -562,13 +562,13 @@ func TestHandleToolMessage(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		msg         llms.MessageContent
+		msg         llms.Message
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "valid tool response",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{
 					llms.ToolCallResponse{
 						ToolCallID: "call_123",
@@ -580,7 +580,7 @@ func TestHandleToolMessage(t *testing.T) {
 		},
 		{
 			name: "invalid content type",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{llms.TextPart("Not a tool response")},
 			},
 			wantErr:     true,
@@ -588,7 +588,7 @@ func TestHandleToolMessage(t *testing.T) {
 		},
 		{
 			name: "empty parts",
-			msg: llms.MessageContent{
+			msg: llms.Message{
 				Parts: []llms.ContentPart{},
 			},
 			wantErr:     true,
@@ -632,17 +632,17 @@ func newTestClient(t *testing.T, opts ...anthropic.Option) llms.Model {
 
 // Benchmark tests
 func BenchmarkProcessMessages(b *testing.B) {
-	messages := []llms.MessageContent{
+	messages := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeSystem,
+			Role:  llms.RoleSystem,
 			Parts: []llms.ContentPart{llms.TextPart("You are a helpful assistant.")},
 		},
 		{
-			Role:  llms.ChatMessageTypeHuman,
+			Role:  llms.RoleHuman,
 			Parts: []llms.ContentPart{llms.TextPart("Hello, how are you?")},
 		},
 		{
-			Role:  llms.ChatMessageTypeAI,
+			Role:  llms.RoleAI,
 			Parts: []llms.ContentPart{llms.TextPart("I'm doing well, thank you!")},
 		},
 	}

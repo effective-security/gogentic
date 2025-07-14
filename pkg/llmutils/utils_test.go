@@ -90,33 +90,33 @@ func Test_ExtractTag(t *testing.T) {
 }
 
 func Test_FindLastUserQuestion(t *testing.T) {
-	msgs := []llms.MessageContent{
+	msgs := []llms.Message{
 		{
-			Role: llms.ChatMessageTypeSystem,
+			Role: llms.RoleSystem,
 			Parts: []llms.ContentPart{
 				llms.TextContent{Text: "What is the capital of Italy?"},
 			},
 		},
 		{
-			Role: llms.ChatMessageTypeHuman,
+			Role: llms.RoleHuman,
 			Parts: []llms.ContentPart{
 				llms.TextContent{Text: "What is the capital of Germany?"},
 			},
 		},
 		{
-			Role: llms.ChatMessageTypeTool,
+			Role: llms.RoleTool,
 			Parts: []llms.ContentPart{
 				llms.ToolCall{ID: "1", Type: "tool", FunctionCall: &llms.FunctionCall{Name: "tool1", Arguments: "arg1"}},
 			},
 		},
 		{
-			Role: llms.ChatMessageTypeTool,
+			Role: llms.RoleTool,
 			Parts: []llms.ContentPart{
 				llms.ToolCallResponse{ToolCallID: "1", Name: "tool1", Content: "tool1 result"},
 			},
 		},
 		{
-			Role: llms.ChatMessageTypeAI,
+			Role: llms.RoleAI,
 			Parts: []llms.ContentPart{
 				llms.TextContent{Text: "What is the capital of France?"},
 			},
@@ -131,11 +131,11 @@ func Test_FindLastUserQuestion(t *testing.T) {
 	// assert.Equal(t, "What is the capital of France?", question)
 
 	var buf strings.Builder
-	llmutils.PrintMessageContents(&buf, msgs)
-	exp := `SYSTEM: What is the capital of Italy?
-HUMAN: What is the capital of Germany?
-TOOL: ToolCall ID=1, Type=tool, Func=tool1(arg1)
-TOOL: ToolCallResponse ID=1, Name=tool1, Content=tool1 result
+	llmutils.PrintMessages(&buf, msgs)
+	exp := `System: What is the capital of Italy?
+Human: What is the capital of Germany?
+Tool: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tool1","arguments":"arg1"},"id":"1","type":"tool"}}
+Tool: 1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
 AI: What is the capital of France?
 `
 	assert.Equal(t, exp, buf.String())
@@ -245,15 +245,15 @@ func Test_MergeInputs(t *testing.T) {
 }
 
 func Test_CountMessagesContentSize(t *testing.T) {
-	msgs := []llms.MessageContent{
+	msgs := []llms.Message{
 		{
-			Role: llms.ChatMessageTypeHuman,
+			Role: llms.RoleHuman,
 			Parts: []llms.ContentPart{
 				llms.TextContent{Text: "Hello"},
 			},
 		},
 		{
-			Role: llms.ChatMessageTypeAI,
+			Role: llms.RoleAI,
 			Parts: []llms.ContentPart{
 				llms.TextContent{Text: "Hi there"},
 			},
@@ -275,14 +275,45 @@ func Test_CountResponseContentSize(t *testing.T) {
 	assert.Greater(t, size, uint64(0))
 }
 
-func Test_PrintChatMessages(t *testing.T) {
-	msgs := []llms.ChatMessage{
-		&llms.HumanChatMessage{Content: "Hello"},
-		&llms.AIChatMessage{Content: "Hi there"},
+func TestPrintMessageContents(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name     string
+		messages []llms.Message
+		expected string
+	}{
+		{
+			name:     "No messages",
+			messages: []llms.Message{},
+			expected: "",
+		},
+		{
+			name: "Mixed messages",
+			messages: []llms.Message{
+				llms.MessageFromTextParts(llms.RoleSystem, "Please be polite."),
+				llms.MessageFromTextParts(llms.RoleHuman, "Hello, how are you?"),
+				llms.MessageFromTextParts(llms.RoleAI, "I'm doing great!"),
+				llms.MessageFromTextParts(llms.RoleGeneric, "Keep the conversation on topic."),
+				llms.MessageFromToolCalls(llms.RoleTool, llms.ToolCall{ID: "1", Type: "tool", FunctionCall: &llms.FunctionCall{Name: "tool1", Arguments: "arg1"}}),
+				llms.MessageFromToolResponse(llms.RoleTool, llms.ToolCallResponse{ToolCallID: "1", Name: "tool1", Content: "tool1 result"}),
+			},
+			expected: `System: Please be polite.
+Human: Hello, how are you?
+AI: I'm doing great!
+Generic: Keep the conversation on topic.
+Tool: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tool1","arguments":"arg1"},"id":"1","type":"tool"}}
+Tool: 1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
+`, //nolint:lll
+		},
 	}
-	var buf strings.Builder
-	llmutils.PrintChatMessages(&buf, msgs)
-	output := buf.String()
-	assert.Contains(t, output, "HUMAN: Hello")
-	assert.Contains(t, output, "AI: Hi there")
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf strings.Builder
+			llmutils.PrintMessages(&buf, tc.messages)
+			assert.Equal(t, tc.expected, buf.String())
+		})
+	}
 }

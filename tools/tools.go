@@ -31,9 +31,9 @@ type ITool interface {
 }
 
 type Callback interface {
-	OnToolStart(context.Context, ITool, string)
-	OnToolEnd(context.Context, ITool, string, string)
-	OnToolError(context.Context, ITool, string, error)
+	OnToolStart(ctx context.Context, tool ITool, assistantName, input string)
+	OnToolEnd(ctx context.Context, tool ITool, assistantName, input string, output string)
+	OnToolError(ctx context.Context, tool ITool, assistantName, input string, err error)
 }
 
 type Tool[I any, O any] interface {

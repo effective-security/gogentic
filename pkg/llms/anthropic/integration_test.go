@@ -28,11 +28,8 @@ func TestIntegrationTextGeneration(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Say 'Hello, World!' in exactly those words.")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Say 'Hello, World!' in exactly those words."),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content)
@@ -55,23 +52,11 @@ func TestIntegrationChatSequence(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{llms.TextPart("You are a helpful math tutor.")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("What is 2 + 2?")},
-		},
-		{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: []llms.ContentPart{llms.TextPart("2 + 2 equals 4.")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("What about 3 + 3?")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You are a helpful math tutor."),
+		llms.MessageFromTextParts(llms.RoleHuman, "What is 2 + 2?"),
+		llms.MessageFromTextParts(llms.RoleAI, "2 + 2 equals 4."),
+		llms.MessageFromTextParts(llms.RoleHuman, "What about 3 + 3?"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content)
@@ -86,11 +71,8 @@ func TestIntegrationStreaming(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Count from 1 to 5, each number on a new line.")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Count from 1 to 5, each number on a new line."),
 	}
 
 	var streamedContent strings.Builder
@@ -124,11 +106,8 @@ func TestIntegrationStreamingError(t *testing.T) {
 
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Say hello")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Say hello"),
 	}
 
 	// Streaming function that returns an error
@@ -165,11 +144,8 @@ func TestIntegrationToolCalling(t *testing.T) {
 		},
 	}
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("What's the weather like in Boston?")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "What's the weather like in Boston?"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
@@ -209,11 +185,8 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 	}
 
 	// First request: ask for calculation
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Calculate 15 * 23")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Calculate 15 * 23"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
@@ -224,8 +197,8 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 	toolCall := resp.Choices[0].ToolCalls[0]
 
 	// Add the tool call to conversation and provide result
-	content = append(content, llms.MessageContent{
-		Role: llms.ChatMessageTypeAI,
+	content = append(content, llms.Message{
+		Role: llms.RoleAI,
 		Parts: []llms.ContentPart{
 			llms.ToolCall{
 				ID:           toolCall.ID,
@@ -234,8 +207,8 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 		},
 	})
 
-	content = append(content, llms.MessageContent{
-		Role: llms.ChatMessageTypeTool,
+	content = append(content, llms.Message{
+		Role: llms.RoleTool,
 		Parts: []llms.ContentPart{
 			llms.ToolCallResponse{
 				ToolCallID: toolCall.ID,
@@ -244,10 +217,7 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 		},
 	})
 
-	content = append(content, llms.MessageContent{
-		Role:  llms.ChatMessageTypeHuman,
-		Parts: []llms.ContentPart{llms.TextPart("What was the result?")},
-	})
+	content = append(content, llms.MessageFromTextParts(llms.RoleHuman, "What was the result?"))
 
 	// Second request: get final answer
 	resp2, err := llm.GenerateContent(context.Background(), content)
@@ -272,9 +242,9 @@ func TestIntegrationMultimodalImage(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 	}
 
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role: llms.ChatMessageTypeHuman,
+			Role: llms.RoleHuman,
 			Parts: []llms.ContentPart{
 				llms.TextPart("What do you see in this image? Be very brief."),
 				llms.BinaryPart("image/png", redPixelPNG),
@@ -307,11 +277,8 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	)
 	require.NoError(t, err) // Client creation should succeed
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Hello")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Hello"),
 	}
 
 	_, err = llm.GenerateContent(context.Background(), content)
@@ -323,11 +290,8 @@ func TestIntegrationModelParameters(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Generate a creative story starter in exactly 10 words.")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Generate a creative story starter in exactly 10 words."),
 	}
 
 	// Test with different temperature settings
@@ -354,11 +318,8 @@ func TestIntegrationStopSequences(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Count from 1 to 10: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Count from 1 to 10: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content,
@@ -378,11 +339,8 @@ func TestIntegrationMaxTokens(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Write a very long story about a dragon.")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Write a very long story about a dragon."),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), content,
@@ -413,11 +371,8 @@ func BenchmarkIntegrationSimpleGeneration(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	content := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Say hello")},
-		},
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Say hello"),
 	}
 
 	b.ResetTimer()

@@ -14,7 +14,7 @@ type ChatInfo struct {
 	TenantID  string
 	ChatID    string
 	Title     string
-	Messages  []llms.ChatMessage
+	Messages  []llms.Message
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Metadata  map[string]any
@@ -25,9 +25,10 @@ type ChatInfo struct {
 // created by NewChatContext.
 type MessageStore interface {
 	// Messages returns the messages for a tenant and chat ID from context.
-	Messages(ctx context.Context) []llms.ChatMessage
-	// Add adds a message to the chat history for a tenant and chat ID from context.
-	Add(ctx context.Context, msg llms.ChatMessage) error
+	Messages(ctx context.Context) []llms.Message
+	// Add adds one or more messages to the chat history for a tenant and chat ID from context.
+	// Multiple messages are added atomically for better performance and consistency.
+	Add(ctx context.Context, msgs ...llms.Message) error
 	// Reset resets the chat history for a tenant and chat ID from context.
 	Reset(ctx context.Context) error
 
@@ -51,29 +52,13 @@ type MessageStoreManager interface {
 func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
 	s := NewMemoryStore()
 	if store != nil {
-		for _, msg := range store.Messages(ctx) {
-			err := s.Add(ctx, msg)
+		messages := store.Messages(ctx)
+		if len(messages) > 0 {
+			err := s.Add(ctx, messages...)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
 	return s, nil
-}
-
-// ConvertChatMessagesToModel Convert a ChatMessage list to a ChatMessageModel list.
-func ConvertChatMessagesToModel(m []llms.ChatMessage) []llms.ChatMessageModel {
-	models := make([]llms.ChatMessageModel, len(m))
-	for i, msg := range m {
-		models[i] = llms.ConvertChatMessageToModel(msg)
-	}
-	return models
-}
-
-func ToChatMessages(messages []llms.ChatMessageModel) []llms.ChatMessage {
-	chatMessages := make([]llms.ChatMessage, len(messages))
-	for i, msg := range messages {
-		chatMessages[i] = msg.ToChatMessage()
-	}
-	return chatMessages
 }

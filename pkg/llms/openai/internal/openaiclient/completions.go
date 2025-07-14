@@ -6,11 +6,9 @@ import (
 
 // CompletionRequest is a request to complete a completion.
 type CompletionRequest struct {
-	Model       string  `json:"model"`
-	Prompt      string  `json:"prompt"`
-	Temperature float64 `json:"temperature"`
-	// Deprecated: Use MaxCompletionTokens
-	MaxTokens           int      `json:"-,omitempty"`
+	Model               string   `json:"model"`
+	Prompt              string   `json:"prompt"`
+	Temperature         float64  `json:"temperature"`
 	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
 	N                   int      `json:"n,omitempty"`
 	FrequencyPenalty    float64  `json:"frequency_penalty,omitempty"`
@@ -51,8 +49,8 @@ type errorMessage struct {
 
 func (c *Client) setCompletionDefaults(payload *CompletionRequest) {
 	// Set defaults
-	if payload.MaxTokens == 0 {
-		payload.MaxTokens = 2048
+	if payload.MaxCompletionTokens == 0 {
+		payload.MaxCompletionTokens = 2048
 	}
 
 	if len(payload.StopWords) == 0 {
@@ -82,7 +80,7 @@ func (c *Client) createCompletion(ctx context.Context, payload *CompletionReques
 		},
 		Temperature:         payload.Temperature,
 		TopP:                payload.TopP,
-		MaxCompletionTokens: payload.MaxTokens,
+		MaxCompletionTokens: payload.MaxCompletionTokens,
 		N:                   payload.N,
 		StopWords:           payload.StopWords,
 		FrequencyPenalty:    payload.FrequencyPenalty,

@@ -17,7 +17,7 @@ type tenant struct {
 	chats map[string]*ChatInfo
 }
 
-func (t *tenant) messages(chatID string) []llms.ChatMessage {
+func (t *tenant) messages(chatID string) []llms.Message {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -27,7 +27,7 @@ func (t *tenant) messages(chatID string) []llms.ChatMessage {
 	return nil
 }
 
-func (t *tenant) add(chatID string, msg llms.ChatMessage) {
+func (t *tenant) add(chatID string, msgs ...llms.Message) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (t *tenant) add(chatID string, msg llms.ChatMessage) {
 		t.chats[chatID] = chat
 	}
 	chat.UpdatedAt = time.Now()
-	chat.Messages = append(chat.Messages, msg)
+	chat.Messages = append(chat.Messages, msgs...)
 }
 
 func (t *tenant) reset(chatID string) {
@@ -63,7 +63,7 @@ func NewMemoryStore() MessageStore {
 	}
 }
 
-func (m *inMemory) Messages(ctx context.Context) []llms.ChatMessage {
+func (m *inMemory) Messages(ctx context.Context) []llms.Message {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil
@@ -79,7 +79,7 @@ func (m *inMemory) Messages(ctx context.Context) []llms.ChatMessage {
 	return nil
 }
 
-func (m *inMemory) Add(ctx context.Context, msg llms.ChatMessage) error {
+func (m *inMemory) Add(ctx context.Context, msgs ...llms.Message) error {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
@@ -96,7 +96,7 @@ func (m *inMemory) Add(ctx context.Context, msg llms.ChatMessage) error {
 		}
 		m.tenants[tenantID] = t
 	}
-	t.add(chatID, msg)
+	t.add(chatID, msgs...)
 
 	return nil
 }

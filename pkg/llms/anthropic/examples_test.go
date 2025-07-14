@@ -24,11 +24,8 @@ func Example_basicUsage() {
 	}
 
 	// Create a simple message
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Hello, how are you?")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Hello, how are you?"),
 	}
 
 	// Generate content
@@ -49,23 +46,11 @@ func Example_conversationWithSystem() {
 		log.Fatal(err)
 	}
 
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{llms.TextPart("You are a helpful math tutor. Always explain your reasoning step by step.")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("What is 25 * 4?")},
-		},
-		{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: []llms.ContentPart{llms.TextPart("Let me solve this step by step:\n25 × 4 = 100\n\nThis is because 25 × 4 is the same as 25 × 4 = (20 + 5) × 4 = 20 × 4 + 5 × 4 = 80 + 20 = 100.")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Now what about 25 * 8?")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You are a helpful math tutor. Always explain your reasoning step by step."),
+		llms.MessageFromTextParts(llms.RoleHuman, "What is 25 * 4?"),
+		llms.MessageFromTextParts(llms.RoleAI, "Let me solve this step by step:\n25 × 4 = 100\n\nThis is because 25 × 4 is the same as 25 × 4 = (20 + 5) × 4 = 20 × 4 + 5 × 4 = 80 + 20 = 100."),
+		llms.MessageFromTextParts(llms.RoleHuman, "Now what about 25 * 8?"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), messages)
@@ -92,9 +77,9 @@ func Example_multimodalWithImage() {
 		imageData = []byte("placeholder-image-data")
 	}
 
-	messages := []llms.MessageContent{
+	messages := []llms.Message{
 		{
-			Role: llms.ChatMessageTypeHuman,
+			Role: llms.RoleHuman,
 			Parts: []llms.ContentPart{
 				llms.TextPart("What do you see in this image? Please describe it in detail."),
 				llms.BinaryPart("image/jpeg", imageData),
@@ -121,11 +106,8 @@ func Example_streamingResponse() {
 		log.Fatal(err)
 	}
 
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Write a short poem about programming")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Write a short poem about programming"),
 	}
 
 	fmt.Print("Streaming response: ")
@@ -176,11 +158,8 @@ func Example_toolCalling() {
 		},
 	}
 
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("What's the weather like in Tokyo, Japan?")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "What's the weather like in Tokyo, Japan?"),
 	}
 
 	// Make the request with functions
@@ -202,8 +181,8 @@ func Example_toolCalling() {
 		functionResult := "Temperature: 22°C, Condition: Partly cloudy, Humidity: 65%"
 
 		// Continue the conversation with the function result
-		messages = append(messages, llms.MessageContent{
-			Role: llms.ChatMessageTypeAI,
+		messages = append(messages, llms.Message{
+			Role: llms.RoleAI,
 			Parts: []llms.ContentPart{
 				llms.ToolCall{
 					ID:           toolCall.ID,
@@ -212,8 +191,8 @@ func Example_toolCalling() {
 			},
 		})
 
-		messages = append(messages, llms.MessageContent{
-			Role: llms.ChatMessageTypeTool,
+		messages = append(messages, llms.Message{
+			Role: llms.RoleTool,
 			Parts: []llms.ContentPart{
 				llms.ToolCallResponse{
 					ToolCallID: toolCall.ID,
@@ -246,15 +225,9 @@ func Example_advancedConfiguration() {
 		log.Fatal(err)
 	}
 
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{llms.TextPart("You are a creative writer.")},
-		},
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Write a very short story about a robot learning to paint.")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You are a creative writer."),
+		llms.MessageFromTextParts(llms.RoleHuman, "Write a very short story about a robot learning to paint."),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), messages,
@@ -291,11 +264,8 @@ func Example_errorHandling() {
 		return
 	}
 
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart("Hello")},
-		},
+	messages := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "Hello"),
 	}
 
 	resp, err := llm.GenerateContent(context.Background(), messages)
@@ -336,11 +306,8 @@ func Example_differentModels() {
 			continue
 		}
 
-		messages := []llms.MessageContent{
-			{
-				Role:  llms.ChatMessageTypeHuman,
-				Parts: []llms.ContentPart{llms.TextPart(message)},
-			},
+		messages := []llms.Message{
+			llms.MessageFromTextParts(llms.RoleHuman, message),
 		}
 
 		resp, err := llm.GenerateContent(context.Background(), messages,

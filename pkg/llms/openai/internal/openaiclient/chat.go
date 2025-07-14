@@ -30,19 +30,17 @@ type StreamOptions struct {
 
 // ChatRequest is a request to complete a chat completion..
 type ChatRequest struct {
-	Model       string         `json:"model"`
-	Messages    []*ChatMessage `json:"messages"`
-	Temperature float64        `json:"temperature"`
-	TopP        float64        `json:"top_p,omitempty"`
-	// Deprecated: Use MaxCompletionTokens
-	MaxTokens           int      `json:"-,omitempty"`
-	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
-	N                   int      `json:"n,omitempty"`
-	StopWords           []string `json:"stop,omitempty"`
-	Stream              bool     `json:"stream,omitempty"`
-	FrequencyPenalty    float64  `json:"frequency_penalty,omitempty"`
-	PresencePenalty     float64  `json:"presence_penalty,omitempty"`
-	Seed                int      `json:"seed,omitempty"`
+	Model               string         `json:"model"`
+	Messages            []*ChatMessage `json:"messages"`
+	Temperature         float64        `json:"temperature"`
+	TopP                float64        `json:"top_p,omitempty"`
+	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
+	N                   int            `json:"n,omitempty"`
+	StopWords           []string       `json:"stop,omitempty"`
+	Stream              bool           `json:"stream,omitempty"`
+	FrequencyPenalty    float64        `json:"frequency_penalty,omitempty"`
+	PresencePenalty     float64        `json:"presence_penalty,omitempty"`
+	Seed                int            `json:"seed,omitempty"`
 
 	// ResponseFormat is the format of the response.
 	ResponseFormat *schema.ResponseFormat `json:"response_format,omitempty"`
@@ -71,11 +69,6 @@ type ChatRequest struct {
 	// StreamingReasoningFunc is a function to be called for each reasoning and content chunk of a streaming response.
 	// Return an error to stop streaming early.
 	StreamingReasoningFunc func(ctx context.Context, reasoningChunk, chunk []byte) error `json:"-"`
-
-	// Deprecated: use Tools instead.
-	Functions []FunctionDefinition `json:"functions,omitempty"`
-	// Deprecated: use ToolChoice instead.
-	FunctionCallBehavior FunctionCallBehavior `json:"function_call,omitempty"`
 
 	// Metadata allows you to specify additional information that will be passed to the model.
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -132,10 +125,6 @@ type ChatMessage struct { //nolint:musttag
 	// ToolCalls is a list of tools that were called in the message.
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 
-	// FunctionCall represents a function call that was made in the message.
-	// Deprecated: use ToolCalls instead.
-	FunctionCall *FunctionCall
-
 	// ToolCallID is the ID of the tool call this message is for.
 	// Only present in tool messages.
 	ToolCallID string `json:"tool_call_id,omitempty"`
@@ -160,9 +149,6 @@ func (m ChatMessage) MarshalJSON() ([]byte, error) {
 			Name         string             `json:"name,omitempty"`
 			ToolCalls    []ToolCall         `json:"tool_calls,omitempty"`
 
-			// Deprecated: use ToolCalls instead.
-			FunctionCall *FunctionCall `json:"function_call,omitempty"`
-
 			// ToolCallID is the ID of the tool call this message is for.
 			// Only present in tool messages.
 			ToolCallID string `json:"tool_call_id,omitempty"`
@@ -178,9 +164,6 @@ func (m ChatMessage) MarshalJSON() ([]byte, error) {
 		MultiContent []llms.ContentPart `json:"-"`
 		Name         string             `json:"name,omitempty"`
 		ToolCalls    []ToolCall         `json:"tool_calls,omitempty"`
-		// Deprecated: use ToolCalls instead.
-		FunctionCall *FunctionCall `json:"function_call,omitempty"`
-
 		// ToolCallID is the ID of the tool call this message is for.
 		// Only present in tool messages.
 		ToolCallID string `json:"tool_call_id,omitempty"`
@@ -206,13 +189,9 @@ func (m *ChatMessage) UnmarshalJSON(data []byte) error {
 		MultiContent []llms.ContentPart `json:"-"` // not expected in response
 		Name         string             `json:"name,omitempty"`
 		ToolCalls    []ToolCall         `json:"tool_calls,omitempty"`
-		// Deprecated: use ToolCalls instead.
-		FunctionCall *FunctionCall `json:"function_call,omitempty"`
-
 		// ToolCallID is the ID of the tool call this message is for.
 		// Only present in tool messages.
 		ToolCallID string `json:"tool_call_id,omitempty"`
-
 		// This field is only used with the deepseek-reasoner model and represents the reasoning contents of the assistant message before the final answer.
 		ReasoningContent string `json:"reasoning_content,omitempty"`
 	}{}
@@ -311,9 +290,8 @@ type StreamedChatResponsePayload struct {
 	Choices []struct {
 		Index float64 `json:"index,omitempty"`
 		Delta struct {
-			Role         string        `json:"role,omitempty"`
-			Content      string        `json:"content,omitempty"`
-			FunctionCall *FunctionCall `json:"function_call,omitempty"`
+			Role    string `json:"role,omitempty"`
+			Content string `json:"content,omitempty"`
 			// ToolCalls is a list of tools that were called in the message.
 			ToolCalls []*ToolCall `json:"tool_calls,omitempty"`
 			// This field is only used with the deepseek-reasoner model and represents the reasoning contents of the assistant message before the final answer.
@@ -480,10 +458,6 @@ func combineStreamingChatResponse(
 		response.Choices[0].FinishReason = choice.FinishReason
 		response.Choices[0].Message.ReasoningContent += choice.Delta.ReasoningContent
 
-		if choice.Delta.FunctionCall != nil {
-			chunk = updateFunctionCall(response.Choices[0].Message, choice.Delta.FunctionCall)
-		}
-
 		if len(choice.Delta.ToolCalls) > 0 {
 			chunk, response.Choices[0].Message.ToolCalls = updateToolCalls(response.Choices[0].Message.ToolCalls,
 				choice.Delta.ToolCalls)
@@ -503,16 +477,6 @@ func combineStreamingChatResponse(
 		}
 	}
 	return &response, nil
-}
-
-func updateFunctionCall(message ChatMessage, functionCall *FunctionCall) []byte {
-	if message.FunctionCall == nil {
-		message.FunctionCall = functionCall
-	} else {
-		message.FunctionCall.Arguments += functionCall.Arguments
-	}
-	chunk, _ := json.Marshal(message.FunctionCall) // nolint:errchkjson
-	return chunk
 }
 
 func updateToolCalls(tools []ToolCall, delta []*ToolCall) ([]byte, []ToolCall) {

@@ -13,9 +13,9 @@ type SystemMessagePromptTemplate struct {
 var _ MessageFormatter = SystemMessagePromptTemplate{}
 
 // FormatMessages formats the message with the values given.
-func (p SystemMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p SystemMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	text, err := p.Prompt.Format(values)
-	return []llms.ChatMessage{llms.SystemChatMessage{Content: text}}, err
+	return []llms.Message{llms.MessageFromTextParts(llms.RoleSystem, text)}, err
 }
 
 // GetInputVariables returns the input variables the prompt expects.
@@ -38,9 +38,9 @@ type AIMessagePromptTemplate struct {
 var _ MessageFormatter = AIMessagePromptTemplate{}
 
 // FormatMessages formats the message with the values given.
-func (p AIMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p AIMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	text, err := p.Prompt.Format(values)
-	return []llms.ChatMessage{llms.AIChatMessage{Content: text}}, err
+	return []llms.Message{llms.MessageFromTextParts(llms.RoleAI, text)}, err
 }
 
 // GetInputVariables returns the input variables the prompt expects.
@@ -63,9 +63,9 @@ type HumanMessagePromptTemplate struct {
 var _ MessageFormatter = HumanMessagePromptTemplate{}
 
 // FormatMessages formats the message with the values given.
-func (p HumanMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p HumanMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	text, err := p.Prompt.Format(values)
-	return []llms.ChatMessage{llms.HumanChatMessage{Content: text}}, err
+	return []llms.Message{llms.MessageFromTextParts(llms.RoleHuman, text)}, err
 }
 
 // GetInputVariables returns the input variables the prompt expects.
@@ -89,9 +89,9 @@ type GenericMessagePromptTemplate struct {
 var _ MessageFormatter = GenericMessagePromptTemplate{}
 
 // FormatMessages formats the message with the values given.
-func (p GenericMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p GenericMessagePromptTemplate) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	text, err := p.Prompt.Format(values)
-	return []llms.ChatMessage{llms.GenericChatMessage{Content: text, Role: p.Role}}, err
+	return []llms.Message{llms.MessageFromTextParts(llms.RoleGeneric, text, p.Role)}, err
 }
 
 // GetInputVariables returns the input variables the prompt expects.
@@ -112,12 +112,12 @@ type MessagesPlaceholder struct {
 }
 
 // FormatMessages formats the messages from the values by variable name.
-func (p MessagesPlaceholder) FormatMessages(values map[string]any) ([]llms.ChatMessage, error) {
+func (p MessagesPlaceholder) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	value, ok := values[p.VariableName]
 	if !ok {
 		return nil, errors.WithMessagef(ErrNeedChatMessageList, "%s should be a list of chat messages", p.VariableName)
 	}
-	baseMessages, ok := value.([]llms.ChatMessage)
+	baseMessages, ok := value.([]llms.Message)
 	if !ok {
 		return nil, errors.WithMessagef(ErrNeedChatMessageList, "%s should be a list of chat messages", p.VariableName)
 	}

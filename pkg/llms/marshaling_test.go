@@ -18,7 +18,7 @@ func TestUnmarshalYAML(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    MessageContent
+		want    Message
 		wantErr bool
 	}{
 		{
@@ -26,7 +26,7 @@ func TestUnmarshalYAML(t *testing.T) {
 			input: `role: user
 text: Hello, world!
 `,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -57,7 +57,7 @@ parts:
     content: hit
   type: tool_response
 `,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello!, world!"},
@@ -80,7 +80,7 @@ parts:
   - type: unknown
     data: some data
 `,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 			},
 			wantErr: true,
@@ -90,7 +90,7 @@ parts:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			var mc MessageContent
+			var mc Message
 			err := yaml.Unmarshal([]byte(tt.input), &mc)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -106,13 +106,13 @@ func TestMarshalYAML(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		input   MessageContent
+		input   Message
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "single text part",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -125,7 +125,7 @@ text: Hello, world!
 		},
 		{
 			name: "multiple parts",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -162,7 +162,7 @@ role: user
 		},
 		{
 			name: "unknown content type",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					unknownContent{},
@@ -191,13 +191,13 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    MessageContent
+		want    Message
 		wantErr bool
 	}{
 		{
 			name:  "single text part",
 			input: `{"role":"user","text":"Hello, world!"}`,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -209,7 +209,7 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 		{
 			name:  "multiple parts",
 			input: `{"role":"user","parts":[{"text":"Hello, world!","type":"text"},{"type":"image_url","image_url":{"url":"http://example.com/image.png"}},{"type":"binary","binary":{"data":"SGVsbG8sIHdvcmxkIQ==","mime_type":"application/octet-stream"}}]}`,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -225,7 +225,7 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 		{
 			name:  "Unknown content type",
 			input: `{"role":"user","parts":[{"type":"unknown","data":"some data"}]}`,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 			},
 			wantErr: true,
@@ -233,7 +233,7 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 		{
 			name:  "tool use",
 			input: `{"role":"assistant","parts":[{"type":"text","text":"Hello there!"},{"type":"tool_call","tool_call":{"id":"t42","type":"function","function":{"name":"get_current_weather","arguments":"{ \"location\": \"New York\" }"}}}]}`,
-			want: MessageContent{
+			want: Message{
 				Role: "assistant",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello there!"},
@@ -249,7 +249,7 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 		{
 			name:  "tool response",
 			input: `{"role":"user","parts":[{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"hammer","content":"hit"}}]}`,
-			want: MessageContent{
+			want: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
@@ -262,7 +262,7 @@ func TestUnmarshalJSONMessageContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			var mc MessageContent
+			var mc Message
 			err := mc.UnmarshalJSON([]byte(tt.input))
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -278,13 +278,13 @@ func TestMarshalJSONMessageContent(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		input   MessageContent
+		input   Message
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "single text part",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -295,7 +295,7 @@ func TestMarshalJSONMessageContent(t *testing.T) {
 		},
 		{
 			name: "multiple parts",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -311,7 +311,7 @@ func TestMarshalJSONMessageContent(t *testing.T) {
 		},
 		{
 			name: "Unknown content type",
-			input: MessageContent{
+			input: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					unknownContent{},
@@ -342,13 +342,13 @@ func TestRoundtripping(t *testing.T) { // nolint:funlen // We make an exception 
 	t.Parallel()
 	tests := []struct {
 		name         string
-		in           MessageContent
+		in           Message
 		assertedJSON string
 		assertedYAML string
 	}{
 		{
 			name: "single text part",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello, world!"},
@@ -359,7 +359,7 @@ func TestRoundtripping(t *testing.T) { // nolint:funlen // We make an exception 
 		},
 		{
 			name: "multiple parts",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					TextContent{Text: "Hello!, world!"},
@@ -386,7 +386,7 @@ role: user
 		},
 		{
 			name: "tool use",
-			in: MessageContent{
+			in: Message{
 				Role: "assistant",
 				Parts: []ContentPart{
 					ToolCall{Type: "function", ID: "t01", FunctionCall: &FunctionCall{Name: "get_current_weather", Arguments: `{ "location": "New York" }`}},
@@ -395,7 +395,7 @@ role: user
 		},
 		{
 			name: "multiple tool uses",
-			in: MessageContent{
+			in: Message{
 				Role: "assistant",
 				Parts: []ContentPart{
 					ToolCall{Type: "function", ID: "tc01", FunctionCall: &FunctionCall{Name: "get_current_weather", Arguments: `{ "location": "New York" }`}},
@@ -423,7 +423,7 @@ role: assistant
 		},
 		{
 			name: "tool use with arguments",
-			in: MessageContent{
+			in: Message{
 				Role: "assistant",
 				Parts: []ContentPart{
 					ToolCall{Type: "hammer", FunctionCall: &FunctionCall{Name: "hit", Arguments: `{ "force": 10 }`}},
@@ -432,7 +432,7 @@ role: assistant
 		},
 		{
 			name: "tool use with multiple arguments",
-			in: MessageContent{
+			in: Message{
 				Role: "assistant",
 				Parts: []ContentPart{
 					ToolCall{Type: "hammer", FunctionCall: &FunctionCall{Name: "hit", Arguments: `{ "force": 10, "direction": "down" }`}},
@@ -441,7 +441,7 @@ role: assistant
 		},
 		{
 			name: "tool response",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
@@ -450,7 +450,7 @@ role: assistant
 		},
 		{
 			name: "multi-tool response",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
@@ -460,7 +460,7 @@ role: assistant
 		},
 		{
 			name: "tool response with arguments",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
@@ -469,7 +469,7 @@ role: assistant
 		},
 		{
 			name: "multi-tool response with arguments",
-			in: MessageContent{
+			in: Message{
 				Role: "user",
 				Parts: []ContentPart{
 					ToolCallResponse{ToolCallID: "123", Name: "hammer", Content: "hit"},
@@ -489,7 +489,7 @@ role: assistant
 			if tt.assertedJSON != "" {
 				assert.Equal(t, tt.assertedJSON, string(jsonBytes))
 			}
-			var mc MessageContent
+			var mc Message
 			err = mc.UnmarshalJSON(jsonBytes)
 			require.NoError(t, err)
 			assert.Equal(t, tt.in, mc)
@@ -500,7 +500,7 @@ role: assistant
 			if tt.assertedYAML != "" {
 				assert.Equal(t, tt.assertedYAML, string(yamlBytes))
 			}
-			mc = MessageContent{}
+			mc = Message{}
 			err = yaml.Unmarshal(yamlBytes, &mc)
 			require.NoError(t, err)
 			assert.Equal(t, tt.in, mc)
