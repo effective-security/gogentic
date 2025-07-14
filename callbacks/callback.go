@@ -53,15 +53,15 @@ func (l *Fanout) OnAssistantStart(ctx context.Context, assistant assistants.IAss
 	}
 }
 
-func (l *Fanout) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse) {
+func (l *Fanout) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 	for _, callback := range l.callbacks {
-		callback.OnAssistantEnd(ctx, assistant, input, resp)
+		callback.OnAssistantEnd(ctx, assistant, input, resp, messages)
 	}
 }
 
-func (l *Fanout) OnToolStart(ctx context.Context, tool tools.ITool, input string) {
+func (l *Fanout) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	for _, callback := range l.callbacks {
-		callback.OnToolStart(ctx, tool, input)
+		callback.OnToolStart(ctx, tool, assistantName, input)
 	}
 }
 
@@ -71,15 +71,15 @@ func (l *Fanout) OnAssistantLLMParseError(ctx context.Context, a assistants.IAss
 	}
 }
 
-func (l *Fanout) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error) {
+func (l *Fanout) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
 	for _, callback := range l.callbacks {
-		callback.OnAssistantError(ctx, assistant, input, err)
+		callback.OnAssistantError(ctx, assistant, input, err, messages)
 	}
 }
 
-func (l *Fanout) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
+func (l *Fanout) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 	for _, callback := range l.callbacks {
-		callback.OnToolEnd(ctx, tool, input, output)
+		callback.OnToolEnd(ctx, tool, assistantName, input, output)
 	}
 }
 
@@ -89,13 +89,13 @@ func (l *Fanout) OnToolNotFound(ctx context.Context, agent assistants.IAssistant
 	}
 }
 
-func (l *Fanout) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {
+func (l *Fanout) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	for _, callback := range l.callbacks {
-		callback.OnToolError(ctx, tool, input, err)
+		callback.OnToolError(ctx, tool, assistantName, input, err)
 	}
 }
 
-func (l *Fanout) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+func (l *Fanout) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 	for _, callback := range l.callbacks {
 		callback.OnAssistantLLMCallStart(ctx, agent, llm, payload)
 	}
@@ -118,17 +118,18 @@ var _ assistants.Callback = (*Noop)(nil)
 
 func (l *Noop) OnAssistantStart(ctx context.Context, assistant assistants.IAssistant, input string) {
 }
-func (l *Noop) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse) {
+func (l *Noop) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 }
-func (l *Noop) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error) {
+func (l *Noop) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
 }
 func (l *Noop) OnAssistantLLMParseError(ctx context.Context, a assistants.IAssistant, input string, response string, err error) {
 }
-func (l *Noop) OnToolStart(ctx context.Context, tool tools.ITool, input string) {}
-func (l *Noop) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
+func (l *Noop) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {}
+func (l *Noop) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 }
-func (l *Noop) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {}
-func (l *Noop) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+func (l *Noop) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
+}
+func (l *Noop) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 }
 func (l *Noop) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAssistant, llm llms.Model, resp *llms.ContentResponse) {
 }
@@ -156,7 +157,7 @@ func (l *Printer) OnAssistantStart(ctx context.Context, assistant assistants.IAs
 	fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
-func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse) {
+func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	fmt.Fprintf(l.Out, "Assistant End: %s\n", assistant.Name())
@@ -169,7 +170,7 @@ func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssi
 	}
 }
 
-func (l *Printer) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error) {
+func (l *Printer) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	fmt.Fprintf(l.Out, "Assistant Error: %s: %s\n", assistant.Name(), err.Error())
@@ -182,29 +183,29 @@ func (l *Printer) OnAssistantLLMParseError(ctx context.Context, assistant assist
 	fmt.Fprintf(l.Out, "Response: %s\n", response)
 }
 
-func (l *Printer) OnToolStart(ctx context.Context, tool tools.ITool, input string) {
+func (l *Printer) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool Start: %s\n", tool.Name())
+	fmt.Fprintf(l.Out, "Tool Start: %s (%s)\n", tool.Name(), assistantName)
 	fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
-func (l *Printer) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
+func (l *Printer) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool End: %s\n", tool.Name())
+	fmt.Fprintf(l.Out, "Tool End: %s (%s)\n", tool.Name(), assistantName)
 	if l.Mode == ModeVerbose {
 		fmt.Fprintf(l.Out, "Output: %s\n", output)
 	}
 }
 
-func (l *Printer) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {
+func (l *Printer) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool Error: %s: %s\n", tool.Name(), err.Error())
+	fmt.Fprintf(l.Out, "Tool Error: %s (%s): %s\n", tool.Name(), assistantName, err.Error())
 }
 
-func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(payload))
@@ -244,7 +245,7 @@ func (l *PackageLogger) OnAssistantStart(ctx context.Context, assistant assistan
 	)
 }
 
-func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse) {
+func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 	l.logger.ContextKV(ctx, xlog.DEBUG,
 		"event", "assistant_end",
 		"assistant", assistant.Name())
@@ -255,7 +256,7 @@ func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants
 	}
 }
 
-func (l *PackageLogger) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error) {
+func (l *PackageLogger) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
 	l.logger.ContextKV(ctx, xlog.ERROR,
 		"event", "assistant_error",
 		"assistant", assistant.Name(),
@@ -272,31 +273,34 @@ func (l *PackageLogger) OnAssistantLLMParseError(ctx context.Context, assistant 
 	)
 }
 
-func (l *PackageLogger) OnToolStart(ctx context.Context, tool tools.ITool, input string) {
+func (l *PackageLogger) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	l.logger.ContextKV(ctx, xlog.DEBUG,
 		"event", "tool_start",
+		"assistant", assistantName,
 		"tool", tool.Name(),
 		"input", input,
 	)
 }
 
-func (l *PackageLogger) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
+func (l *PackageLogger) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 	l.logger.ContextKV(ctx, xlog.DEBUG,
 		"event", "tool_end",
+		"assistant", assistantName,
 		"tool", tool.Name(),
 		"output", output,
 	)
 }
 
-func (l *PackageLogger) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {
+func (l *PackageLogger) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	l.logger.ContextKV(ctx, xlog.ERROR,
 		"event", "tool_error",
+		"assistant", assistantName,
 		"tool", tool.Name(),
 		"err", err.Error(),
 	)
 }
 
-func (l *PackageLogger) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+func (l *PackageLogger) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 	l.logger.ContextKV(ctx, xlog.DEBUG,
 		"event", "assistant_llm_call_start",
 		"assistant", agent.Name(),

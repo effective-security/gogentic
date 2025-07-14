@@ -36,19 +36,9 @@ func TestAmazonOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs := []llms.MessageContent{
-		{
-			Role: llms.ChatMessageTypeSystem,
-			Parts: []llms.ContentPart{
-				llms.TextPart("You know all about AI."),
-			},
-		},
-		{
-			Role: llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{
-				llms.TextPart("Explain AI in 10 words or less."),
-			},
-		},
+	msgs := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You know all about AI."),
+		llms.MessageFromTextParts(llms.RoleHuman, "Explain AI in 10 words or less."),
 	}
 
 	// All the test models.

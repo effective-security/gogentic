@@ -163,39 +163,39 @@ func (m *MockCallback) EXPECT() *MockCallbackMockRecorder {
 }
 
 // OnToolEnd mocks base method.
-func (m *MockCallback) OnToolEnd(arg0 context.Context, arg1 tools.ITool, arg2, arg3 string) {
+func (m *MockCallback) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input, output string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnToolEnd", arg0, arg1, arg2, arg3)
+	m.ctrl.Call(m, "OnToolEnd", ctx, tool, assistantName, input, output)
 }
 
 // OnToolEnd indicates an expected call of OnToolEnd.
-func (mr *MockCallbackMockRecorder) OnToolEnd(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockCallbackMockRecorder) OnToolEnd(ctx, tool, assistantName, input, output any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolEnd", reflect.TypeOf((*MockCallback)(nil).OnToolEnd), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolEnd", reflect.TypeOf((*MockCallback)(nil).OnToolEnd), ctx, tool, assistantName, input, output)
 }
 
 // OnToolError mocks base method.
-func (m *MockCallback) OnToolError(arg0 context.Context, arg1 tools.ITool, arg2 string, arg3 error) {
+func (m *MockCallback) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnToolError", arg0, arg1, arg2, arg3)
+	m.ctrl.Call(m, "OnToolError", ctx, tool, assistantName, input, err)
 }
 
 // OnToolError indicates an expected call of OnToolError.
-func (mr *MockCallbackMockRecorder) OnToolError(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockCallbackMockRecorder) OnToolError(ctx, tool, assistantName, input, err any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolError", reflect.TypeOf((*MockCallback)(nil).OnToolError), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolError", reflect.TypeOf((*MockCallback)(nil).OnToolError), ctx, tool, assistantName, input, err)
 }
 
 // OnToolStart mocks base method.
-func (m *MockCallback) OnToolStart(arg0 context.Context, arg1 tools.ITool, arg2 string) {
+func (m *MockCallback) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnToolStart", arg0, arg1, arg2)
+	m.ctrl.Call(m, "OnToolStart", ctx, tool, assistantName, input)
 }
 
 // OnToolStart indicates an expected call of OnToolStart.
-func (mr *MockCallbackMockRecorder) OnToolStart(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockCallbackMockRecorder) OnToolStart(ctx, tool, assistantName, input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolStart", reflect.TypeOf((*MockCallback)(nil).OnToolStart), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnToolStart", reflect.TypeOf((*MockCallback)(nil).OnToolStart), ctx, tool, assistantName, input)
 }
 
 // MockTool is a mock of Tool interface.

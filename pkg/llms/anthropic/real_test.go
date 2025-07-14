@@ -68,7 +68,7 @@ func Test_Real_Providers(t *testing.T) {
 	req := &assistants.CallInput{
 		Input: "Return the gogentic status for location: 1012340123?",
 	}
-	_, err = assistants.Call(ctx, ag, req)
+	_, err = ag.Call(ctx, req)
 	fmt.Println("*** logs")
 	fmt.Println(buf.String())
 

@@ -58,7 +58,7 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 }
 
 // GenerateContent implements the Model interface.
-func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) { // nolint: lll, cyclop, funlen, goerr113
+func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { // nolint: lll, cyclop, funlen, goerr113
 	opts := llms.CallOptions{}
 	for _, opt := range options {
 		opt(&opts)
@@ -154,20 +154,18 @@ func (o *LLM) CreateEmbedding(ctx context.Context, inputTexts []string) ([][]flo
 	return res.Result.Data, nil
 }
 
-func typeToRole(typ llms.ChatMessageType) cloudflareclient.Role {
+func typeToRole(typ llms.Role) cloudflareclient.Role {
 	switch typ {
-	case llms.ChatMessageTypeSystem:
+	case llms.RoleSystem:
 		return cloudflareclient.RoleSystem
-	case llms.ChatMessageTypeAI:
+	case llms.RoleAI:
 		return cloudflareclient.RoleAssistant
-	case llms.ChatMessageTypeHuman:
+	case llms.RoleHuman:
 		fallthrough
-	case llms.ChatMessageTypeGeneric:
+	case llms.RoleGeneric:
 		return cloudflareclient.RoleTypeUser
-	case llms.ChatMessageTypeFunction:
-		return "function"
-	case llms.ChatMessageTypeTool:
-		return "tool"
+	case llms.RoleTool:
+		return cloudflareclient.RoleTypeUser
 	}
 	return ""
 }

@@ -42,7 +42,7 @@ func (m *MockModel) EXPECT() *MockModelMockRecorder {
 }
 
 // GenerateContent mocks base method.
-func (m *MockModel) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+func (m *MockModel) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, messages}
 	for _, a := range options {

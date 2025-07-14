@@ -20,7 +20,7 @@ type Client struct {
 // The provider may then transform the message to its own
 // format before sending it to the LLM model API.
 type Message struct {
-	Role    llms.ChatMessageType
+	Role    llms.Role
 	Content string
 	// Type may be "text", "image", "tool_use", "tool_result"
 	Type string

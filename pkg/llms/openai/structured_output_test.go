@@ -28,13 +28,13 @@ func TestStructuredOutputObjectSchema(t *testing.T) {
 		WithResponseFormat(responseFormat),
 	)
 
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeSystem,
+			Role:  llms.RoleSystem,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "You are a student taking a math exam."}},
 		},
 		{
-			Role:  llms.ChatMessageTypeGeneric,
+			Role:  llms.RoleGeneric,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "Solve 2 + 2"}},
 		},
 	}
@@ -63,13 +63,13 @@ func TestStructuredOutputObjectAndArraySchema(t *testing.T) {
 		WithResponseFormat(responseFormat),
 	)
 
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeSystem,
+			Role:  llms.RoleSystem,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "You are a student taking a math exam."}},
 		},
 		{
-			Role:  llms.ChatMessageTypeGeneric,
+			Role:  llms.RoleGeneric,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "Solve 2 + 2"}},
 		},
 	}
@@ -108,13 +108,13 @@ func TestStructuredOutputFunctionCalling(t *testing.T) {
 		},
 	}
 
-	content := []llms.MessageContent{
+	content := []llms.Message{
 		{
-			Role:  llms.ChatMessageTypeSystem,
+			Role:  llms.RoleSystem,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "You are a helpful assistant"}},
 		},
 		{
-			Role:  llms.ChatMessageTypeGeneric,
+			Role:  llms.RoleGeneric,
 			Parts: []llms.ContentPart{llms.TextContent{Text: "What is the age of Bob Odenkirk, a famous comedy screenwriter and an actor."}},
 		},
 	}

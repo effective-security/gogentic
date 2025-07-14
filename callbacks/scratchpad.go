@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,10 +130,10 @@ func (l *Scratchpad) OnAssistantStart(ctx context.Context, assistant assistants.
 	}
 	atomic.AddUint32(&run.stats.AssistantCalls, 1)
 	run.print(assistant.Name(), "*** Assistant Start ***")
-	run.print("Input:", input)
+	run.print(assistant.Name(), "Input:", input)
 }
 
-func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse) {
+func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
@@ -140,18 +141,61 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 	atomic.AddUint32(&run.stats.AssistantCallsSucceeded, 1)
 	atomic.AddUint64(&run.stats.LLMBytesIn, llmutils.CountResponseContentSize(resp))
 
-	run.print(assistant.Name(), "*** Assistant End ***")
 	if l.mode == ModeVerbose {
-		run.print("Output:")
+		run.print(assistant.Name(), "Output:")
 		for _, choice := range resp.Choices {
 			if choice.Content != "" {
 				run.print(choice.Content)
 			}
 		}
 	}
+	if l.mode == ModeVerbose {
+		run.print(assistant.Name(), l.printMessages(messages))
+	}
+	run.print(assistant.Name(), "*** Assistant End ***")
 }
 
-func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.MessageContent) {
+func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
+	run := l.getRun(ctx)
+	if run == nil {
+		return
+	}
+	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
+	run.print(assistant.Name(), "*** Error ***", err.Error())
+	run.print(assistant.Name(), l.printMessages(messages))
+}
+
+func (l *Scratchpad) printMessages(messages []llms.Message) string {
+	var buf strings.Builder
+	buf.WriteString("Messages:\n")
+	for idx, msg := range messages {
+		fmt.Fprintf(&buf, "[%d] %s:\n", idx, msg.Role)
+		textParts := 0
+		toolParts := 0
+		toolResponseParts := 0
+		for _, part := range msg.Parts {
+			switch typ := part.(type) {
+			case llms.TextContent:
+				textParts++
+			case llms.ToolCall:
+				toolParts++
+				buf.WriteString("  - ")
+				buf.WriteString(typ.String())
+				buf.WriteString("\n")
+			case llms.ToolCallResponse:
+				toolResponseParts++
+				buf.WriteString("  - ")
+				buf.WriteString(typ.String())
+				buf.WriteString("\n")
+			}
+		}
+
+		fmt.Fprintf(&buf, "  - %d texts, %d tool calls, %d tool responses\n", textParts, toolParts, toolResponseParts)
+	}
+	return buf.String()
+}
+
+func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
@@ -163,23 +207,8 @@ func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistan
 	atomic.AddUint32(&run.stats.TotalMessages, count)
 
 	run.print(agent.Name(), "*** LLM Call ***", fmt.Sprintf("%s model, %d messages", llm.GetName(), count))
-
-	// count payload messages by role and print
-	for _, msg := range payload {
-		textParts := 0
-		toolParts := 0
-		toolResponseParts := 0
-		for _, part := range msg.Parts {
-			switch part.(type) {
-			case llms.TextContent, *llms.TextContent:
-				textParts++
-			case llms.ToolCall, *llms.ToolCall:
-				toolParts++
-			case llms.ToolCallResponse, *llms.ToolCallResponse:
-				toolResponseParts++
-			}
-		}
-		run.print(string(msg.Role), fmt.Sprintf("%d text parts, %d tool parts, %d tool response parts", textParts, toolParts, toolResponseParts))
+	if l.mode == ModeVerbose {
+		run.print(agent.Name(), l.printMessages(payload))
 	}
 }
 
@@ -207,44 +236,35 @@ func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant ass
 	run.print("Response:", response)
 }
 
-func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error) {
-	run := l.getRun(ctx)
-	if run == nil {
-		return
-	}
-	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
-	run.print(assistant.Name(), "*** Error ***", err.Error())
-}
-
-func (l *Scratchpad) OnToolStart(ctx context.Context, tool tools.ITool, input string) {
+func (l *Scratchpad) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
 	}
 	atomic.AddUint32(&run.stats.ToolsCalls, 1)
-	run.print(tool.Name(), "*** Tool Start ***")
-	run.print("Input:", input)
+	run.print(assistantName, tool.Name(), "*** Tool Start ***")
+	run.print(assistantName, tool.Name(), "Input:", input)
 }
 
-func (l *Scratchpad) OnToolEnd(ctx context.Context, tool tools.ITool, input string, output string) {
+func (l *Scratchpad) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
 	}
 	atomic.AddUint32(&run.stats.ToolsCallsSucceeded, 1)
-	run.print(tool.Name(), "*** Tool End ***")
 	if l.mode == ModeVerbose {
-		run.print("Output:", output)
+		run.print(assistantName, tool.Name(), "Output:", output)
 	}
+	run.print(assistantName, tool.Name(), "*** Tool End ***")
 }
 
-func (l *Scratchpad) OnToolError(ctx context.Context, tool tools.ITool, input string, err error) {
+func (l *Scratchpad) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
 	}
 	atomic.AddUint32(&run.stats.ToolsCallsFailed, 1)
-	run.print(tool.Name(), "*** Tool Error ***", err.Error())
+	run.print(assistantName, tool.Name(), "*** Tool Error ***", err.Error())
 }
 
 func (l *Scratchpad) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {

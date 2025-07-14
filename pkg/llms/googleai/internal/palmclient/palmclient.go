@@ -8,7 +8,6 @@ import (
 	aiplatform "cloud.google.com/go/aiplatform/apiv1"
 	"cloud.google.com/go/aiplatform/apiv1/aiplatformpb"
 	"github.com/cockroachdb/errors"
-	"github.com/effective-security/gogentic/pkg/llms"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -169,18 +168,15 @@ type ChatMessage struct {
 	Author string `json:"author,omitempty"`
 }
 
-// Statically assert that the types implement the interface.
-var _ llms.ChatMessage = ChatMessage{}
-
-// GetType returns the type of the message.
-func (m ChatMessage) GetType() llms.ChatMessageType {
-	switch m.Author {
-	case "user":
-		return llms.ChatMessageTypeHuman
-	default:
-		return llms.ChatMessageTypeAI
-	}
-}
+// // GetType returns the type of the message.
+// func (m ChatMessage) GetType() llms.ChatMessageType {
+// 	switch m.Author {
+// 	case "user", "human":
+// 		return llms.ChatMessageTypeHuman
+// 	default:
+// 		return llms.ChatMessageTypeAI
+// 	}
+// }
 
 // GetText returns the text of the message.
 func (m ChatMessage) GetContent() string {

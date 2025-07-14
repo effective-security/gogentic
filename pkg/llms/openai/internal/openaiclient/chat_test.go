@@ -88,14 +88,20 @@ func TestChatMessage_MarshalUnmarshal(t *testing.T) {
 	msg := ChatMessage{
 		Role:    "assistant",
 		Content: "hello",
-		FunctionCall: &FunctionCall{
-			Name:      "test",
-			Arguments: "func",
+		ToolCalls: []ToolCall{
+			{
+				ID:   "1",
+				Type: "function",
+				Function: ToolFunction{
+					Name:      "test",
+					Arguments: "func",
+				},
+			},
 		},
 	}
 	text, err := json.Marshal(msg)
 	require.NoError(t, err)
-	require.Equal(t, `{"role":"assistant","content":"hello","function_call":{"name":"test","arguments":"func"}}`, string(text)) // nolint: lll
+	require.Equal(t, `{"role":"assistant","content":"hello","tool_calls":[{"id":"1","type":"function","function":{"name":"test","arguments":"func"}}]}`, string(text)) // nolint: lll
 
 	var msg2 ChatMessage
 	err = json.Unmarshal(text, &msg2)

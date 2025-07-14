@@ -148,7 +148,7 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 //	    llms.WithTemperature(0.7),
 //	    llms.WithMaxTokens(1000),
 //	)
-func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	opts := llms.CallOptions{
 		Model: o.Options.Model,
 	}
@@ -169,7 +169,7 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 // The function processes input messages to separate system prompts from conversation
 // messages, converts tools to the Anthropic format, and handles both streaming
 // and non-streaming responses.
-func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.MessageContent, opts *llms.CallOptions) (*llms.ContentResponse, error) {
+func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Message, opts *llms.CallOptions) (*llms.ContentResponse, error) {
 	sdkMessages, systemPrompt, err := ProcessMessages(messages)
 	if err != nil {
 		return nil, errors.Wrap(err, "anthropic: failed to process messages")
@@ -424,7 +424,7 @@ func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
 //   - Error handling for unsupported message types
 //
 // Returns the converted messages, extracted system prompt, and any error encountered.
-func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, string, error) {
+func ProcessMessages(messages []llms.Message) ([]anthropic.MessageParam, string, error) {
 	chatMessages := make([]anthropic.MessageParam, 0, len(messages))
 	systemPrompt := ""
 	for _, msg := range messages {
@@ -432,7 +432,7 @@ func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, 
 			continue
 		}
 		switch msg.Role {
-		case llms.ChatMessageTypeSystem:
+		case llms.RoleSystem:
 			content, err := HandleSystemMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle system message")
@@ -442,26 +442,24 @@ func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, 
 			} else {
 				systemPrompt = content
 			}
-		case llms.ChatMessageTypeHuman:
+		case llms.RoleHuman:
 			chatMessage, err := HandleHumanMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle human message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
-		case llms.ChatMessageTypeAI, llms.ChatMessageTypeGeneric:
+		case llms.RoleAI, llms.RoleGeneric:
 			chatMessage, err := HandleAIMessage(msg)
 			if err != nil {
 				return nil, "", errors.Wrap(err, "anthropic: failed to handle AI message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
-		case llms.ChatMessageTypeTool:
+		case llms.RoleTool:
 			chatMessage, err := HandleToolMessage(msg)
 			if err != nil {
 				return nil, "", errors.WithMessage(err, "anthropic: failed to handle tool message")
 			}
 			chatMessages = append(chatMessages, chatMessage)
-		case llms.ChatMessageTypeFunction:
-			return nil, "", errors.WithMessagef(ErrUnsupportedMessageType, "anthropic: %v", msg.Role)
 		default:
 			return nil, "", errors.WithMessagef(ErrUnsupportedMessageType, "anthropic: %v", msg.Role)
 		}
@@ -474,7 +472,7 @@ func ProcessMessages(messages []llms.MessageContent) ([]anthropic.MessageParam, 
 // System messages in Anthropic are handled separately from conversation messages
 // and are passed as a distinct system parameter. This function validates that
 // the system message contains only text content and returns it as a string.
-func HandleSystemMessage(msg llms.MessageContent) (string, error) {
+func HandleSystemMessage(msg llms.Message) (string, error) {
 	if textContent, ok := msg.Parts[0].(llms.TextContent); ok {
 		return textContent.Text, nil
 	}
@@ -491,7 +489,7 @@ func HandleSystemMessage(msg llms.MessageContent) (string, error) {
 //   - Multiple content parts in a single message
 //
 // Images are automatically base64-encoded and formatted for the Anthropic API.
-func HandleHumanMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+func HandleHumanMessage(msg llms.Message) (anthropic.MessageParam, error) {
 	var contents []anthropic.ContentBlockParamUnion
 
 	for _, part := range msg.Parts {
@@ -526,7 +524,7 @@ func HandleHumanMessage(msg llms.MessageContent) (anthropic.MessageParam, error)
 //   - Mixed content (text + tool calls)
 //
 // Tool call arguments are validated as proper JSON before conversion.
-func HandleAIMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+func HandleAIMessage(msg llms.Message) (anthropic.MessageParam, error) {
 	var contents []anthropic.ContentBlockParamUnion
 
 	for _, part := range msg.Parts {
@@ -564,7 +562,7 @@ func HandleAIMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
 //
 // The function validates that the message contains only tool call response
 // content and formats it appropriately for the API.
-func HandleToolMessage(msg llms.MessageContent) (anthropic.MessageParam, error) {
+func HandleToolMessage(msg llms.Message) (anthropic.MessageParam, error) {
 	var contents []anthropic.ContentBlockParamUnion
 
 	for _, part := range msg.Parts {

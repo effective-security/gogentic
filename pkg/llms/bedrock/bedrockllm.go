@@ -61,7 +61,7 @@ func (l *LLM) GetProviderType() llms.ProviderType {
 }
 
 // GenerateContent implements llms.Model.
-func (l *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+func (l *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	opts := llms.CallOptions{
 		Model: l.modelID,
 	}
@@ -86,7 +86,7 @@ func (l *LLM) CreateEmbedding(ctx context.Context, texts []string) ([][]float32,
 	return l.client.CreateEmbedding(ctx, l.modelID, texts)
 }
 
-func processMessages(messages []llms.MessageContent) ([]bedrockclient.Message, error) {
+func processMessages(messages []llms.Message) ([]bedrockclient.Message, error) {
 	bedrockMsgs := make([]bedrockclient.Message, 0, len(messages))
 
 	for _, m := range messages {

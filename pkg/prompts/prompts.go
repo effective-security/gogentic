@@ -10,7 +10,7 @@ type Formatter interface {
 // MessageFormatter is an interface for formatting a map of values into a list
 // of messages.
 type MessageFormatter interface {
-	FormatMessages(values map[string]any) ([]llms.ChatMessage, error)
+	FormatMessages(values map[string]any) ([]llms.Message, error)
 	GetInputVariables() []string
 }
 

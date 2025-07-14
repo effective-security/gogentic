@@ -40,7 +40,7 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 }
 
 // GenerateContent implements the Model interface.
-func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, whitespace
+func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, whitespace
 	opts := llms.CallOptions{}
 	for _, opt := range options {
 		opt(&opts)

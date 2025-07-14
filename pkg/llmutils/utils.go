@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -203,31 +202,42 @@ func MergeInputs(configInputs map[string]any, userInputs map[string]any) map[str
 	return res
 }
 
-// PrintMessageContents is a debugging helper for MessageContent.
-func PrintMessageContents(w io.Writer, msgs []llms.MessageContent) {
+// PrintMessages is a debugging helper for Messages.
+func PrintMessages(w io.Writer, msgs []llms.Message) {
 	for _, mc := range msgs {
-		fmt.Fprintf(w, "%s: ", strings.ToUpper(string(mc.Role)))
-		for _, p := range mc.Parts {
-			switch pp := p.(type) {
-			case llms.TextContent:
-				fmt.Fprintln(w, pp.Text)
-			case llms.ImageURLContent:
-				fmt.Fprintln(w, pp.URL)
-			case llms.BinaryContent:
-				//fmt.Fprintf(w, "BinaryContent MIME=%q, size=%d\n", pp.MIMEType, len(pp.Data))
-			case llms.ToolCall:
-				fmt.Fprintf(w, "ToolCall ID=%s, Type=%s, Func=%s(%s)\n", pp.ID, pp.Type, pp.FunctionCall.Name, pp.FunctionCall.Arguments)
-			case llms.ToolCallResponse:
-				fmt.Fprintf(w, "ToolCallResponse ID=%s, Name=%s, Content=%s\n", pp.ToolCallID, pp.Name, pp.Content)
-			default:
-				//fmt.Fprintf(w, "unknown type %T\n", pp)
-			}
-		}
+		fmt.Fprint(w, getMessageRole(mc))
+		fmt.Fprint(w, ": ")
+		fmt.Fprint(w, mc.GetContent())
 	}
 }
 
+func getMessageRole(m llms.Message) string {
+	var role string
+	switch m.Role {
+	case llms.RoleHuman:
+		role = "Human"
+	case llms.RoleAI:
+		role = "AI"
+	case llms.RoleSystem:
+		role = "System"
+	case llms.RoleGeneric:
+		role = "Generic"
+	case llms.RoleTool:
+		role = "Tool"
+		if len(m.Parts) == 1 {
+			switch typ := m.Parts[0].(type) {
+			case llms.ToolCallResponse:
+				role += ": " + typ.ToolCallID
+			}
+		}
+	default:
+		role = "Generic"
+	}
+	return role
+}
+
 // CountMessagesContentSize counts the size of the content in the messages
-func CountMessagesContentSize(msgs []llms.MessageContent) uint64 {
+func CountMessagesContentSize(msgs []llms.Message) uint64 {
 	var size uint64
 	for _, mc := range msgs {
 		size += uint64(len(mc.Role))
@@ -292,20 +302,10 @@ func CountTokens(resp *llms.ContentResponse) (in, out, total int64) {
 	return
 }
 
-func PrintChatMessages(w io.Writer, msgs []llms.ChatMessage, filter ...llms.ChatMessageType) {
-	for _, mc := range msgs {
-		if len(filter) > 0 && !slices.Contains(filter, mc.GetType()) {
-			continue
-		}
-		fmt.Fprintf(w, "%s: ", strings.ToUpper(string(mc.GetType())))
-		fmt.Fprintln(w, mc.GetContent())
-	}
-}
-
-func FindLastUserQuestion(messages []llms.MessageContent) string {
+func FindLastUserQuestion(messages []llms.Message) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
-		if msg.Role == llms.ChatMessageTypeHuman {
+		if msg.Role == llms.RoleHuman {
 			for _, part := range msg.Parts {
 				if textPart, ok := part.(llms.TextContent); ok {
 					return textPart.Text

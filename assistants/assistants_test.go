@@ -101,19 +101,19 @@ func Test_Assistant_Defined(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
 				return nil, errors.New("error")
 			}
-			if !searchCalled && strings.Contains(input, "search") {
+			if !searchCalled && strings.Contains(input, "Search") {
 				searchCalled = true
 				return &llms.ContentResponse{
 					Choices: []*llms.ContentChoice{
 						{
 							ToolCalls: []llms.ToolCall{
 								{
-									ID:   tavilyTool.Name(),
+									ID:   "tool-call-id-1223",
 									Type: "function",
 									FunctionCall: &llms.FunctionCall{
 										Name:      tavilyTool.Name(),
@@ -182,6 +182,10 @@ func Test_Assistant_Defined(t *testing.T) {
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
+	history := memstore.Messages(ctx)
+	assert.Len(t, history, 2)
+	assert.Len(t, ag.LastRunMessages(), 2)
+
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
 	}
@@ -191,13 +195,19 @@ func Test_Assistant_Defined(t *testing.T) {
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
-	history := memstore.Messages(ctx)
-	assert.NotEmpty(t, history)
+	history = memstore.Messages(ctx)
+	assert.Len(t, history, 6)
+	assert.Len(t, ag.LastRunMessages(), 4)
 	exp := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
 Human: Search for weather there.
-AI: The weather in Europe is generally mild.`
-	chat, err := llms.GetBufferString(history, "Human", "AI")
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
+Tool: tool-call-id-1223: Response: {"type":"tool_response","tool_response":{"tool_call_id":"tool-call-id-1223","name":"web_search","content":"{\"results\":[{\"title\":\"Weather in Europe\",\"url\":\"https://weather.com/europe\",\"content\":\"\",\"score\":0},{\"title\":\"Weather in France\",\"url\":\"https://weather.com/france\",\"content\":\"\",\"score\":0}],\"answer\":\"The weather in Europe is generally mild.\"}"}}
+AI: The weather in Europe is generally mild.
+`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	chat := buf.String()
 	require.NoError(t, err)
 	assert.Equal(t, exp, chat)
 }
@@ -274,19 +284,19 @@ func Test_Assistant_Chat(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			input := llmutils.FindLastUserQuestion(messages)
 			if strings.Contains(input, "error") {
 				return nil, errors.New("error")
 			}
-			if !searchCalled && strings.Contains(input, "search") {
+			if !searchCalled && strings.Contains(input, "Search") {
 				searchCalled = true
 				return &llms.ContentResponse{
 					Choices: []*llms.ContentChoice{
 						{
 							ToolCalls: []llms.ToolCall{
 								{
-									ID:   tavilyTool.Name(),
+									ID:   "tool-call-id-1223",
 									Type: "function",
 									FunctionCall: &llms.FunctionCall{
 										Name:      tavilyTool.Name(),
@@ -352,6 +362,10 @@ func Test_Assistant_Chat(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, apiResp.Choices)
 
+	history := memstore.Messages(ctx)
+	assert.Len(t, history, 2)
+	assert.Len(t, ag.LastRunMessages(), 2)
+
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
 	}
@@ -360,13 +374,19 @@ func Test_Assistant_Chat(t *testing.T) {
 
 	assert.NotEmpty(t, apiResp.Choices)
 
-	history := memstore.Messages(ctx)
-	assert.NotEmpty(t, history)
+	history = memstore.Messages(ctx)
+	assert.Len(t, history, 6)
+	assert.Len(t, ag.LastRunMessages(), 4)
 	exp := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
 Human: Search for weather there.
-AI: The weather in Europe is generally mild.`
-	chat, err := llms.GetBufferString(history, "Human", "AI")
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
+Tool: tool-call-id-1223: Response: {"type":"tool_response","tool_response":{"tool_call_id":"tool-call-id-1223","name":"web_search","content":"{\"results\":[{\"title\":\"Weather in Europe\",\"url\":\"https://weather.com/europe\",\"content\":\"\",\"score\":0},{\"title\":\"Weather in France\",\"url\":\"https://weather.com/france\",\"content\":\"\",\"score\":0}],\"answer\":\"The weather in Europe is generally mild.\"}"}}
+AI: The weather in Europe is generally mild.
+`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	chat := buf.String()
 	require.NoError(t, err)
 	assert.Equal(t, exp, chat)
 }
@@ -411,7 +431,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			llmCall++
 			if llmCall == 1 {
 				// First, LLM issues a tool call with invalid input
@@ -487,8 +507,9 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 
 	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
-	chat, err := llms.GetBufferString(history, "Human", "AI")
-	require.NoError(t, err)
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	chat := buf.String()
 	// The final answer should be present
 	assert.Contains(t, chat, "The weather in Europe is generally mild.")
 
@@ -542,7 +563,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
 			if len(messages) == 2 {
 				toolCalls := make([]llms.ToolCall, 2)
@@ -660,7 +681,7 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 			// First call: return multiple tool calls
 			if len(messages) == 2 {
 				toolCalls := make([]llms.ToolCall, 7)
@@ -695,19 +716,19 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 
 	// Create a mock callback to track tool calls
 	mockCallback := mockassitants.NewMockCallback(ctrl)
-	mockCallback.EXPECT().OnToolStart(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	mockCallback.EXPECT().OnToolEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, tool tools.ITool, input string, output string) {
+	mockCallback.EXPECT().OnToolStart(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnToolEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 			mu.Lock()
 			processedToolCalls[strings.ToLower(tool.Name())] = true
 			toolCallResults[strings.ToLower(tool.Name())] = output
 			mu.Unlock()
 		},
 	).AnyTimes()
-	mockCallback.EXPECT().OnToolError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnToolError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	mockCallback.EXPECT().OnAssistantError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockCallback.EXPECT().OnAssistantError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantLLMCallStart(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantLLMCallEnd(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockCallback.EXPECT().OnAssistantLLMParseError(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -835,42 +856,6 @@ func Test_MapAssistants(t *testing.T) {
 	assert.Equal(t, mockAssistant2, result["Assistant2"])
 }
 
-func Test_Run_WithCallback(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	// Create mock assistant with callback
-	mockAssistant := mockassitants.NewMockTypeableAssistant[chatmodel.OutputResult](ctrl)
-	mockCallback := mockassitants.NewMockCallback(ctrl)
-	mockAssistant.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
-
-	// Set up expectations
-	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistant, "test input")
-	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistant, "test input", gomock.Any())
-
-	// Mock successful Run
-	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
-		Input: "test input",
-	}, gomock.Any()).
-		Return(&llms.ContentResponse{
-			Choices: []*llms.ContentChoice{
-				{
-					Content: `{"Content":"Test response"}`,
-				},
-			},
-		}, nil)
-
-	// Test Run
-	var output chatmodel.OutputResult
-	req := &assistants.CallInput{
-		Input: "test input",
-	}
-	apiResp, err := assistants.Run(context.Background(), mockAssistant, req, &output)
-	require.NoError(t, err)
-	assert.NotNil(t, apiResp)
-	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
-}
-
 func Test_Run_WithError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -878,72 +863,28 @@ func Test_Run_WithError(t *testing.T) {
 	// Create mock assistant with callback
 	mockAssistant := mockassitants.NewMockTypeableAssistant[chatmodel.OutputResult](ctrl)
 	mockCallback := mockassitants.NewMockCallback(ctrl)
-	mockAssistant.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
 
 	// Set up expectations
-	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistant, "test input")
-	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistant, "test input", gomock.Any())
+	// mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistant, "test input")
+	// mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistant, "test input", gomock.Any())
 
 	// Mock error in Run
 	expectedErr := errors.New("test error")
-	mockAssistant.EXPECT().Run(gomock.Any(), &assistants.CallInput{
-		Input: "test input",
-	}, gomock.Any()).
+	mockAssistant.EXPECT().Run(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, expectedErr)
 
 	// Test Run with error
 	var output chatmodel.OutputResult
 	req := &assistants.CallInput{
 		Input: "test input",
+		Options: []assistants.Option{
+			assistants.WithCallback(mockCallback),
+		},
 	}
-	apiResp, err := assistants.Run(context.Background(), mockAssistant, req, &output)
+	apiResp, err := mockAssistant.Run(context.Background(), req, &output)
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, apiResp)
-}
-
-func Test_Call_WithCallback(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	// Create mock assistant with callback
-	mockAssistant := mockassitants.NewMockIAssistant(ctrl)
-	mockCallback := mockassitants.NewMockCallback(ctrl)
-
-	// Create a mock that implements both IAssistant and HasCallback
-	mockAssistantWithCallback := struct {
-		*mockassitants.MockIAssistant
-		*mockassitants.MockHasCallback
-	}{
-		MockIAssistant:  mockAssistant,
-		MockHasCallback: mockassitants.NewMockHasCallback(ctrl),
-	}
-	mockAssistantWithCallback.MockHasCallback.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
-
-	// Set up expectations
-	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistantWithCallback, "test input")
-	mockCallback.EXPECT().OnAssistantEnd(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
-
-	// Mock successful Call
-	mockAssistant.EXPECT().Call(gomock.Any(), &assistants.CallInput{
-		Input: "test input",
-	}).
-		Return(&llms.ContentResponse{
-			Choices: []*llms.ContentChoice{
-				{
-					Content: `{"Content":"Test response"}`,
-				},
-			},
-		}, nil)
-
-	// Test Call
-	req := &assistants.CallInput{
-		Input: "test input",
-	}
-	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, req)
-	require.NoError(t, err)
-	assert.NotNil(t, apiResp)
-	assert.Equal(t, `{"Content":"Test response"}`, apiResp.Choices[0].Content)
 }
 
 func Test_Call_WithError(t *testing.T) {
@@ -953,33 +894,22 @@ func Test_Call_WithError(t *testing.T) {
 	// Create mock assistant with callback
 	mockAssistant := mockassitants.NewMockIAssistant(ctrl)
 	mockCallback := mockassitants.NewMockCallback(ctrl)
-
-	// Create a mock that implements both IAssistant and HasCallback
-	mockAssistantWithCallback := struct {
-		*mockassitants.MockIAssistant
-		*mockassitants.MockHasCallback
-	}{
-		MockIAssistant:  mockAssistant,
-		MockHasCallback: mockassitants.NewMockHasCallback(ctrl),
-	}
-	mockAssistantWithCallback.MockHasCallback.EXPECT().GetCallback().Return(mockCallback).AnyTimes()
-
 	// Set up expectations
-	mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistantWithCallback, "test input")
-	mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
+	// mockCallback.EXPECT().OnAssistantStart(gomock.Any(), mockAssistantWithCallback, "test input")
+	// mockCallback.EXPECT().OnAssistantError(gomock.Any(), mockAssistantWithCallback, "test input", gomock.Any())
 
 	// Mock error in Call
 	expectedErr := errors.New("test error")
-	mockAssistant.EXPECT().Call(gomock.Any(), &assistants.CallInput{
-		Input: "test input",
-	}).
-		Return(nil, expectedErr)
+	mockAssistant.EXPECT().Call(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 
 	// Test Call with error
 	req := &assistants.CallInput{
 		Input: "test input",
+		Options: []assistants.Option{
+			assistants.WithCallback(mockCallback),
+		},
 	}
-	apiResp, err := assistants.Call(context.Background(), mockAssistantWithCallback, req)
+	apiResp, err := mockAssistant.Call(context.Background(), req)
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, apiResp)

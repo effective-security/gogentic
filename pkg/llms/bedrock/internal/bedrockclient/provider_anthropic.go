@@ -396,7 +396,7 @@ func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntim
 func processInputMessagesAnthropic(messages []Message) ([]*anthropicTextGenerationInputMessage, string, error) {
 	chunkedMessages := make([][]Message, 0, len(messages))
 	currentChunk := make([]Message, 0, len(messages))
-	var lastRole llms.ChatMessageType
+	var lastRole llms.Role
 	for _, message := range messages {
 		if message.Role != lastRole {
 			if len(currentChunk) > 0 {
@@ -444,22 +444,20 @@ func processInputMessagesAnthropic(messages []Message) ([]*anthropicTextGenerati
 }
 
 // process the role of the message to anthropic supported role.
-func getAnthropicRole(role llms.ChatMessageType) (string, error) {
+func getAnthropicRole(role llms.Role) (string, error) {
 	switch role {
-	case llms.ChatMessageTypeSystem:
+	case llms.RoleSystem:
 		return AnthropicSystem, nil
 
-	case llms.ChatMessageTypeAI:
+	case llms.RoleAI:
 		return AnthropicRoleAssistant, nil
 
-	case llms.ChatMessageTypeGeneric:
+	case llms.RoleGeneric:
 		fallthrough
-	case llms.ChatMessageTypeHuman:
+	case llms.RoleHuman:
 		return AnthropicRoleUser, nil
-	case llms.ChatMessageTypeTool:
+	case llms.RoleTool:
 		return AnthropicRoleUser, nil
-	case llms.ChatMessageTypeFunction:
-		fallthrough
 	default:
 		return "", errors.New("role not supported")
 	}

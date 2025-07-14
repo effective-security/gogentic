@@ -38,10 +38,6 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 	assistant.WithInputParser(inputParser)
 	assert.NotNil(t, assistant)
 
-	// Test GetCallback
-	callback := assistant.GetCallback()
-	assert.Nil(t, callback) // Should be nil by default
-
 	// Test WithName
 	assistant = assistant.WithName("TestAssistant")
 	assert.Equal(t, "TestAssistant", assistant.Name())

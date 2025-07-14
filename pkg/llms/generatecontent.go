@@ -1,22 +1,41 @@
 package llms
 
 import (
-	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"io"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 )
 
-// MessageContent is the content of a message sent to a LLM. It has a role and a
+// ErrUnexpectedRole is returned when a message role is of an unexpected type.
+var ErrUnexpectedRole = errors.New("unexpected role")
+
+// Role is the type of chat message.
+type Role string
+
+const (
+	// RoleAI is a message sent by an AI.
+	RoleAI Role = "ai"
+	// RoleHuman is a message sent by a human.
+	RoleHuman Role = "human"
+	// RoleSystem is a message sent by the system.
+	RoleSystem Role = "system"
+	// RoleGeneric is a message sent by a generic user.
+	RoleGeneric Role = "generic"
+	// RoleTool is a message sent by a tool.
+	RoleTool Role = "tool"
+)
+
+// Message is the message sent to a LLM. It has a role and a
 // sequence of parts. For example, it can represent one message in a chat
 // session sent by the user, in which case Role will be
 // ChatMessageTypeHuman and Parts will be the sequence of items sent in
 // this specific message.
-type MessageContent struct {
-	Role  ChatMessageType
-	Parts []ContentPart
+type Message struct {
+	Role  Role          `json:"role"`
+	Parts []ContentPart `json:"parts"`
 }
 
 // TextPart creates TextContent from a given string.
@@ -55,7 +74,7 @@ type ContentPart interface {
 
 // TextContent is content with some text.
 type TextContent struct {
-	Text string
+	Text string `json:"text"`
 }
 
 func (tc TextContent) String() string {
@@ -78,8 +97,8 @@ func (ImageURLContent) isPart() {}
 
 // BinaryContent is content holding some binary data with a MIME type.
 type BinaryContent struct {
-	MIMEType string
-	Data     []byte
+	MIMEType string `json:"mime_type"`
+	Data     []byte `json:"data"`
 }
 
 func (bc BinaryContent) String() string {
@@ -107,6 +126,10 @@ type ToolCall struct {
 	FunctionCall *FunctionCall `json:"function,omitempty"`
 }
 
+func (tc ToolCall) String() string {
+	return fmt.Sprintf("ToolCall: %s (%s), input: %s", tc.ID, tc.FunctionCall.Name, tc.FunctionCall.Arguments)
+}
+
 func (ToolCall) isPart() {}
 
 // ToolCallResponse is the response returned by a tool call.
@@ -117,6 +140,10 @@ type ToolCallResponse struct {
 	Name string `json:"name"`
 	// Content is the textual content of the response.
 	Content string `json:"content"`
+}
+
+func (tc ToolCallResponse) String() string {
+	return fmt.Sprintf("ToolCallResponse: %s (%s), response size: %d", tc.ToolCallID, tc.Name, len(tc.Content))
 }
 
 func (ToolCallResponse) isPart() {}
@@ -131,32 +158,42 @@ type ContentResponse struct {
 // calls.
 type ContentChoice struct {
 	// Content is the textual content of a response
-	Content string
+	Content string `json:"content"`
 
 	// StopReason is the reason the model stopped generating output.
-	StopReason string
+	StopReason string `json:"stop_reason"`
 
 	// GenerationInfo is arbitrary information the model adds to the response.
-	GenerationInfo map[string]any
+	GenerationInfo map[string]any `json:"generation_info"`
 
 	// FuncCall is non-nil when the model asks to invoke a function/tool.
 	// If a model invokes more than one function/tool, this field will only
 	// contain the first one.
-	FuncCall *FunctionCall
+	FuncCall *FunctionCall `json:"func_call"`
 
 	// ToolCalls is a list of tool calls the model asks to invoke.
-	ToolCalls []ToolCall
+	ToolCalls []ToolCall `json:"tool_calls"`
 
 	// This field is only used with the deepseek-reasoner model and represents the reasoning contents of the assistant message before the final answer.
-	ReasoningContent string
+	ReasoningContent string `json:"reasoning_content"`
 }
 
-// TextParts is a helper function to create a MessageContent with a role and a
-// list of text parts.
-func TextParts(role ChatMessageType, parts ...string) MessageContent {
-	result := MessageContent{
+// MessageFromParts is a helper function to create a Message with a role and a
+// list of parts.
+func MessageFromParts(role Role, parts ...ContentPart) Message {
+	result := Message{
 		Role:  role,
-		Parts: []ContentPart{},
+		Parts: parts,
+	}
+	return result
+}
+
+// MessageFromTextParts is a helper function to create a Message with a role and a
+// list of text parts.
+func MessageFromTextParts(role Role, parts ...string) Message {
+	result := Message{
+		Role:  role,
+		Parts: make([]ContentPart, 0, len(parts)),
 	}
 	for _, part := range parts {
 		result.Parts = append(result.Parts, TextPart(part))
@@ -164,50 +201,73 @@ func TextParts(role ChatMessageType, parts ...string) MessageContent {
 	return result
 }
 
-// ShowMessageContents is a debugging helper for MessageContent.
-func ShowMessageContents(w io.Writer, msgs []MessageContent) {
-	fmt.Fprintf(w, "MessageContent (len=%v)\n", len(msgs))
-	for i, mc := range msgs {
-		fmt.Fprintf(w, "[%d]: Role=%s\n", i, mc.Role)
-		for j, p := range mc.Parts {
-			fmt.Fprintf(w, "  Parts[%v]: ", j)
-			switch pp := p.(type) {
-			case TextContent:
-				fmt.Fprintf(w, "Text: %q\n", pp.Text)
-			case ImageURLContent:
-				fmt.Fprintf(w, "ImageURL: %q\n", pp.URL)
-			case BinaryContent:
-				fmt.Fprintf(w, "Binary: MIME=%q, size=%d\n", pp.MIMEType, len(pp.Data))
-			case ToolCall:
-				fmt.Fprintf(w, "ToolCall: ID=%v, Type=%v, Func=%v(%v)\n", pp.ID, pp.Type, pp.FunctionCall.Name, pp.FunctionCall.Arguments)
-			case ToolCallResponse:
-				fmt.Fprintf(w, "ToolCallResponse: ID=%v, Name=%v, Content=%v\n", pp.ToolCallID, pp.Name, pp.Content)
-			default:
-				fmt.Fprintf(w, "unknown type %T\n", pp)
-			}
-		}
+// MessageFromToolCalls is a helper function to create a Message with a role and a
+// list of tool calls.
+func MessageFromToolCalls(role Role, toolCalls ...ToolCall) Message {
+	result := Message{
+		Role:  role,
+		Parts: make([]ContentPart, 0, len(toolCalls)),
 	}
+	for _, toolCall := range toolCalls {
+		result.Parts = append(result.Parts, ToolCall{
+			ID:   toolCall.ID,
+			Type: toolCall.Type,
+			FunctionCall: &FunctionCall{
+				Name:      toolCall.FunctionCall.Name,
+				Arguments: toolCall.FunctionCall.Arguments,
+			},
+		})
+	}
+	return result
 }
 
-// GenerateFromSinglePrompt is a convenience function for calling an LLM with
-// a single string prompt, expecting a single string response. It's useful for
-// simple, string-only interactions and provides a slightly more ergonomic API
-// than the more general [llms.Model.GenerateContent].
-func GenerateFromSinglePrompt(ctx context.Context, llm Model, prompt string, options ...CallOption) (string, error) {
-	msg := MessageContent{
-		Role:  ChatMessageTypeHuman,
-		Parts: []ContentPart{TextContent{Text: prompt}},
-	}
+// MessageFromToolResponse is a helper function to create a Message with a role and a
+// tool response.
+func MessageFromToolResponse(role Role, toolResponse ToolCallResponse) Message {
+	return MessageFromParts(role, ToolCallResponse{
+		ToolCallID: toolResponse.ToolCallID,
+		Name:       toolResponse.Name,
+		Content:    toolResponse.Content,
+	})
+}
 
-	resp, err := llm.GenerateContent(ctx, []MessageContent{msg}, options...)
-	if err != nil {
-		return "", err
+func (m Message) GetContent() string {
+	var buf strings.Builder
+	lastNewLine := true
+	for _, p := range m.Parts {
+		if !lastNewLine {
+			buf.WriteString("\n")
+		}
+		switch typ := p.(type) {
+		case TextContent:
+			buf.WriteString(typ.Text)
+			lastNewLine = strings.HasSuffix(typ.Text, "\n")
+		case ImageURLContent:
+			buf.WriteString("URL: ")
+			buf.WriteString(typ.URL)
+			lastNewLine = false
+		case BinaryContent:
+			buf.WriteString("Binary: ")
+			buf.WriteString(typ.MIMEType)
+			buf.WriteString("\n")
+			buf.WriteString(base64.StdEncoding.EncodeToString(typ.Data))
+			lastNewLine = false
+		case ToolCall:
+			buf.WriteString("Tool Call: ")
+			js, _ := json.Marshal(typ)
+			buf.Write(js)
+			buf.WriteString("\n")
+			lastNewLine = true
+		case ToolCallResponse:
+			buf.WriteString("Response: ")
+			js, _ := json.Marshal(typ)
+			buf.Write(js)
+			buf.WriteString("\n")
+			lastNewLine = true
+		}
 	}
-
-	choices := resp.Choices
-	if len(choices) < 1 {
-		return "", errors.New("empty response from model")
+	if !lastNewLine {
+		buf.WriteString("\n")
 	}
-	c1 := choices[0]
-	return c1.Content, nil
+	return buf.String()
 }
