@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/vertexai v0.15.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/anthropics/anthropic-sdk-go v1.4.0
+	github.com/anthropics/anthropic-sdk-go v1.5.0
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.31.0
