@@ -3,7 +3,7 @@ module github.com/effective-security/gogentic
 go 1.24.2
 
 require (
-	cloud.google.com/go/aiplatform v1.92.0
+	cloud.google.com/go/aiplatform v1.93.0
 	cloud.google.com/go/vertexai v0.15.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
