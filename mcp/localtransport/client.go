@@ -16,9 +16,10 @@ type McpProxyRequest struct {
 }
 
 type McpProxyResponse struct {
-	Status  int               `json:"status"`
-	Body    []byte            `json:"body"`
-	Headers map[string]string `json:"headers"`
+	Type    transport.BaseMessageType `json:"type"`
+	Status  int                       `json:"status"`
+	Body    []byte                    `json:"body"`
+	Headers map[string]string         `json:"headers"`
 }
 
 // Handler is an interface for handling MCP requests using local transport or proxy
