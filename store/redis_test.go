@@ -300,7 +300,9 @@ func Test_RedisStore_ConcurrentUpdateChat(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: host + ":" + port.Port(),
 	})
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	st := store.NewRedisStore(client, "test")
 
@@ -374,7 +376,9 @@ func Test_RedisStore_ConcurrentChatCreation(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: host + ":" + port.Port(),
 	})
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	st := store.NewRedisStore(client, "test")
 

@@ -153,18 +153,18 @@ var _ assistants.Callback = (*Printer)(nil)
 func (l *Printer) OnAssistantStart(ctx context.Context, assistant assistants.IAssistant, input string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant Start: %s\n", assistant.Name())
-	fmt.Fprintf(l.Out, "Input: %s\n", input)
+	_, _ = fmt.Fprintf(l.Out, "Assistant Start: %s\n", assistant.Name())
+	_, _ = fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
 func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant End: %s\n", assistant.Name())
+	_, _ = fmt.Fprintf(l.Out, "Assistant End: %s\n", assistant.Name())
 	if l.Mode == ModeVerbose {
 		for _, choice := range resp.Choices {
 			if choice.Content != "" {
-				fmt.Fprintln(l.Out, choice.Content)
+				_, _ = fmt.Fprintln(l.Out, choice.Content)
 			}
 		}
 	}
@@ -173,42 +173,42 @@ func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssi
 func (l *Printer) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant Error: %s: %s\n", assistant.Name(), err.Error())
+	_, _ = fmt.Fprintf(l.Out, "Assistant Error: %s: %s\n", assistant.Name(), err.Error())
 }
 
 func (l *Printer) OnAssistantLLMParseError(ctx context.Context, assistant assistants.IAssistant, input string, response string, err error) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant LLM Parse Error: %s: %s\n", assistant.Name(), err.Error())
-	fmt.Fprintf(l.Out, "Response: %s\n", response)
+	_, _ = fmt.Fprintf(l.Out, "Assistant LLM Parse Error: %s: %s\n", assistant.Name(), err.Error())
+	_, _ = fmt.Fprintf(l.Out, "Response: %s\n", response)
 }
 
 func (l *Printer) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool Start: %s (%s)\n", tool.Name(), assistantName)
-	fmt.Fprintf(l.Out, "Input: %s\n", input)
+	_, _ = fmt.Fprintf(l.Out, "Tool Start: %s (%s)\n", tool.Name(), assistantName)
+	_, _ = fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
 func (l *Printer) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input string, output string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool End: %s (%s)\n", tool.Name(), assistantName)
+	_, _ = fmt.Fprintf(l.Out, "Tool End: %s (%s)\n", tool.Name(), assistantName)
 	if l.Mode == ModeVerbose {
-		fmt.Fprintf(l.Out, "Output: %s\n", output)
+		_, _ = fmt.Fprintf(l.Out, "Output: %s\n", output)
 	}
 }
 
 func (l *Printer) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool Error: %s (%s): %s\n", tool.Name(), assistantName, err.Error())
+	_, _ = fmt.Fprintf(l.Out, "Tool Error: %s (%s): %s\n", tool.Name(), assistantName, err.Error())
 }
 
 func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.IAssistant, llm llms.Model, payload []llms.Message) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(payload))
+	_, _ = fmt.Fprintf(l.Out, "Assistant LLM Call: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(payload))
 	// if l.Mode == ModeVerbose {
 	// 	llmutils.PrintMessageContents(l.Out, payload)
 	// }
@@ -217,13 +217,13 @@ func (l *Printer) OnAssistantLLMCallStart(ctx context.Context, agent assistants.
 func (l *Printer) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAssistant, llm llms.Model, resp *llms.ContentResponse) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Assistant LLM Call End: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(resp.Choices))
+	_, _ = fmt.Fprintf(l.Out, "Assistant LLM Call End: %s: %s model, %d messages\n", agent.Name(), llm.GetName(), len(resp.Choices))
 }
 
 func (l *Printer) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	fmt.Fprintf(l.Out, "Tool Not Found: %s\n", tool)
+	_, _ = fmt.Fprintf(l.Out, "Tool Not Found: %s\n", tool)
 }
 
 // PackageLogger is a callback handler that prints to the logger.

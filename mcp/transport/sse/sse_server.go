@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/cockroachdb/errors"
-	sse2 "github.com/effective-security/gogentic/mcp/sse/internal/sse"
-	"github.com/metoro-io/mcp-golang/transport"
+	"github.com/effective-security/gogentic/mcp/transport"
+	sse2 "github.com/effective-security/gogentic/mcp/transport/sse/internal/sse"
 )
 
 // SSEServerTransport implements a server-side SSE transport
@@ -47,7 +47,9 @@ func (s *SSEServerTransport) HandlePostMessage(r *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to read request body")
 	}
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	return s.transport.HandleMessage(body)
 }

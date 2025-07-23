@@ -65,8 +65,8 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/google/uuid"
-	"github.com/metoro-io/mcp-golang/transport"
 )
 
 const (
@@ -130,7 +130,7 @@ func (t *SSETransport) Start(ctx context.Context) error {
 	// Handle context cancellation
 	go func() {
 		<-ctx.Done()
-		t.Close()
+		_ = t.Close()
 	}()
 
 	return nil

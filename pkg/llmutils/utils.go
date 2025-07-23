@@ -205,9 +205,9 @@ func MergeInputs(configInputs map[string]any, userInputs map[string]any) map[str
 // PrintMessages is a debugging helper for Messages.
 func PrintMessages(w io.Writer, msgs []llms.Message) {
 	for _, mc := range msgs {
-		fmt.Fprint(w, getMessageRole(mc))
-		fmt.Fprint(w, ": ")
-		fmt.Fprint(w, mc.GetContent())
+		_, _ = fmt.Fprint(w, getMessageRole(mc))
+		_, _ = fmt.Fprint(w, ": ")
+		_, _ = fmt.Fprint(w, mc.GetContent())
 	}
 }
 

@@ -15,10 +15,10 @@ import (
 
 	assistants "github.com/effective-security/gogentic/assistants"
 	chatmodel "github.com/effective-security/gogentic/chatmodel"
+	mcp "github.com/effective-security/gogentic/mcp"
 	llms "github.com/effective-security/gogentic/pkg/llms"
 	tools "github.com/effective-security/gogentic/tools"
 	jsonschema "github.com/invopop/jsonschema"
-	mcp_golang "github.com/metoro-io/mcp-golang"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -608,10 +608,10 @@ func (mr *MockIMCPAssistantMockRecorder) Call(ctx, input any) *gomock.Call {
 }
 
 // CallMCP mocks base method.
-func (m *MockIMCPAssistant) CallMCP(arg0 context.Context, arg1 chatmodel.MCPInputRequest) (*mcp_golang.PromptResponse, error) {
+func (m *MockIMCPAssistant) CallMCP(arg0 context.Context, arg1 chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CallMCP", arg0, arg1)
-	ret0, _ := ret[0].(*mcp_golang.PromptResponse)
+	ret0, _ := ret[0].(*mcp.PromptResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

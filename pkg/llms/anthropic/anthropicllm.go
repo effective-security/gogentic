@@ -283,7 +283,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 // real-time display or processing of the generated content.
 func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.MessageNewParams, streamingFunc func(context.Context, []byte) error) (*llms.ContentResponse, error) {
 	stream := o.Client.Messages.NewStreaming(ctx, params)
-	defer stream.Close()
+	defer func() {
+		_ = stream.Close()
+	}()
 
 	var content strings.Builder
 	var toolCalls []llms.ToolCall

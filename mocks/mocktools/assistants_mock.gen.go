@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
+	mcp "github.com/effective-security/gogentic/mcp"
 	tools "github.com/effective-security/gogentic/tools"
 	jsonschema "github.com/invopop/jsonschema"
-	mcp_golang "github.com/metoro-io/mcp-golang"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -485,10 +485,10 @@ func (mr *MockMCPToolMockRecorder[I]) RegisterMCP(registrator any) *gomock.Call 
 }
 
 // RunMCP mocks base method.
-func (m *MockMCPTool[I]) RunMCP(arg0 context.Context, arg1 *I) (*mcp_golang.ToolResponse, error) {
+func (m *MockMCPTool[I]) RunMCP(arg0 context.Context, arg1 *I) (*mcp.ToolResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunMCP", arg0, arg1)
-	ret0, _ := ret[0].(*mcp_golang.ToolResponse)
+	ret0, _ := ret[0].(*mcp.ToolResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

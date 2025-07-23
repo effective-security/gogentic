@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/mcp"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/format"
 	"github.com/effective-security/xlog"
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "assistants")

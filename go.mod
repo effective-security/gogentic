@@ -1,6 +1,8 @@
 module github.com/effective-security/gogentic
 
-go 1.24.2
+go 1.24.4
+
+toolchain go1.24.5
 
 require (
 	cloud.google.com/go/aiplatform v1.94.0
@@ -18,7 +20,7 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.3.2+incompatible
 	github.com/effective-security/metrics v0.8.99
-	github.com/effective-security/x v0.14.64
+	github.com/effective-security/x v0.14.65
 	github.com/effective-security/xdb v0.23.109
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.27.0
@@ -26,12 +28,12 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
-	github.com/metoro-io/mcp-golang v0.11.0
 	github.com/nikolalohinski/gonja v1.5.3
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
+	github.com/tidwall/sjson v1.2.5
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	go.uber.org/mock v0.5.2
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
@@ -141,7 +143,6 @@ require (
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
-	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect

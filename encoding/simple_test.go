@@ -3,7 +3,6 @@ package encoding
 import (
 	"testing"
 
-	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,8 +11,6 @@ func TestSimpleOutputParser_Parse(t *testing.T) {
 	t.Parallel()
 	parser := NewSimpleOutputParser()
 	require.NotNil(t, parser)
-	// Covers interface assertion
-	var _ chatmodel.OutputParser[chatmodel.String] = parser
 
 	tests := []struct {
 		name  string
