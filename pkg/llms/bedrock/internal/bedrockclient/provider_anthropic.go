@@ -353,7 +353,9 @@ func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntim
 	if stream == nil {
 		return nil, errors.New("no stream")
 	}
-	defer stream.Close()
+	defer func() {
+		_ = stream.Close()
+	}()
 
 	contentchoices := []*llms.ContentChoice{{GenerationInfo: map[string]any{}}}
 	for e := range stream.Events() {

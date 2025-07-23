@@ -16,7 +16,9 @@ func DownloadImageData(url string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, errors.Wrap(err, "failed to fetch image from url")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	urlData, err := io.ReadAll(resp.Body)
 	if err != nil {

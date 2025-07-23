@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/effective-security/gogentic/mcp/sse/internal/sse"
+	"github.com/effective-security/gogentic/mcp/transport/sse/internal/sse"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

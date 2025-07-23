@@ -3,10 +3,10 @@ package tools
 import (
 	"context"
 
+	"github.com/effective-security/gogentic/mcp"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/x/format"
 	"github.com/invopop/jsonschema"
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 //go:generate mockgen -source=tools.go -destination=../mocks/mocktools/assistants_mock.gen.go  -package mocktools

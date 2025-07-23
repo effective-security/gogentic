@@ -31,7 +31,9 @@ func (c *Client) CreateEmbedding(ctx context.Context, texts *CreateEmbeddingRequ
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -72,7 +74,9 @@ func (c *Client) GenerateContent(ctx context.Context, request *GenerateContentRe
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	if !request.Stream || request.StreamingFunc == nil {
 		var body []byte
@@ -159,7 +163,9 @@ func (c *Client) Summarize(ctx context.Context, inputText string, maxLength int)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

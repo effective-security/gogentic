@@ -78,10 +78,10 @@ func TestNew(t *testing.T) {
 			// For missing token test, temporarily unset environment variable
 			if tt.name == "missing token" {
 				originalToken := os.Getenv("ANTHROPIC_API_KEY")
-				os.Unsetenv("ANTHROPIC_API_KEY")
+				_ = os.Unsetenv("ANTHROPIC_API_KEY")
 				defer func() {
 					if originalToken != "" {
-						os.Setenv("ANTHROPIC_API_KEY", originalToken)
+						_ = os.Setenv("ANTHROPIC_API_KEY", originalToken)
 					}
 				}()
 			}
@@ -108,13 +108,13 @@ func TestNewWithEnvironmentVariable(t *testing.T) {
 	originalToken := os.Getenv("ANTHROPIC_API_KEY")
 	defer func() {
 		if originalToken != "" {
-			os.Setenv("ANTHROPIC_API_KEY", originalToken)
+			_ = os.Setenv("ANTHROPIC_API_KEY", originalToken)
 		} else {
-			os.Unsetenv("ANTHROPIC_API_KEY")
+			_ = os.Unsetenv("ANTHROPIC_API_KEY")
 		}
 	}()
 
-	os.Setenv("ANTHROPIC_API_KEY", "env-token")
+	_ = os.Setenv("ANTHROPIC_API_KEY", "env-token")
 
 	llm, err := anthropic.New(anthropic.WithModel("claude-3-5-sonnet-20241022"))
 	require.NoError(t, err)

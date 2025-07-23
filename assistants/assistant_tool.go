@@ -7,11 +7,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/mcp"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/invopop/jsonschema"
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 type TypeableAssistantTool[I any, O any] interface {

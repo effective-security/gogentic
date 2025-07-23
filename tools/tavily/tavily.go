@@ -14,11 +14,11 @@ import (
 	tavilygo "github.com/diverged/tavily-go"
 	tavilyModels "github.com/diverged/tavily-go/models"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/mcp"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/invopop/jsonschema"
-	mcp "github.com/metoro-io/mcp-golang"
 )
 
 const ToolName = "web_search"

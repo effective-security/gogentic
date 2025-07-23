@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/effective-security/gogentic/mcp/localtransport"
-	"github.com/metoro-io/mcp-golang/transport"
+	"github.com/effective-security/gogentic/mcp/transport"
+	"github.com/effective-security/gogentic/mcp/transport/localtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -367,7 +367,9 @@ func (c *Client) createChat(ctx context.Context, payload *ChatRequest) (*ChatCom
 	if err != nil {
 		return nil, err
 	}
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	if r.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("API returned unexpected status code: %d", r.StatusCode)
