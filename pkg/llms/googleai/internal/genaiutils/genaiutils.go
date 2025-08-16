@@ -3,8 +3,9 @@ package genaiutils
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
-	"github.com/google/generative-ai-go/genai"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/invopop/jsonschema"
+	"google.golang.org/genai"
 )
 
 // ConvertTools converts from a list of langchaingo tools to a list of genai
@@ -40,6 +41,44 @@ func ConvertTools(tools []llms.Tool) ([]*genai.Tool, error) {
 	}
 
 	return genaiTools, nil
+}
+
+// ConvertJSONSchemaDefinition converts a json_schema response format to a genai.Schema.
+func ConvertJResponseFormatJSONSchema(jschema *schema.ResponseFormatJSONSchema) (*genai.Schema, error) {
+	if jschema == nil {
+		return nil, nil
+	}
+	if jschema.Schema == nil {
+		return nil, nil
+	}
+
+	var convert func(p *schema.ResponseFormatJSONSchemaProperty) *genai.Schema
+	convert = func(p *schema.ResponseFormatJSONSchemaProperty) *genai.Schema {
+		if p == nil {
+			return nil
+		}
+
+		out := &genai.Schema{
+			Type:        ConvertToolSchemaType(p.Type),
+			Description: p.Description,
+			Required:    p.Required,
+		}
+
+		if len(p.Properties) > 0 {
+			out.Properties = make(map[string]*genai.Schema, len(p.Properties))
+			for k, v := range p.Properties {
+				out.Properties[k] = convert(v)
+			}
+		}
+
+		if p.Items != nil {
+			out.Items = convert(p.Items)
+		}
+
+		return out
+	}
+
+	return convert(jschema.Schema), nil
 }
 
 // ConvertJSONSchemaDefinition converts a jsonschema.Definition to a genai.Schema.
@@ -117,4 +156,25 @@ func ConvertToolSchemaType(ty string) genai.Type {
 	default:
 		return genai.TypeUnspecified
 	}
+}
+
+func Float32Ptr(f float32) *float32 {
+	if f == 0 {
+		return nil
+	}
+	return &f
+}
+
+func Int32Ptr(i int32) *int32 {
+	if i == 0 {
+		return nil
+	}
+	return &i
+}
+
+func StringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

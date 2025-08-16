@@ -26,7 +26,7 @@ import (
 )
 
 func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
-	// uncomment to run Real Tests
+	// comment to run Real Tests
 	t.Skip("skipping real test")
 
 	// Uncommend to see logs, or change to DEBUG
@@ -44,7 +44,7 @@ func Test_Real_Assistant(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.DefaultModel()
+	llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
@@ -70,22 +70,23 @@ func Test_Real_Assistant(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
-	var output chatmodel.OutputResult
 	req := &assistants.CallInput{
 		Input: "What is a capital of largest country in Europe?",
 	}
-	apiResp, err := ag.Run(ctx, req, &output)
+	var output1 chatmodel.OutputResult
+	apiResp, err := ag.Run(ctx, req, &output1)
 	require.NoError(t, err)
-	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, output1.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
 	}
-	apiResp, err = ag.Run(ctx, req, &output)
+	var output2 chatmodel.OutputResult
+	apiResp, err = ag.Run(ctx, req, &output2)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, output.Content)
+	assert.NotEmpty(t, output2.Content)
 	assert.NotEmpty(t, apiResp.Choices)
 
 	history := memstore.Messages(ctx)
@@ -101,7 +102,7 @@ func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("OPENAI")
+	llmModel, err := f.ModelByType("GOOGLEAI")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -145,9 +146,14 @@ func Test_Real_Providers(t *testing.T) {
 	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
 	exp := `Human: Return the gogentic status for location: 1012340123?
-AI: 
-Tool: {"location":"1012340123","forecast":"sunny"}
-AI: {"location":"1012340123","forecast":"sunny"}`
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"gogentic_status","arguments":"{\"location\":\"1012340123\"}"},"id":"gogentic_status_0","type":"function"}}
+Tool: gogentic_status_0: Response: {"type":"tool_response","tool_response":{"tool_call_id":"gogentic_status_0","name":"gogentic_status","content":"{\"location\":\"1012340123\",\"forecast\":\"sunny\"}"}}
+AI: {"location":"1012340123","forecast":"sunny"}
+Human: Return the gogentic status for location: 1012340123?
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"gogentic_status","arguments":"{\"location\":\"1012340123\"}"},"id":"gogentic_status_0","type":"function"}}
+Tool: gogentic_status_0: Response: {"type":"tool_response","tool_response":{"tool_call_id":"gogentic_status_0","name":"gogentic_status","content":"{\"location\":\"1012340123\",\"forecast\":\"sunny\"}"}}
+AI: {"location":"1012340123","forecast":"sunny"}
+`
 	buf.Reset()
 	llmutils.PrintMessages(&buf, history)
 	chat := buf.String()

@@ -95,6 +95,7 @@ var providerCapabilities = map[ProviderType]Capability{
 	ProviderGoogleAI: CapabilityText |
 		CapabilitySystemPrompt |
 		CapabilityJSONResponse |
+		//CapabilityJSONSchema |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilityVision,
