@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrFailedUnmarshalInput = errors.New("failed to unmarshal input: check the schema and try again")
+	ErrFailedUnmarshalInput  = errors.New("failed to unmarshal input: check the schema and try again")
+	ErrFailedUnmarshalOutput = errors.New("failed to unmarshal output: check the schema and try again")
 )
 
 // OutputParser is an interface for parsing the output of an LLM call.

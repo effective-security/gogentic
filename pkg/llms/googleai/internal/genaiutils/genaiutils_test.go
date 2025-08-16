@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
-	"github.com/google/generative-ai-go/genai"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
+	"google.golang.org/genai"
 )
 
 func TestConvertJSONSchemaDefinition(t *testing.T) {

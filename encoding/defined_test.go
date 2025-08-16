@@ -47,7 +47,7 @@ func TestTypedOutputParser_Parse(t *testing.T) {
 	// Parse invalid JSON: should return wrapped ErrFailedUnmarshalInput
 	_, err = parser.Parse("{bad json}")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput))
+	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalOutput))
 }
 
 func TestTypedOutputParser_WithValidation(t *testing.T) {

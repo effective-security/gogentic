@@ -3,10 +3,9 @@ package googleai
 import (
 	"net/http"
 	"os"
-	"reflect"
 
-	"cloud.google.com/go/vertexai/genai"
-	"google.golang.org/api/option"
+	"cloud.google.com/go/auth"
+	"google.golang.org/genai"
 )
 
 // Options is a set of options for GoogleAI and Vertex clients.
@@ -20,9 +19,10 @@ type Options struct {
 	DefaultTemperature    float64
 	DefaultTopK           int
 	DefaultTopP           float64
-	HarmThreshold         HarmBlockThreshold
-
-	ClientOptions []option.ClientOption
+	HarmThreshold         genai.HarmBlockThreshold
+	APIKey                string
+	Credentials           *auth.Credentials
+	HTTPClient            *http.Client
 }
 
 func DefaultOptions() Options {
@@ -36,13 +36,13 @@ func DefaultOptions() Options {
 		DefaultTemperature:    0.5,
 		DefaultTopK:           3,
 		DefaultTopP:           0.95,
-		HarmThreshold:         HarmBlockOnlyHigh,
+		HarmThreshold:         genai.HarmBlockThresholdBlockOnlyHigh,
 	}
 }
 
 // EnsureAuthPresent attempts to ensure that the client has authentication information. If it does not, it will attempt to use the GOOGLE_API_KEY environment variable.
 func (o *Options) EnsureAuthPresent() {
-	if !hasAuthOptions(o.ClientOptions) {
+	if o.Credentials == nil {
 		if key := os.Getenv("GOOGLE_API_KEY"); key != "" {
 			WithAPIKey(key)(o)
 		}
@@ -55,38 +55,19 @@ type Option func(*Options)
 // googleai clients.
 func WithAPIKey(apiKey string) Option {
 	return func(opts *Options) {
-		opts.ClientOptions = append(opts.ClientOptions, option.WithAPIKey(apiKey))
+		opts.APIKey = apiKey
 	}
 }
 
 // WithCredentialsJSON append a ClientOption that authenticates
 // API calls with the given service account or refresh token JSON
 // credentials.
-func WithCredentialsJSON(credentialsJSON []byte) Option {
+func WithCredentials(credentials *auth.Credentials) Option {
 	return func(opts *Options) {
-		if len(credentialsJSON) == 0 {
+		if credentials == nil {
 			return
 		}
-		opts.ClientOptions = append(opts.ClientOptions, option.WithCredentialsJSON(credentialsJSON))
-	}
-}
-
-// WithCredentialsFile append a ClientOption that authenticates
-// API calls with the given service account or refresh token JSON
-// credentials file.
-func WithCredentialsFile(credentialsFile string) Option {
-	return func(opts *Options) {
-		if credentialsFile == "" {
-			return
-		}
-		opts.ClientOptions = append(opts.ClientOptions, option.WithCredentialsFile(credentialsFile))
-	}
-}
-
-// WithRest configures the client to use the REST API.
-func WithRest() Option {
-	return func(opts *Options) {
-		opts.ClientOptions = append(opts.ClientOptions, genai.WithREST())
+		opts.Credentials = credentials
 	}
 }
 
@@ -95,7 +76,7 @@ func WithRest() Option {
 // This is useful for vertex clients.
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(opts *Options) {
-		opts.ClientOptions = append(opts.ClientOptions, option.WithHTTPClient(httpClient))
+		opts.HTTPClient = httpClient
 	}
 }
 
@@ -168,43 +149,8 @@ func WithDefaultTopP(defaultTopP float64) Option {
 
 // WithHarmThreshold sets the safety/harm setting for the model, potentially
 // limiting any harmful content it may generate.
-func WithHarmThreshold(ht HarmBlockThreshold) Option {
+func WithHarmThreshold(ht genai.HarmBlockThreshold) Option {
 	return func(opts *Options) {
 		opts.HarmThreshold = ht
 	}
-}
-
-type HarmBlockThreshold int32
-
-const (
-	// HarmBlockUnspecified means threshold is unspecified.
-	HarmBlockUnspecified HarmBlockThreshold = 0
-	// HarmBlockLowAndAbove means content with NEGLIGIBLE will be allowed.
-	HarmBlockLowAndAbove HarmBlockThreshold = 1
-	// HarmBlockMediumAndAbove means content with NEGLIGIBLE and LOW will be allowed.
-	HarmBlockMediumAndAbove HarmBlockThreshold = 2
-	// HarmBlockOnlyHigh means content with NEGLIGIBLE, LOW, and MEDIUM will be allowed.
-	HarmBlockOnlyHigh HarmBlockThreshold = 3
-	// HarmBlockNone means all content will be allowed.
-	HarmBlockNone HarmBlockThreshold = 4
-)
-
-// helper to inspect incoming client options for auth options.
-func hasAuthOptions(opts []option.ClientOption) bool {
-	for _, opt := range opts {
-		v := reflect.ValueOf(opt)
-		ts := v.Type().String()
-
-		switch ts {
-		case "option.withAPIKey":
-			return v.String() != ""
-
-		case "option.withHTTPClient",
-			"option.withTokenSource",
-			"option.withCredentialsFile",
-			"option.withCredentialsJSON":
-			return true
-		}
-	}
-	return false
 }
