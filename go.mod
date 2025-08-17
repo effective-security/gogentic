@@ -18,7 +18,7 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.3.2+incompatible
 	github.com/effective-security/metrics v0.8.99
-	github.com/effective-security/x v0.14.65
+	github.com/effective-security/x v0.15.69
 	github.com/effective-security/xdb v0.23.109
 	github.com/effective-security/xlog v0.9.41
 	github.com/go-playground/validator/v10 v10.27.0
