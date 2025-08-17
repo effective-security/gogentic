@@ -2,8 +2,8 @@ package mcp
 
 import (
 	"encoding/json"
-	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/tidwall/sjson"
 )
 
@@ -91,7 +91,7 @@ func (c EmbeddedResource) MarshalJSON() ([]byte, error) {
 	case embeddedResourceTypeText:
 		return json.Marshal(c.TextResourceContents)
 	default:
-		return nil, fmt.Errorf("unknown embedded resource type: %s", c.EmbeddedResourceType)
+		return nil, errors.Errorf("unknown embedded resource type: %s", c.EmbeddedResourceType)
 	}
 }
 
@@ -115,7 +115,7 @@ func (c *EmbeddedResource) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to unmarshal embedded resource: %v", err)
+	return errors.Errorf("failed to unmarshal embedded resource: %v", err)
 }
 
 type ContentType string
@@ -156,14 +156,14 @@ func (c *Content) UnmarshalJSON(b []byte) error {
 	case ContentTypeEmbeddedResource:
 		c.Type = ContentTypeEmbeddedResource
 	default:
-		return fmt.Errorf("unknown content type: %s", tw.Type)
+		return errors.Errorf("unknown content type: %s", tw.Type)
 	}
 
 	switch c.Type {
 	case ContentTypeText:
 		c.TextContent = &TextContent{Text: *tw.Text}
 	default:
-		return fmt.Errorf("unknown content type: %s", c.Type)
+		return errors.Errorf("unknown content type: %s", c.Type)
 	}
 
 	return nil
@@ -193,7 +193,7 @@ func (c Content) MarshalJSON() ([]byte, error) {
 		}
 		rawJson = j
 	default:
-		return nil, fmt.Errorf("unknown content type: %s", c.Type)
+		return nil, errors.Errorf("unknown content type: %s", c.Type)
 	}
 
 	// Add the type

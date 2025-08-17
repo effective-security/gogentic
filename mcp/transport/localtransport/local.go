@@ -8,7 +8,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
+	"github.com/effective-security/xlog"
 )
+
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic/mcp/transport", "localtransport")
 
 type Transport struct {
 	messageHandler func(ctx context.Context, message *transport.BaseJsonRpcMessage)
@@ -64,13 +67,25 @@ func (s *Transport) SetMessageHandler(handler func(ctx context.Context, message 
 
 // Send sends a JSON-RPC message (request, notification or response).
 func (s *Transport) Send(ctx context.Context, message *transport.BaseJsonRpcMessage) error {
-	key := message.JsonRpcResponse.Id
-
+	if message.Type == transport.BaseMessageTypeJSONRPCNotificationType {
+		// Should not happen, but just in case
+		return nil
+	}
+	key := message.MessageID()
+	logger.ContextKV(ctx, xlog.DEBUG,
+		"type", message.Type,
+		"key", key,
+	)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	responseChannel := s.responseMap[int64(key)]
 	if responseChannel == nil {
+		logger.ContextKV(ctx, xlog.ERROR,
+			"type", message.Type,
+			"key", key,
+			"err", "no response channel found",
+		)
 		return errors.Errorf("no response channel found for key: %d", key)
 	}
 	responseChannel <- message
@@ -163,7 +178,7 @@ func (s *Transport) HandleMessage(ctx context.Context, body []byte) (*transport.
 	delete(s.responseMap, key)
 	s.mu.Unlock()
 
-	if prevId != nil {
+	if prevId != nil && responseToUse.JsonRpcResponse != nil {
 		responseToUse.JsonRpcResponse.Id = *prevId
 	}
 

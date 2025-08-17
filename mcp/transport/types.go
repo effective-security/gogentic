@@ -194,6 +194,19 @@ func (m *BaseJsonRpcMessage) MarshalJSON() ([]byte, error) {
 	}
 }
 
+func (m *BaseJsonRpcMessage) MessageID() RequestId {
+	switch m.Type {
+	case BaseMessageTypeJSONRPCRequestType:
+		return m.JsonRpcRequest.Id
+	case BaseMessageTypeJSONRPCResponseType:
+		return m.JsonRpcResponse.Id
+	case BaseMessageTypeJSONRPCErrorType:
+		return m.JsonRpcError.Id
+	default:
+		return 0
+	}
+}
+
 func NewBaseMessageNotification(notification *BaseJSONRPCNotification) *BaseJsonRpcMessage {
 	return &BaseJsonRpcMessage{
 		Type:                BaseMessageTypeJSONRPCNotificationType,

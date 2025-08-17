@@ -2,7 +2,8 @@ package mcp
 
 import (
 	"encoding/json"
-	"fmt"
+
+	"github.com/pkg/errors"
 )
 
 // Capabilities that a server may support. Known capabilities are defined here, in
@@ -89,13 +90,13 @@ func (j *InitializeResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	if _, ok := raw["capabilities"]; raw != nil && !ok {
-		return fmt.Errorf("field capabilities in initializeResult: required")
+		return errors.Errorf("field capabilities in initializeResult: required")
 	}
 	if _, ok := raw["protocolVersion"]; raw != nil && !ok {
-		return fmt.Errorf("field protocolVersion in initializeResult: required")
+		return errors.Errorf("field protocolVersion in initializeResult: required")
 	}
 	if _, ok := raw["serverInfo"]; raw != nil && !ok {
-		return fmt.Errorf("field serverInfo in initializeResult: required")
+		return errors.Errorf("field serverInfo in initializeResult: required")
 	}
 	type Plain InitializeResponse
 	var plain Plain
@@ -122,10 +123,10 @@ func (j *implementation) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	if _, ok := raw["name"]; raw != nil && !ok {
-		return fmt.Errorf("field name in implementation: required")
+		return errors.Errorf("field name in implementation: required")
 	}
 	if _, ok := raw["version"]; raw != nil && !ok {
-		return fmt.Errorf("field version in implementation: required")
+		return errors.Errorf("field version in implementation: required")
 	}
 	type Plain implementation
 	var plain Plain
