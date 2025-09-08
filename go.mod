@@ -18,21 +18,22 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.3.2+incompatible
 	github.com/effective-security/metrics v0.8.99
-	github.com/effective-security/x v0.15.69
-	github.com/effective-security/xdb v0.23.109
-	github.com/effective-security/xlog v0.9.41
+	github.com/effective-security/x v0.15.70
+	github.com/effective-security/xdb v0.24.119
+	github.com/effective-security/xlog v0.10.45
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/nikolalohinski/gonja v1.5.3
+	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.11.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wk8/go-ordered-map/v2 v2.1.8
-	go.uber.org/mock v0.5.2
+	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
 	golang.org/x/tools v0.36.0
 	google.golang.org/api v0.247.0
@@ -126,7 +127,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.9 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
