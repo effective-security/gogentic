@@ -270,7 +270,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
 func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, []llms.Message, error) {
-	chatID, _, err := chatmodel.GetTenantAndChatID(ctx)
+	_, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
 	}
