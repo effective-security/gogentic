@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
-	"github.com/pkg/errors"
 )
 
 type HTTPClient interface {

@@ -3,8 +3,8 @@ module github.com/effective-security/gogentic
 go 1.24.4
 
 require (
-	cloud.google.com/go/aiplatform v1.94.0
-	cloud.google.com/go/auth v0.16.4
+	cloud.google.com/go/aiplatform v1.100.0
+	cloud.google.com/go/auth v0.16.5
 	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/anthropics/anthropic-sdk-go v1.9.1
@@ -16,23 +16,23 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/docker/docker v28.3.2+incompatible
+	github.com/docker/docker v28.4.0+incompatible
 	github.com/effective-security/metrics v0.8.99
-	github.com/effective-security/x v0.15.69
-	github.com/effective-security/xdb v0.23.109
-	github.com/effective-security/xlog v0.9.41
+	github.com/effective-security/x v0.15.70
+	github.com/effective-security/xdb v0.24.119
+	github.com/effective-security/xlog v0.10.45
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/nikolalohinski/gonja v1.5.3
 	github.com/redis/go-redis/v9 v9.11.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wk8/go-ordered-map/v2 v2.1.8
-	go.uber.org/mock v0.5.2
+	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
 	golang.org/x/tools v0.36.0
 	google.golang.org/api v0.247.0
@@ -163,8 +163,8 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250818200422-3122310a409c // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250818200422-3122310a409c // indirect
 	google.golang.org/grpc v1.74.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

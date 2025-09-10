@@ -3,7 +3,7 @@ package mcp
 import (
 	"encoding/json"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 )
 
 // Capabilities that a server may support. Known capabilities are defined here, in
