@@ -3,7 +3,7 @@ package mcp
 import (
 	"encoding/json"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/tidwall/sjson"
 )
 

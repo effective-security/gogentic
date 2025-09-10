@@ -8,9 +8,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/gogentic/mcp/transport/stdio/internal/stdio"
-	"github.com/pkg/errors"
 )
 
 // StdioServerTransport implements server-side transport for stdio communication
