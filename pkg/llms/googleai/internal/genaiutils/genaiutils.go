@@ -11,8 +11,28 @@ import (
 // ConvertTools converts from a list of langchaingo tools to a list of genai
 // tools.
 func ConvertTools(tools []llms.Tool) ([]*genai.Tool, error) {
+
 	genaiTools := make([]*genai.Tool, 0, len(tools))
 	for i, tool := range tools {
+		if tool.Type == "google_search" || tool.Type == "GoogleSearch" {
+			genaiTools = append(genaiTools, &genai.Tool{
+				GoogleSearch: &genai.GoogleSearch{},
+			})
+			continue
+		}
+		if tool.Type == "google_search_retrieval" || tool.Type == "GoogleSearchRetrieval" {
+			genaiTools = append(genaiTools, &genai.Tool{
+				GoogleSearchRetrieval: &genai.GoogleSearchRetrieval{},
+			})
+			continue
+		}
+		if tool.Type == "enterprise_web_search" || tool.Type == "EnterpriseWebSearch" {
+			genaiTools = append(genaiTools, &genai.Tool{
+				EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
+			})
+			continue
+		}
+
 		if tool.Type != "function" {
 			return nil, errors.Errorf("tool [%d]: unsupported type %q, want 'function'", i, tool.Type)
 		}

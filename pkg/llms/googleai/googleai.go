@@ -91,7 +91,7 @@ func (g *GoogleAI) GenerateContent(
 		return nil, err
 	}
 
-	if len(callCfg.Tools) == 0 && opts.ResponseFormat != nil && opts.ResponseFormat.Type == "json_object" {
+	if !hasFunctionTools(callCfg.Tools) && opts.ResponseFormat != nil && opts.ResponseFormat.Type == "json_object" {
 		callCfg.ResponseMIMEType = ResponseMIMETypeJson
 		if opts.ResponseFormat.JSONSchema != nil {
 			callCfg.ResponseSchema, err = genaiutils.ConvertJResponseFormatJSONSchema(opts.ResponseFormat.JSONSchema)
@@ -106,6 +106,15 @@ func (g *GoogleAI) GenerateContent(
 		return nil, err
 	}
 	return response, nil
+}
+
+func hasFunctionTools(tools []*genai.Tool) bool {
+	for _, tool := range tools {
+		if tool.FunctionDeclarations != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // convertCandidates converts a sequence of genai.Candidate to a response.
