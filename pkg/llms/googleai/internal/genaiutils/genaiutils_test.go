@@ -296,6 +296,45 @@ func TestConvertTools(t *testing.T) {
 			},
 		},
 		{
+			name: "google_search",
+			tools: []llms.Tool{
+				{
+					Type: "google_search",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*genai.Tool) {
+				require.Len(t, result, 1)
+				assert.NotNil(t, result[0].GoogleSearch)
+			},
+		},
+		{
+			name: "google_search_retrieval",
+			tools: []llms.Tool{
+				{
+					Type: "google_search_retrieval",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*genai.Tool) {
+				require.Len(t, result, 1)
+				assert.NotNil(t, result[0].GoogleSearchRetrieval)
+			},
+		},
+		{
+			name: "enterprise_web_search",
+			tools: []llms.Tool{
+				{
+					Type: "enterprise_web_search",
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*genai.Tool) {
+				require.Len(t, result, 1)
+				assert.NotNil(t, result[0].EnterpriseWebSearch)
+			},
+		},
+		{
 			name: "unsupported tool type",
 			tools: []llms.Tool{
 				{

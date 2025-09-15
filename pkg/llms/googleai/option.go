@@ -36,7 +36,7 @@ func DefaultOptions() Options {
 		DefaultTemperature:    0.5,
 		DefaultTopK:           3,
 		DefaultTopP:           0.95,
-		HarmThreshold:         genai.HarmBlockThresholdBlockOnlyHigh,
+		HarmThreshold:         genai.HarmBlockThresholdBlockNone,
 	}
 }
 

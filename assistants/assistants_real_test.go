@@ -13,7 +13,9 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
+	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/pkg/schema"
@@ -31,7 +33,7 @@ func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 
 	// Uncommend to see logs, or change to DEBUG
 	xlog.SetFormatter(xlog.NewStringFormatter(os.Stdout))
-	xlog.SetGlobalLogLevel(xlog.ERROR)
+	xlog.SetGlobalLogLevel(xlog.DEBUG)
 
 	cfg, err := llmfactory.LoadConfig("../pkg/llmfactory/testdata/llm.yaml")
 	require.NoError(t, err)
@@ -96,13 +98,67 @@ func Test_Real_Assistant(t *testing.T) {
 	fmt.Println(buf.String())
 }
 
+func Test_Real_GoogleAI_Search(t *testing.T) {
+	cfg := loadOpenAIConfigOrSkipRealTest(t)
+
+	f := llmfactory.New(cfg)
+	llmModel, err := f.ModelByType("GOOGLEAI")
+	require.NoError(t, err)
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
+
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
+	acfg := []assistants.Option{
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithMessageStore(memstore),
+		assistants.WithTools([]llms.Tool{
+			{
+				Type: "google_search",
+			},
+		}),
+	}
+
+	ag := assistants.NewAssistant[chatmodel.String](llmModel, systemPrompt, acfg...).
+		WithOutputParser(encoding.NewSimpleOutputParser())
+
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	req := &assistants.CallInput{
+		Input: "What is a capital of largest country in Europe?",
+	}
+	var output1 chatmodel.String
+	apiResp, err := ag.Run(ctx, req, &output1)
+	require.NoError(t, err)
+	assert.NotEmpty(t, output1.GetContent())
+	assert.NotEmpty(t, apiResp.Choices)
+
+	req = &assistants.CallInput{
+		Input: "Search for weather there.",
+	}
+	var output2 chatmodel.String
+	apiResp, err = ag.Run(ctx, req, &output2)
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, output2.GetContent())
+	assert.NotEmpty(t, apiResp.Choices)
+
+	history := memstore.Messages(ctx)
+	assert.NotEmpty(t, history)
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	fmt.Println(buf.String())
+}
+
 func Test_Real_Providers(t *testing.T) {
 	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.ModelByType("GOOGLEAI")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
