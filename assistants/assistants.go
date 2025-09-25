@@ -81,6 +81,8 @@ type Callback interface {
 	OnAssistantLLMCallEnd(ctx context.Context, a IAssistant, llm llms.Model, resp *llms.ContentResponse)
 	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
 	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
+	// OnProgress is called when the assistant needs to report progress.
+	OnProgress(ctx context.Context, a IAssistant, title, message string)
 }
 
 // IMCPAssistant is an interface that extends IAssistant to include functionality for
