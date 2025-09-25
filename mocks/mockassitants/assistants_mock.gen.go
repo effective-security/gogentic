@@ -520,6 +520,18 @@ func (mr *MockCallbackMockRecorder) OnAssistantStart(ctx, a, input any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantStart", reflect.TypeOf((*MockCallback)(nil).OnAssistantStart), ctx, a, input)
 }
 
+// OnProgress mocks base method.
+func (m *MockCallback) OnProgress(ctx context.Context, a assistants.IAssistant, title, message string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnProgress", ctx, a, title, message)
+}
+
+// OnProgress indicates an expected call of OnProgress.
+func (mr *MockCallbackMockRecorder) OnProgress(ctx, a, title, message any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnProgress", reflect.TypeOf((*MockCallback)(nil).OnProgress), ctx, a, title, message)
+}
+
 // OnToolEnd mocks base method.
 func (m *MockCallback) OnToolEnd(ctx context.Context, tool tools.ITool, assistantName, input, output string) {
 	m.ctrl.T.Helper()

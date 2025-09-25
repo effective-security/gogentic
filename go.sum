@@ -131,8 +131,8 @@ github.com/effective-security/x v0.15.71 h1:SVl+mDwHX7wPOcQc3zdAaAFG/WkYPyTH+uWA
 github.com/effective-security/x v0.15.71/go.mod h1:fKWMYem3N10WRWu6109EowWZ/rSoawCOlUtf7pH4wIA=
 github.com/effective-security/xdb v0.24.120 h1:ygkAWpdEyrlvl58PdNaCnDppZzrhdaxgXr5E6XDcits=
 github.com/effective-security/xdb v0.24.120/go.mod h1:5KuRVMeLyYR3q+XmuaPJ98BZbPi7uFeXshB9yKxm6uU=
-github.com/effective-security/xlog v0.10.45 h1:/EM6eIZuK9Mv+kjAEG/5w7K6QNQUzyMUOz0PHF1dvNU=
-github.com/effective-security/xlog v0.10.45/go.mod h1:bGKXRBd4EHLV4UfbG5IYiGNqwvAMpv9bWGoZXlEb5lg=
+github.com/effective-security/xlog v0.10.46 h1:hV8sdPfEAeOwv+qVDQPjF8LF9zejCM4tgseqVmGsC2E=
+github.com/effective-security/xlog v0.10.46/go.mod h1:bGKXRBd4EHLV4UfbG5IYiGNqwvAMpv9bWGoZXlEb5lg=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
