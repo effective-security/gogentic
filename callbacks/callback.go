@@ -107,14 +107,10 @@ func (l *Fanout) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAs
 	}
 }
 
-func (l *Fanout) OnProgress(ctx context.Context, agent assistants.IAssistant, title, message string) {
-	for _, callback := range l.callbacks {
-		callback.OnProgress(ctx, agent, title, message)
-	}
-}
-
 // Noop does nothing.
-type Noop struct{}
+type Noop struct {
+	onProgress func(ctx context.Context, assistant assistants.IAssistant, title, message string)
+}
 
 func NewNoop() *Noop {
 	return &Noop{}
@@ -142,6 +138,12 @@ func (l *Noop) OnAssistantLLMCallEnd(ctx context.Context, agent assistants.IAssi
 func (l *Noop) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {
 }
 func (l *Noop) OnProgress(ctx context.Context, agent assistants.IAssistant, title, message string) {
+	if l.onProgress != nil {
+		l.onProgress(ctx, agent, title, message)
+	}
+}
+func (l *Noop) WithProgress(cb assistants.OnProgressFunc) {
+	l.onProgress = cb
 }
 
 // Printer is a callback handler that prints to the Writer.
@@ -232,13 +234,6 @@ func (l *Printer) OnToolNotFound(ctx context.Context, agent assistants.IAssistan
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	_, _ = fmt.Fprintf(l.Out, "Tool Not Found: %s\n", tool)
-}
-
-func (l *Printer) OnProgress(ctx context.Context, agent assistants.IAssistant, title, message string) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	_, _ = fmt.Fprintf(l.Out, "Progress: %s: %s\n", agent.Name(), title)
-	_, _ = fmt.Fprintf(l.Out, "Message: %s\n", message)
 }
 
 // PackageLogger is a callback handler that prints to the logger.
@@ -338,14 +333,5 @@ func (l *PackageLogger) OnToolNotFound(ctx context.Context, agent assistants.IAs
 		"event", "tool_not_found",
 		"assistant", agent.Name(),
 		"tool", tool,
-	)
-}
-
-func (l *PackageLogger) OnProgress(ctx context.Context, agent assistants.IAssistant, title, message string) {
-	l.logger.ContextKV(ctx, xlog.DEBUG,
-		"event", "progress",
-		"assistant", agent.Name(),
-		"title", title,
-		"message", message,
 	)
 }

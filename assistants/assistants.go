@@ -52,7 +52,13 @@ type CallInput struct {
 	Options []Option
 	// Messages is additional content to be sent to the LLM.
 	Messages []llms.Message
+
+	// OnProgress is the progress callback, that can be used to report generic progress,
+	// in addition to the callback provided in the Options.
+	OnProgress OnProgressFunc
 }
+
+type OnProgressFunc func(ctx context.Context, a IAssistant, title, message string)
 
 // IAssistantTool provides an interface for tools that use underlying the Assistants.
 type IAssistantTool interface {
@@ -81,8 +87,6 @@ type Callback interface {
 	OnAssistantLLMCallEnd(ctx context.Context, a IAssistant, llm llms.Model, resp *llms.ContentResponse)
 	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
 	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
-	// OnProgress is called when the assistant needs to report progress.
-	OnProgress(ctx context.Context, a IAssistant, title, message string)
 }
 
 // IMCPAssistant is an interface that extends IAssistant to include functionality for

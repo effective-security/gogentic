@@ -276,14 +276,6 @@ func (l *Scratchpad) OnToolNotFound(ctx context.Context, agent assistants.IAssis
 	run.print(agent.Name(), "*** Tool Not Found ***", tool)
 }
 
-func (l *Scratchpad) OnProgress(ctx context.Context, agent assistants.IAssistant, title, message string) {
-	run := l.getRun(ctx)
-	if run == nil {
-		return
-	}
-	run.print(agent.Name(), "*** Progress ***", title, message)
-}
-
 type run struct {
 	chatCtx chatmodel.ChatContext
 	w       bytes.Buffer
