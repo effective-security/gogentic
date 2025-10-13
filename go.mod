@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.41.0
-	github.com/brianvoe/gofakeit/v7 v7.7.3
+	github.com/brianvoe/gofakeit/v7 v7.8.0
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
