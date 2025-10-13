@@ -18,7 +18,7 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.4.0+incompatible
 	github.com/effective-security/metrics v0.8.108
-	github.com/effective-security/x v0.15.72
+	github.com/effective-security/x v0.15.73
 	github.com/effective-security/xdb v0.24.120
 	github.com/effective-security/xlog v0.10.47
 	github.com/go-playground/validator/v10 v10.28.0
@@ -33,7 +33,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	go.uber.org/mock v0.6.0
-	golang.org/x/exp v0.0.0-20251002181428-27f1f14c8bb9
+	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
 	golang.org/x/tools v0.38.0
 	google.golang.org/api v0.252.0
 	google.golang.org/genai v1.29.0
@@ -108,7 +108,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdelapenya/tlscert v0.2.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
