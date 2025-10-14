@@ -253,13 +253,28 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		callback.OnAssistantStart(ctx, a, input.Input)
 	}
 
-	resp, messages, err := a.run(ctx, cfg, input, optionalOutputType)
-	if err != nil {
-		metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name())
-		if callback != nil {
-			callback.OnAssistantError(ctx, a, input.Input, err, messages)
+	isGoogle := a.LLM.GetProviderType() == llms.ProviderGoogleAI
+
+	var (
+		resp     *llms.ContentResponse
+		messages []llms.Message
+		err      error
+	)
+
+	for range 2 {
+		resp, messages, err = a.run(ctx, cfg, input, optionalOutputType)
+		if err != nil {
+			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name())
+			if callback != nil {
+				callback.OnAssistantError(ctx, a, input.Input, err, messages)
+			}
+			// Google often return Text vs JSON
+			if isGoogle && errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
+				continue
+			}
+			return nil, err
 		}
-		return nil, err
+		break
 	}
 	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name())
 	if callback != nil {

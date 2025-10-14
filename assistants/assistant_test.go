@@ -83,7 +83,7 @@ func Test_Assistant_MCPMethods(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 
 	// Setup mock LLM for CallMCP test
@@ -181,7 +181,7 @@ func Test_Assistant_CallMCP_ErrorCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
@@ -205,7 +205,7 @@ func Test_Assistant_Run_EdgeCases(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(3)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
 
