@@ -387,7 +387,7 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 	if c.repetitionPenaltySet {
 		chainCallOption = append(chainCallOption, llms.WithRepetitionPenalty(c.RepetitionPenalty))
 	}
-	if c.toolsSet {
+	if c.toolsSet && len(c.Tools) > 0 {
 		chainCallOption = append(chainCallOption, llms.WithTools(c.Tools))
 	}
 	if c.toolChoiceSet {

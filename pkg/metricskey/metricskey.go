@@ -68,6 +68,13 @@ var (
 		RequiredTags: []string{"agent"},
 	}
 
+	StatsAssistantCallsRetried = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_assistant_calls_retried",
+		Help:         "stats_assistant_calls_retried provides total assistant calls retried",
+		RequiredTags: []string{"agent"},
+	}
+
 	StatsToolCallsSucceeded = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_tool_calls_succeeded",
@@ -128,6 +135,7 @@ var Metrics = []*metrics.Describe{
 	&PerfChatRun,
 	&PerfToolCall,
 	&StatsAssistantCallsFailed,
+	&StatsAssistantCallsRetried,
 	&StatsAssistantCallsSucceeded,
 	&StatsAssistantLLMParseErrors,
 	&StatsLLMBytesReceived,

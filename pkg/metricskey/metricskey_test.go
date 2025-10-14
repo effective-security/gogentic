@@ -15,6 +15,7 @@ func TestMetricsDefinitions(t *testing.T) {
 		&PerfChatRun,
 		&PerfToolCall,
 		&StatsAssistantCallsFailed,
+		&StatsAssistantCallsRetried,
 		&StatsAssistantCallsSucceeded,
 		&StatsAssistantLLMParseErrors,
 		&StatsLLMBytesReceived,

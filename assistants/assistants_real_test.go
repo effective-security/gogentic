@@ -98,6 +98,16 @@ func Test_Real_Assistant(t *testing.T) {
 	fmt.Println(buf.String())
 }
 
+type CVEResult struct {
+	chatmodel.BaseClarificationResult
+	CVE     string   `json:"cve" yaml:"cve" jsonschema:"title=CVE,description=The most recent CVE with High severity and Denial of Service."`
+	Sources []string `json:"sources" yaml:"sources" jsonschema:"title=Sources,description=The sources of the CVE."`
+}
+
+func (r CVEResult) GetContent() string {
+	return llmutils.ToJSON(r)
+}
+
 func Test_Real_GoogleAI_Search(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
@@ -113,6 +123,7 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		assistants.WithMessageStore(memstore),
+		assistants.WithMode(encoding.ModeJSON),
 		assistants.WithTools([]llms.Tool{
 			{
 				Type: "google_search",
@@ -120,29 +131,18 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 		}),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.String](llmModel, systemPrompt, acfg...).
-		WithOutputParser(encoding.NewSimpleOutputParser())
+	ag := assistants.NewAssistant[CVEResult](llmModel, systemPrompt, acfg...)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	req := &assistants.CallInput{
-		Input: "What is a capital of largest country in Europe?",
+		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
 	}
-	var output1 chatmodel.String
+	var output1 CVEResult
 	apiResp, err := ag.Run(ctx, req, &output1)
 	require.NoError(t, err)
-	assert.NotEmpty(t, output1.GetContent())
-	assert.NotEmpty(t, apiResp.Choices)
-
-	req = &assistants.CallInput{
-		Input: "Search for weather there.",
-	}
-	var output2 chatmodel.String
-	apiResp, err = ag.Run(ctx, req, &output2)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, output2.GetContent())
+	assert.NotEmpty(t, output1.CVE)
 	assert.NotEmpty(t, apiResp.Choices)
 
 	history := memstore.Messages(ctx)
