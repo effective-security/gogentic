@@ -60,7 +60,7 @@ func Test_AssistantTool(t *testing.T) {
 	calls := 0
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(3)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
@@ -184,7 +184,7 @@ func Test_AssistantTool_Call(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 		&llms.ContentResponse{
@@ -215,7 +215,7 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 	mockLLM := mockllms.NewMockModel(ctrl)
-	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(3)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
 	// First call - success case
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
@@ -234,7 +234,7 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 	).Times(1)
 
 	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
-	tool, err := assistants.NewAssistantTool[testInput, testOutput](assistant)
+	tool, err := assistants.NewAssistantTool[testInput](assistant)
 	require.NoError(t, err)
 
 	// Add valid chat context
