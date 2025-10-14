@@ -270,12 +270,23 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 			}
 			// Google often return Text vs JSON
 			if isGoogle && errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
+				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.Name())
+
+				input.Input = "Return the response in JSON format as requested."
+				// remove the tools
+				cfg.Tools = nil
+
 				continue
 			}
 			return nil, err
 		}
 		break
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
 	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name())
 	if callback != nil {
 		callback.OnAssistantEnd(ctx, a, input.Input, resp, messages)
@@ -469,9 +480,37 @@ func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, o
 		result = combinedContent.String()
 	}
 
+	addResultToMessageHistory := func(result string) {
+		messageHistory = append(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
+
+		if cfg.IsGeneric {
+			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
+		} else {
+			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleAI, result))
+		}
+
+		if cfg.Store != nil && !cfg.SkipMessageHistory {
+			// Add all run messages atomically for better performance and order
+			if len(a.runMessages) > 0 {
+				_ = cfg.Store.Add(ctx, a.runMessages...)
+			}
+
+			logger.ContextKV(ctx, xlog.DEBUG,
+				"assistant", assistantName,
+				"chat_id", chatID,
+				"status", "added_message_history",
+				"message_history", len(a.runMessages),
+				"human", slices.StringUpto(parsedInput, 64),
+				"ai", slices.StringUpto(result, 64),
+			)
+		}
+	}
+
 	if optionalOutputType != nil {
 		finalOutput, err := a.OutputParser.Parse(result)
 		if err != nil {
+			addResultToMessageHistory(result)
+
 			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName)
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", assistantName,
@@ -493,30 +532,7 @@ func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, o
 			result = prov.GetContent()
 		}
 	}
-
-	messageHistory = append(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
-
-	if cfg.IsGeneric {
-		a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
-	} else {
-		a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleAI, result))
-	}
-
-	if cfg.Store != nil && !cfg.SkipMessageHistory {
-		// Add all run messages atomically for better performance and order
-		if len(a.runMessages) > 0 {
-			_ = cfg.Store.Add(ctx, a.runMessages...)
-		}
-
-		logger.ContextKV(ctx, xlog.DEBUG,
-			"assistant", assistantName,
-			"chat_id", chatID,
-			"status", "added_message_history",
-			"message_history", len(a.runMessages),
-			"human", slices.StringUpto(parsedInput, 64),
-			"ai", slices.StringUpto(result, 64),
-		)
-	}
+	addResultToMessageHistory(result)
 
 	return resp, messageHistory, nil
 }
