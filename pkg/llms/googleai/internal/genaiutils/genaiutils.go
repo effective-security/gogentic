@@ -11,12 +11,15 @@ import (
 // ConvertTools converts from a list of langchaingo tools to a list of genai
 // tools.
 func ConvertTools(tools []llms.Tool) ([]*genai.Tool, error) {
-
 	genaiTools := make([]*genai.Tool, 0, len(tools))
 	for i, tool := range tools {
-		if tool.Type == "google_search" || tool.Type == "GoogleSearch" {
+		if tool.Type == "web_search" || tool.Type == "google_search" || tool.Type == "GoogleSearch" {
+			opts := &genai.GoogleSearch{}
+			if tool.WebSearchOptions != nil && len(tool.WebSearchOptions.ExcludedDomains) > 0 {
+				opts.ExcludeDomains = tool.WebSearchOptions.ExcludedDomains
+			}
 			genaiTools = append(genaiTools, &genai.Tool{
-				GoogleSearch: &genai.GoogleSearch{},
+				GoogleSearch: opts,
 			})
 			continue
 		}

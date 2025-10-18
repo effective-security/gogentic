@@ -353,6 +353,20 @@ func TestToolsToTools(t *testing.T) {
 			},
 			wantTools: 2,
 		},
+		{
+			name: "web_search",
+			tools: []llms.Tool{
+				{
+					Type: "web_search",
+					WebSearchOptions: &llms.WebSearchOptions{
+						AllowedDomains:  []string{"example.com"},
+						ExcludedDomains: []string{"excluded.com"},
+						MaxUses:         10,
+					},
+				},
+			},
+			wantTools: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -368,10 +382,17 @@ func TestToolsToTools(t *testing.T) {
 				// Verify first tool structure if any
 				if len(result) > 0 {
 					tool := result[0]
-					assert.NotNil(t, tool.OfTool)
-					assert.Equal(t, tt.tools[0].Function.Name, tool.OfTool.Name)
-					assert.NotNil(t, tool.OfTool.Description)
-					assert.Equal(t, "object", string(tool.OfTool.InputSchema.Type))
+					if tt.name == "web_search" {
+						assert.NotNil(t, tool.OfWebSearchTool20250305)
+						assert.Equal(t, []string{"example.com"}, tool.OfWebSearchTool20250305.AllowedDomains)
+						assert.Equal(t, []string{"excluded.com"}, tool.OfWebSearchTool20250305.BlockedDomains)
+						assert.Equal(t, int64(10), tool.OfWebSearchTool20250305.MaxUses.Value)
+					} else {
+						assert.NotNil(t, tool.OfTool)
+						assert.Equal(t, tt.tools[0].Function.Name, tool.OfTool.Name)
+						assert.NotNil(t, tool.OfTool.Description)
+						assert.Equal(t, "object", string(tool.OfTool.InputSchema.Type))
+					}
 				}
 			}
 		})

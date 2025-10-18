@@ -152,13 +152,138 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 	fmt.Println(buf.String())
 }
 
+func Test_Real_WebSearch_JSON(t *testing.T) {
+	cfg := loadOpenAIConfigOrSkipRealTest(t)
+
+	f := llmfactory.New(cfg)
+	//llmModel, err := f.ModelByName("gpt-5-search-api")
+	llmModel, err := f.ModelByType("ANTHROPIC")
+	require.NoError(t, err)
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
+
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
+	acfg := []assistants.Option{
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithMessageStore(memstore),
+		assistants.WithMode(encoding.ModeJSON),
+		assistants.WithTools([]llms.Tool{
+			{
+				Type: "web_search",
+				WebSearchOptions: &llms.WebSearchOptions{
+					AllowedDomains: []string{
+						"cvedetails.com",
+						"cve.org",
+						"nvd.nist.gov",
+						"cisa.gov",
+						"first.org",
+						"api.first.org",
+						"epss.empiricalsecurity.com",
+						"cve2epss.com",
+						"vulners.com",
+						"projectdiscovery.io",
+						"redhat.com",
+						"en.wikipedia.org",
+					},
+					MaxUses: 5,
+				},
+			},
+		}),
+	}
+
+	ag := assistants.NewAssistant[CVEResult](llmModel, systemPrompt, acfg...)
+
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	req := &assistants.CallInput{
+		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
+	}
+	var output1 CVEResult
+	apiResp, err := ag.Run(ctx, req, &output1)
+	require.NoError(t, err)
+	assert.NotEmpty(t, output1.CVE)
+	assert.NotEmpty(t, apiResp.Choices)
+
+	history := memstore.Messages(ctx)
+	assert.NotEmpty(t, history)
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	fmt.Println(buf.String())
+}
+
+func Test_Real_WebSearch_Text(t *testing.T) {
+	cfg := loadOpenAIConfigOrSkipRealTest(t)
+
+	f := llmfactory.New(cfg)
+	llmModel, err := f.ModelByName("gpt-5-search-api")
+	//llmModel, err := f.ModelByType("ANTHROPIC")
+	require.NoError(t, err)
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search", []string{})
+
+	memstore := store.NewMemoryStore()
+
+	var buf strings.Builder
+	acfg := []assistants.Option{
+		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithMessageStore(memstore),
+		assistants.WithMode(encoding.ModePlainText),
+		assistants.WithTools([]llms.Tool{
+			{
+				Type: "web_search",
+				WebSearchOptions: &llms.WebSearchOptions{
+					AllowedDomains: []string{
+						"cvedetails.com",
+						"cve.org",
+						"nvd.nist.gov",
+						"cisa.gov",
+						"first.org",
+						"api.first.org",
+						"epss.empiricalsecurity.com",
+						"cve2epss.com",
+						"vulners.com",
+						"projectdiscovery.io",
+						"redhat.com",
+						"en.wikipedia.org",
+					},
+					MaxUses: 5,
+				},
+			},
+		}),
+	}
+
+	ag := assistants.NewAssistant[chatmodel.String](llmModel, systemPrompt, acfg...).
+		WithOutputParser(encoding.NewSimpleOutputParser())
+
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	req := &assistants.CallInput{
+		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
+	}
+	var output1 chatmodel.String
+	apiResp, err := ag.Run(ctx, req, &output1)
+	require.NoError(t, err)
+	assert.NotEmpty(t, output1.String())
+	assert.NotEmpty(t, apiResp.Choices)
+
+	history := memstore.Messages(ctx)
+	assert.NotEmpty(t, history)
+	buf.Reset()
+	llmutils.PrintMessages(&buf, history)
+	fmt.Println(buf.String())
+}
+
 func Test_Real_Providers(t *testing.T) {
 	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("GOOGLEAI")
+	llmModel, err := f.ModelByName("GOOGLEAI")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)

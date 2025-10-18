@@ -73,6 +73,9 @@ const (
 
 	// System prompt support
 	CapabilitySystemPrompt
+
+	// Web Search tool support, used by models that support web search grounding.
+	CapabilityWebSearchTool
 )
 
 var providerCapabilities = map[ProviderType]Capability{
@@ -84,13 +87,15 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityMultiToolCalling |
 		CapabilityToolCallStreaming |
 		CapabilitySystemPrompt |
-		CapabilityVision,
+		CapabilityVision |
+		CapabilityWebSearchTool,
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
-		CapabilitySystemPrompt,
+		CapabilitySystemPrompt |
+		CapabilityWebSearchTool,
 
 	ProviderGoogleAI: CapabilityText |
 		CapabilitySystemPrompt |
@@ -98,7 +103,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		//CapabilityJSONSchema |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
-		CapabilityVision,
+		CapabilityVision |
+		CapabilityWebSearchTool,
 
 	// Use Bedrock with Anthropic models
 	ProviderBedrock: CapabilityText |
@@ -121,7 +127,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityJSONSchemaStrict |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
-		CapabilitySystemPrompt,
+		CapabilitySystemPrompt |
+		CapabilityWebSearchTool,
 
 	ProviderAzureAD: CapabilityText, // Proxy passthrough
 }

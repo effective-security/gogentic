@@ -220,11 +220,11 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		return nil, errors.Wrap(err, "anthropic: failed to create message")
 	}
 
-	choices := make([]*llms.ContentChoice, len(result.Content))
+	choices := make([]*llms.ContentChoice, 0, len(result.Content))
 	for i, contentBlock := range result.Content {
 		switch content := contentBlock.AsAny().(type) {
 		case anthropic.TextBlock:
-			choices[i] = &llms.ContentChoice{
+			choices = append(choices, &llms.ContentChoice{
 				Content:    content.Text,
 				StopReason: string(result.StopReason),
 				GenerationInfo: map[string]any{
@@ -234,13 +234,13 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 					"ID":           result.ID,
 					"Index":        i,
 				},
-			}
+			})
 		case anthropic.ToolUseBlock:
 			argumentsJSON, err := json.Marshal(content.Input)
 			if err != nil {
 				return nil, errors.Wrap(err, "anthropic: failed to marshal tool use arguments")
 			}
-			choices[i] = &llms.ContentChoice{
+			choices = append(choices, &llms.ContentChoice{
 				ToolCalls: []llms.ToolCall{
 					{
 						ID: content.ID,
@@ -258,9 +258,41 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 					"ID":           result.ID,
 					"Index":        i,
 				},
-			}
+			})
+		case anthropic.ServerToolUseBlock:
+			//  Skip ToolCall
+
+			// choices = append(choices, &llms.ContentChoice{
+			// 	ToolCalls: []llms.ToolCall{
+			// 		{
+			// 			ID: content.ID,
+			// 		},
+			// 	},
+			// 	StopReason: string(result.StopReason),
+			// 	GenerationInfo: map[string]any{
+			// 		"InputTokens":  result.Usage.InputTokens,
+			// 		"OutputTokens": result.Usage.OutputTokens,
+			// 		"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
+			// 		"ID":           result.ID,
+			// 		"Index":        i,
+			// 	},
+			// })
+		case anthropic.WebSearchToolResultBlock:
+			// TODO: option to add WebSearchToolResultBlock to the response
+
+			// choices = append(choices, &llms.ContentChoice{
+			// 	Content:    content.JSON.Content.Raw(),
+			// 	StopReason: string(result.StopReason),
+			// 	GenerationInfo: map[string]any{
+			// 		"InputTokens":  result.Usage.InputTokens,
+			// 		"OutputTokens": result.Usage.OutputTokens,
+			// 		"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
+			// 		"ID":           result.ID,
+			// 		"Index":        i,
+			// 	},
+			// })
 		default:
-			return nil, errors.WithMessagef(ErrUnsupportedContentType, "anthropic: %T", content)
+			return nil, errors.WithMessagef(ErrUnsupportedContentType, "response content type: %T", content)
 		}
 	}
 
@@ -387,6 +419,19 @@ func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
 
 	sdkTools := make([]anthropic.ToolUnionParam, len(tools))
 	for i, tool := range tools {
+		if tool.Type == "web_search" {
+			wsp := &anthropic.WebSearchTool20250305Param{}
+			if tool.WebSearchOptions != nil {
+				wsp.AllowedDomains = tool.WebSearchOptions.AllowedDomains
+				wsp.BlockedDomains = tool.WebSearchOptions.ExcludedDomains
+				wsp.MaxUses = anthropic.Opt(int64(values.NumbersCoalesce(tool.WebSearchOptions.MaxUses, 3)))
+			}
+			sdkTools[i] = anthropic.ToolUnionParam{
+				OfWebSearchTool20250305: wsp,
+			}
+			continue
+		}
+
 		// Convert Properties from orderedmap to regular map for Anthropic SDK
 		var properties map[string]any
 		if tool.Function.Parameters.Properties != nil {

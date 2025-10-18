@@ -77,6 +77,9 @@ type Tool struct {
 	Type string `json:"type"`
 	// Function is the function to call.
 	Function *FunctionDefinition `json:"function,omitempty"`
+	// WebSearchOptions are the options for the web search tool,
+	// For providers and models that support Web Search grounding.
+	WebSearchOptions *WebSearchOptions `json:"-"`
 }
 
 // FunctionDefinition is a definition of a function that can be called by the model.
@@ -89,6 +92,18 @@ type FunctionDefinition struct {
 	Parameters *jsonschema.Schema `json:"parameters,omitempty"`
 	// Strict is a flag to indicate if the function should be called strictly. Only used for openai llm structured output.
 	Strict bool `json:"strict,omitempty"`
+}
+
+type WebSearchOptions struct {
+	// AllowedDomains is a list of domains to search on.
+	// Supported by OpenAI, Anthropic, and Azure.
+	AllowedDomains []string
+	// ExcludedDomains is a list of domains to exclude from search.
+	// Supported by Google AI.
+	ExcludedDomains []string
+	// MaxUses is the maximum number of times the tool can be used.
+	// Supported by OpenAI, Anthropic, and Azure.
+	MaxUses int
 }
 
 // ToolChoice is a specific tool to use.
