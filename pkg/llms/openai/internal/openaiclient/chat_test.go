@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 func TestParseStreamingChatResponse_FinishReason(t *testing.T) {
@@ -124,4 +126,53 @@ func TestChatMessage_MarshalUnmarshal_WithReasoning(t *testing.T) {
 	err = json.Unmarshal(text, &msg2)
 	require.NoError(t, err)
 	require.Equal(t, msg, msg2)
+}
+
+func TestTool_MarshalUnmarshal(t *testing.T) {
+	t.Parallel()
+	tool1 := Tool{
+		Type: ToolTypeWebSearch,
+		WebSearchOptions: &WebSearchOptions{
+			AllowedDomains: []string{"example.com"},
+		},
+	}
+	text, err := json.Marshal(tool1)
+	require.NoError(t, err)
+	require.Equal(t, `{"filters":{"allowed_domains":["example.com"]},"type":"web_search"}`, string(text))
+
+	tool2 := Tool{
+		Type: ToolTypeFunction,
+		Function: &FunctionDefinition{
+			Name:        "test",
+			Description: "test",
+		},
+	}
+	text, err = json.Marshal(tool2)
+	require.NoError(t, err)
+	require.Equal(t, `{"type":"function","function":{"name":"test","description":"test","parameters":null}}`, string(text))
+
+	tool3 := Tool{
+		Type: ToolTypeFunction,
+		Function: &FunctionDefinition{
+			Name:        "test",
+			Description: "test",
+			Parameters: &jsonschema.Schema{
+				Type: "object",
+				Properties: orderedmap.New[string, *jsonschema.Schema](
+					orderedmap.WithInitialData(
+						orderedmap.Pair[string, *jsonschema.Schema]{
+							Key: "name",
+							Value: &jsonschema.Schema{
+								Type: "string",
+							},
+						},
+					),
+				),
+				Required: []string{"name"},
+			},
+		},
+	}
+	text, err = json.Marshal(tool3)
+	require.NoError(t, err)
+	require.Equal(t, `{"type":"function","function":{"name":"test","description":"test","parameters":{"properties":{"name":{"type":"string"}},"type":"object","required":["name"]}}}`, string(text))
 }

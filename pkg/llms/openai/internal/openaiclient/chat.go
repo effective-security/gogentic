@@ -78,13 +78,38 @@ type ChatRequest struct {
 type ToolType string
 
 const (
-	ToolTypeFunction ToolType = "function"
+	ToolTypeFunction  ToolType = "function"
+	ToolTypeWebSearch ToolType = "web_search"
 )
 
 // Tool is a tool to use in a chat request.
 type Tool struct {
-	Type     ToolType           `json:"type"`
-	Function FunctionDefinition `json:"function,omitempty"`
+	Type     ToolType            `json:"type"`
+	Function *FunctionDefinition `json:"function,omitempty"`
+	// For tools like web_search, you can include extra options.
+	WebSearchOptions *WebSearchOptions `json:"-"`
+}
+
+type WebSearchOptions struct {
+	AllowedDomains []string
+}
+
+func (m Tool) MarshalJSON() ([]byte, error) {
+	opts := map[string]any{
+		"type": string(m.Type),
+	}
+	switch m.Type {
+	case ToolTypeWebSearch:
+		if m.WebSearchOptions != nil && len(m.WebSearchOptions.AllowedDomains) > 0 {
+			opts["filters"] = map[string]any{
+				"allowed_domains": m.WebSearchOptions.AllowedDomains,
+			}
+		}
+		return json.Marshal(opts)
+	default:
+		type alias Tool
+		return json.Marshal(alias(m))
+	}
 }
 
 // ToolChoice is a choice of a tool to use.

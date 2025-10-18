@@ -126,6 +126,20 @@ type ToolCall struct {
 	FunctionCall *FunctionCall `json:"function,omitempty"`
 }
 
+func (tc ToolCall) GetFunctionCallName() string {
+	if tc.Type != "function" || tc.FunctionCall == nil {
+		return tc.Type
+	}
+	return tc.FunctionCall.Name
+}
+
+func (tc ToolCall) GetFunctionCallArguments() string {
+	if tc.Type != "function" || tc.FunctionCall == nil {
+		return ""
+	}
+	return tc.FunctionCall.Arguments
+}
+
 func (tc ToolCall) String() string {
 	return fmt.Sprintf("ToolCall: %s (%s), input: %s", tc.ID, tc.FunctionCall.Name, tc.FunctionCall.Arguments)
 }

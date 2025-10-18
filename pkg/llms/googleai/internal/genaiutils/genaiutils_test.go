@@ -309,6 +309,24 @@ func TestConvertTools(t *testing.T) {
 			},
 		},
 		{
+			name: "web_search",
+			tools: []llms.Tool{
+				{
+					Type: "web_search",
+					WebSearchOptions: &llms.WebSearchOptions{
+						AllowedDomains:  []string{"example.com"},
+						ExcludedDomains: []string{"excluded.com"},
+					},
+				},
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*genai.Tool) {
+				require.Len(t, result, 1)
+				assert.NotNil(t, result[0].GoogleSearch)
+				assert.Equal(t, []string{"excluded.com"}, result[0].GoogleSearch.ExcludeDomains)
+			},
+		},
+		{
 			name: "google_search_retrieval",
 			tools: []llms.Tool{
 				{

@@ -7,6 +7,8 @@ providers:
     token: env://OPENAI_API_KEY
     default_model: gpt-4.1
     available_models:
+      - gpt-5
+      - gpt-5-search-api
       - gpt-4.1
       - gpt-4o
       - gpt-4
@@ -27,10 +29,10 @@ providers:
 
   - name: ANTHROPIC
     token: env://ANTHROPIC_API_KEY
-    default_model: claude-opus-4-20250514
+    default_model: claude-opus-4-1-20250805
     available_models:
-      - claude-opus-4-20250514
-      - claude-sonnet-4-20250514
+      - claude-opus-4-1-20250805
+      - claude-sonnet-4-5-20250929
     open_ai:
       api_type: ANTHROPIC
 
@@ -68,4 +70,4 @@ assistant_models:
   default:
     - gpt-4o
   orchestrator:
-    - claude-sonnet-4-20250514
+    - claude-opus-4-1-20250805

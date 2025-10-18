@@ -211,8 +211,14 @@ func toolFromTool(t llms.Tool) (openaiclient.Tool, error) {
 		Type: openaiclient.ToolType(t.Type),
 	}
 	switch t.Type {
+	case string(openaiclient.ToolTypeWebSearch):
+		if t.WebSearchOptions != nil && len(t.WebSearchOptions.AllowedDomains) > 0 {
+			tool.WebSearchOptions = &openaiclient.WebSearchOptions{
+				AllowedDomains: t.WebSearchOptions.AllowedDomains,
+			}
+		}
 	case string(openaiclient.ToolTypeFunction):
-		tool.Function = openaiclient.FunctionDefinition{
+		tool.Function = &openaiclient.FunctionDefinition{
 			Name:        t.Function.Name,
 			Description: t.Function.Description,
 			Parameters:  t.Function.Parameters,

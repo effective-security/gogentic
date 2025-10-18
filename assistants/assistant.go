@@ -472,10 +472,11 @@ func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, o
 		// Handle multiple choices by combining their content
 		var combinedContent strings.Builder
 		for i, choice := range choices {
+			content := strings.TrimSpace(choice.Content)
 			if i > 0 {
 				combinedContent.WriteString("\n\n")
 			}
-			combinedContent.WriteString(choice.Content)
+			combinedContent.WriteString(content)
 		}
 		result = combinedContent.String()
 	}
@@ -574,7 +575,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 				"assistant", a.name,
 				"status", "tool_call_found",
 				"tool_call_id", toolCall.ID,
-				"tool_call_name", toolCall.FunctionCall.Name,
+				"tool_call_name", toolCall.GetFunctionCallName(),
 			)
 		}
 
@@ -607,8 +608,8 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 	for i, toolCall := range toolCalls {
 		go func(index int, tc llms.ToolCall) {
 			defer wg.Done()
-			toolName := tc.FunctionCall.Name
-			toolArgs := tc.FunctionCall.Arguments
+			toolName := tc.GetFunctionCallName()
+			toolArgs := tc.GetFunctionCallArguments()
 
 			// use lowercase for the key
 			tool := a.toolsByName[strings.ToLower(toolName)]
