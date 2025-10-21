@@ -74,14 +74,6 @@ type ChatRequest struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// ToolType is the type of a tool.
-type ToolType string
-
-const (
-	ToolTypeFunction  ToolType = "function"
-	ToolTypeWebSearch ToolType = "web_search"
-)
-
 // Tool is a tool to use in a chat request.
 type Tool struct {
 	Type     ToolType            `json:"type"`

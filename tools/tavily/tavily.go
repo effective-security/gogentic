@@ -21,7 +21,7 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-const ToolName = "web_search"
+const ToolName = "tavily_web_search"
 
 var DefaultAPIKeyEnvName = "TAVILY_API_KEY"
 

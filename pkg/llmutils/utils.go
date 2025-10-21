@@ -227,7 +227,7 @@ func getMessageRole(m llms.Message) string {
 		if len(m.Parts) == 1 {
 			switch typ := m.Parts[0].(type) {
 			case llms.ToolCallResponse:
-				role += ": " + typ.ToolCallID
+				role += ": " + typ.Name
 			}
 		}
 	default:

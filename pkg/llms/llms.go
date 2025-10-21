@@ -127,8 +127,7 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityJSONSchemaStrict |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
-		CapabilitySystemPrompt |
-		CapabilityWebSearchTool,
+		CapabilitySystemPrompt,
 
 	ProviderAzureAD: CapabilityText, // Proxy passthrough
 }

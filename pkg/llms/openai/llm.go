@@ -19,12 +19,13 @@ var (
 
 // newClient creates an instance of the internal client.
 func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
+	// default options
 	options := &options{
 		token:        os.Getenv(tokenEnvVarName),
 		model:        os.Getenv(modelEnvVarName),
 		baseURL:      getEnvs(baseURLEnvVarName, baseAPIBaseEnvVarName),
 		organization: os.Getenv(organizationEnvVarName),
-		apiType:      APIType(openaiclient.APITypeOpenAI),
+		provider:     ProviderType(openaiclient.ProviderOpenAI),
 		httpClient:   http.DefaultClient,
 	}
 
@@ -33,7 +34,7 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 	}
 
 	// set of options needed for Azure client
-	if openaiclient.IsAzure(openaiclient.APIType(options.apiType)) && options.apiVersion == "" {
+	if openaiclient.IsAzure(openaiclient.ProviderType(options.provider)) && options.apiVersion == "" {
 		options.apiVersion = DefaultAPIVersion
 		if options.model == "" {
 			return options, nil, ErrMissingAzureModel
@@ -48,11 +49,11 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 	}
 
 	cli, err := openaiclient.New(
-		options.token,
+		openaiclient.ProviderType(options.provider),
 		options.model,
+		options.token,
 		options.baseURL,
 		options.organization,
-		openaiclient.APIType(options.apiType),
 		options.apiVersion,
 		options.httpClient,
 		options.embeddingModel,

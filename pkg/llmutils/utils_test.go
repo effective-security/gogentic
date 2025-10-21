@@ -135,7 +135,7 @@ func Test_FindLastUserQuestion(t *testing.T) {
 	exp := `System: What is the capital of Italy?
 Human: What is the capital of Germany?
 Tool: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tool1","arguments":"arg1"},"id":"1","type":"tool"}}
-Tool: 1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
+Tool: tool1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
 AI: What is the capital of France?
 `
 	assert.Equal(t, exp, buf.String())
@@ -302,7 +302,7 @@ Human: Hello, how are you?
 AI: I'm doing great!
 Generic: Keep the conversation on topic.
 Tool: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tool1","arguments":"arg1"},"id":"1","type":"tool"}}
-Tool: 1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
+Tool: tool1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"1","name":"tool1","content":"tool1 result"}}
 `, //nolint:lll
 		},
 	}

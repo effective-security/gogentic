@@ -8,6 +8,8 @@ export TAVILY_API_KEY=fakekey
 export ANTHROPIC_API_KEY=fakekey
 export PERPLEXITY_TOKEN=fakekey
 export GOOGLEAI_TOKEN=fakekey
+export AZURE_OPENAI_API_KEY=fakekey
+export AZURE_OPENAI_URL=fakeurl
 
 .PHONY: *
 

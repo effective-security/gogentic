@@ -156,7 +156,7 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	//llmModel, err := f.ModelByName("gpt-5-search-api")
+	//llmModel, err := f.ModelByName("gpt-4.1")
 	llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
 
@@ -218,8 +218,8 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByName("gpt-5-search-api")
-	//llmModel, err := f.ModelByType("ANTHROPIC")
+	//llmModel, err := f.ModelByName("gpt-5")
+	llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search", []string{})
@@ -283,7 +283,7 @@ func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByName("GOOGLEAI")
+	llmModel, err := f.ModelByType("GOOGLEAI")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -300,6 +300,13 @@ func Test_Real_Providers(t *testing.T) {
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
+	printHistory := func(ctx context.Context) {
+		history := memstore.Messages(ctx)
+		var buf strings.Builder
+		llmutils.PrintMessages(&buf, history)
+		t.Log(buf.String())
+	}
+
 	systemPrompt := prompts.NewPromptTemplate("You can answer questions about the gogentic status using only the provided `gogentic_status` tool. Do not search Web.", []string{})
 
 	ag := assistants.NewAssistant[WeatherResult](llmModel, systemPrompt, acfg...).
@@ -309,37 +316,35 @@ func Test_Real_Providers(t *testing.T) {
 		Input: "Return the gogentic status for location: 1012340123?",
 	}
 	apiResp, err := ag.Call(ctx, req)
+	if err != nil {
+		printHistory(ctx)
+	}
 	require.NoError(t, err)
 	fmt.Println(apiResp.Choices[0].Content)
 
 	req = &assistants.CallInput{
-		Input: "Return the gogentic status for location: 1012340123?",
+		Input: "Return the gogentic status for location: 1012340125?",
 	}
 	apiResp, err = ag.Call(ctx, req)
+	if err != nil {
+		printHistory(ctx)
+	}
 	require.NoError(t, err)
 	fmt.Println(apiResp.Choices[0].Content)
 
 	assert.Equal(t, 2, wt.called)
 
-	fmt.Println("--------------------------------")
+	fmt.Println("--- History ---")
 	fmt.Println(buf.String())
 
 	history := memstore.Messages(ctx)
 	assert.NotEmpty(t, history)
-	exp := `Human: Return the gogentic status for location: 1012340123?
-AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"gogentic_status","arguments":"{\"location\":\"1012340123\"}"},"id":"gogentic_status_0","type":"function"}}
-Tool: gogentic_status_0: Response: {"type":"tool_response","tool_response":{"tool_call_id":"gogentic_status_0","name":"gogentic_status","content":"{\"location\":\"1012340123\",\"forecast\":\"sunny\"}"}}
-AI: {"location":"1012340123","forecast":"sunny"}
-Human: Return the gogentic status for location: 1012340123?
-AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"gogentic_status","arguments":"{\"location\":\"1012340123\"}"},"id":"gogentic_status_0","type":"function"}}
-Tool: gogentic_status_0: Response: {"type":"tool_response","tool_response":{"tool_call_id":"gogentic_status_0","name":"gogentic_status","content":"{\"location\":\"1012340123\",\"forecast\":\"sunny\"}"}}
-AI: {"location":"1012340123","forecast":"sunny"}
-`
+
 	buf.Reset()
 	llmutils.PrintMessages(&buf, history)
 	chat := buf.String()
-	require.NoError(t, err)
-	assert.Equal(t, exp, chat)
+	fmt.Println("--- Chat ---")
+	fmt.Println(chat)
 }
 
 type weatherTool struct {

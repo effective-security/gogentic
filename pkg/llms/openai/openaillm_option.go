@@ -13,14 +13,14 @@ const (
 	organizationEnvVarName = "OPENAI_ORGANIZATION" //nolint:gosec
 )
 
-type APIType openaiclient.APIType
+type ProviderType string
 
 const (
-	APITypeOpenAI  APIType = APIType(openaiclient.APITypeOpenAI)
-	APITypeAzure           = APIType(openaiclient.APITypeAzure)
-	APITypeAzureAD         = APIType(openaiclient.APITypeAzureAD)
+	ProviderOpenAI     ProviderType = "OPENAI"
+	ProviderAzure      ProviderType = "AZURE"
+	ProviderAzureAD    ProviderType = "AZURE_AD"
+	ProviderPerplexity ProviderType = "PERPLEXITY"
 )
-
 const (
 	DefaultAPIVersion = "2023-05-15"
 )
@@ -30,7 +30,7 @@ type options struct {
 	model        string
 	baseURL      string
 	organization string
-	apiType      APIType
+	provider     ProviderType
 	httpClient   openaiclient.Doer
 
 	responseFormat *schema.ResponseFormat
@@ -84,11 +84,11 @@ func WithOrganization(organization string) Option {
 	}
 }
 
-// WithAPIType passes the api type to the client. If not set, the default value
-// is APITypeOpenAI.
-func WithAPIType(apiType APIType) Option {
+// WithProvider passes the api type to the client. If not set, the default value
+// is ProviderOpenAI.
+func WithProvider(apiType ProviderType) Option {
 	return func(opts *options) {
-		opts.apiType = apiType
+		opts.provider = apiType
 	}
 }
 

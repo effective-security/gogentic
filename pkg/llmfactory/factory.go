@@ -114,7 +114,7 @@ func CreateLLM(cfg *ProviderConfig, preferredModels ...string) (llms.Model, erro
 func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
-	opts = append(opts, openai.WithAPIType(openai.APITypeOpenAI), openai.WithModel(model))
+	opts = append(opts, openai.WithProvider(openai.ProviderOpenAI), openai.WithModel(model))
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -128,7 +128,7 @@ func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, erro
 func newPerplexity(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
-	opts = append(opts, openai.WithModel(model))
+	opts = append(opts, openai.WithProvider(openai.ProviderPerplexity), openai.WithModel(model))
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -148,9 +148,9 @@ func newAzure(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error
 		opts = append(opts, openai.WithToken(cfg.Token))
 	}
 	if strings.EqualFold(cfg.OpenAI.APIType, "AZURE_AD") {
-		opts = append(opts, openai.WithAPIType(openai.APITypeAzureAD))
+		opts = append(opts, openai.WithProvider(openai.ProviderAzureAD))
 	} else {
-		opts = append(opts, openai.WithAPIType(openai.APITypeAzure))
+		opts = append(opts, openai.WithProvider(openai.ProviderAzure))
 	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))

@@ -40,13 +40,6 @@ type CompletionResponse struct {
 	} `json:"usage,omitempty"`
 }
 
-type errorMessage struct {
-	Error struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error"`
-}
-
 func (c *Client) setCompletionDefaults(payload *CompletionRequest) {
 	// Set defaults
 	if payload.MaxCompletionTokens == 0 {

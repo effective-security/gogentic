@@ -45,12 +45,12 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with multiple preferred models
-	model, err = f.ModelByName("gpt-4-unknown", "deployment-gpt-4.1")
+	model, err = f.ModelByName("gpt-4-unknown", "gpt-4.1")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "deployment-gpt-4.1", fm.model)
-	assert.Equal(t, "AZURE", fm.provider)
+	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with non-existent models (should fallback to default)
 	model, err = f.ModelByName("non-existent-model")
@@ -60,11 +60,11 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "gpt-4.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
-	model, err = f.ModelByName("deployment-gpt-4.1")
+	model, err = f.ModelByType("AZURE")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "deployment-gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "AZURE", fm.provider)
 
 	model, err = f.ModelByType("OPENAI")
@@ -142,13 +142,6 @@ func Test_Factory(t *testing.T) {
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-4o", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
-
-	model, err = f.ModelByType("AZURE")
-	require.NoError(t, err)
-	require.NotNil(t, model)
-	fm = model.(*fakeLLM)
-	assert.Equal(t, "deployment-gpt-4.1", fm.model)
-	assert.Equal(t, "AZURE", fm.provider)
 
 	// Test error cases
 	// Test with unsupported provider type
