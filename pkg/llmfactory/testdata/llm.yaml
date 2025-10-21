@@ -17,15 +17,14 @@ providers:
       api_type: OPENAI
 
   - name: AZURE
-    default_model: deployment-gpt-4.1
+    token: env://AZURE_OPENAI_API_KEY
+    default_model: gpt-5
     available_models:
-      - deployment-gpt-4.1
+      - gpt-5
     open_ai:
       api_type: AZURE
-      base_url: https://azure-test.openai.azure.com
-      api_version: 2024-08-01-preview
-      org_id: 1234567890
-      assistant_version: 2024-08-01-preview
+      base_url: env://AZURE_OPENAI_URL
+      api_version: "2025-03-01-preview"
 
   - name: ANTHROPIC
     token: env://ANTHROPIC_API_KEY

@@ -247,6 +247,10 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 	a.runMessages = nil
 	// create a per call config
 	cfg := a.GetCallConfig(input.Options...)
+	if cfg.Model == "" {
+		cfg.Model = a.LLM.GetName()
+		cfg.modelSet = true
+	}
 
 	callback := cfg.CallbackHandler
 	if callback != nil {
@@ -362,7 +366,7 @@ func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, o
 	callOpts := cfg.GetCallOptions(extraOptions...)
 
 	assistantName := a.Name()
-	modelName := a.LLM.GetName()
+	modelName := cfg.Model
 
 	var totalToolExecuted int
 	var resp *llms.ContentResponse

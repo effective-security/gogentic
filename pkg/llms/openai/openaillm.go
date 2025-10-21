@@ -2,12 +2,21 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
+	"github.com/effective-security/gogentic/pkg/schema"
+	"github.com/effective-security/x/values"
+	"github.com/effective-security/xlog"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 )
+
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "openai")
 
 type ChatMessage = openaiclient.ChatMessage
 
@@ -51,6 +60,14 @@ func (o *LLM) GetProviderType() llms.ProviderType {
 
 // GenerateContent implements the Model interface.
 func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, goerr113, funlen
+	if o.client.SupportsResponsesAPI() {
+		return o.generateContentFromResponses(ctx, messages, options...)
+	}
+	return o.generateContentFromChat(ctx, messages, options...)
+}
+
+// GenerateContent implements the Model interface.
+func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, goerr113, funlen
 	opts := llms.CallOptions{}
 	for _, opt := range options {
 		opt(&opts)
@@ -168,6 +185,171 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, opti
 	return response, nil
 }
 
+func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	opts := llms.CallOptions{}
+	for _, opt := range options {
+		opt(&opts)
+	}
+
+	logger.ContextKV(ctx, xlog.DEBUG, "messages", len(messages))
+
+	// Build Responses API input from generic messages
+	var inputItems responses.ResponseInputParam
+	for _, mc := range messages {
+		switch mc.Role {
+		case llms.RoleSystem, llms.RoleHuman:
+			role := "user"
+			if mc.Role == llms.RoleSystem {
+				role = "system"
+			}
+			var contents responses.ResponseInputMessageContentListParam
+			for _, p := range mc.Parts {
+				switch v := p.(type) {
+				case llms.TextContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: v.Text}})
+				case llms.ImageURLContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputImage: &responses.ResponseInputImageParam{ImageURL: param.NewOpt(v.URL), Detail: responses.ResponseInputImageDetail(v.Detail)}})
+				case llms.BinaryContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputFile: &responses.ResponseInputFileParam{FileData: param.NewOpt(v.String())}})
+				default:
+					return nil, errors.Errorf("unsupported content part type %T", p)
+				}
+			}
+			if len(contents) == 0 {
+				contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: ""}})
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfInputMessage: &responses.ResponseInputItemMessageParam{Role: role, Content: contents}})
+
+		case llms.RoleAI, llms.RoleGeneric:
+			// Assistant messages must use output content types (output_text/refusal)
+			var outContents []responses.ResponseOutputMessageContentUnionParam
+			var fnCalls []responses.ResponseFunctionToolCallParam
+			for _, p := range mc.Parts {
+				switch v := p.(type) {
+				case llms.TextContent:
+					outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: v.Text}})
+				case llms.ToolCall:
+					if v.FunctionCall != nil {
+						fnCalls = append(fnCalls, responses.ResponseFunctionToolCallParam{
+							Name:      v.FunctionCall.Name,
+							Arguments: v.FunctionCall.Arguments,
+							CallID:    v.ID,
+						})
+					}
+				default:
+					// ignore non-text assistant parts in history
+				}
+			}
+			if len(outContents) == 0 {
+				outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: ""}})
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfOutputMessage: &responses.ResponseOutputMessageParam{Content: outContents, Status: responses.ResponseOutputMessageStatusCompleted}})
+			// Append function_call items so that tool outputs can reference them by call_id
+			for _, fc := range fnCalls {
+				fcCopy := fc
+				inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCall: &fcCopy})
+			}
+
+		case llms.RoleTool:
+			if len(mc.Parts) != 1 {
+				return nil, errors.Errorf("expected exactly one part for role %v, got %v", mc.Role, len(mc.Parts))
+			}
+			tr, ok := mc.Parts[0].(llms.ToolCallResponse)
+			if !ok {
+				return nil, errors.Errorf("expected ToolCallResponse for tool role, got %T", mc.Parts[0])
+			}
+			fco := responses.ResponseInputItemFunctionCallOutputParam{
+				CallID: tr.ToolCallID,
+				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: param.NewOpt(tr.Content)},
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCallOutput: &fco})
+
+		default:
+			return nil, errors.Errorf("role %v not supported", mc.Role)
+		}
+	}
+
+	req := &responses.ResponseNewParams{
+		Model:           values.StringsCoalesce(opts.Model, openaiclient.DefaultChatModel),
+		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
+		MaxOutputTokens: param.NewOpt(int64(values.NumbersCoalesce(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
+		Metadata:        convertMetadata(opts.Metadata),
+		// not supported with gpt5
+		//Temperature:     param.NewOpt(opts.Temperature),
+		//TopP:            param.NewOpt(opts.TopP),
+	}
+
+	// Tool choice mapping (support simple string modes)
+	if opts.ToolChoice != nil {
+		if s, ok := opts.ToolChoice.(string); ok {
+			req.ToolChoice = responses.ResponseNewParamsToolChoiceUnion{OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptions(s))}
+		}
+	}
+
+	// Map tools to responses ToolUnionParam
+	for _, tool := range opts.Tools {
+		t, err := responsesToolFromTool(tool)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
+		}
+		req.Tools = append(req.Tools, t)
+	}
+
+	// Map ResponseFormat to Responses API text.format
+	if o.client.ResponseFormat != nil {
+		req.Text = toResponsesText(o.client.ResponseFormat)
+	}
+	if opts.ResponseFormat != nil {
+		req.Text = toResponsesText(opts.ResponseFormat)
+	}
+
+	result, err := o.client.CreateResponse(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.ContextKV(ctx, xlog.DEBUG, "outputs", len(result.Output))
+
+	// Build a single choice from output_text and propagate tool calls if present.
+	choice := &llms.ContentChoice{
+		Content:    result.OutputText(),
+		StopReason: "",
+		GenerationInfo: map[string]any{
+			"OutputTokens":    result.Usage.OutputTokens,
+			"InputTokens":     result.Usage.InputTokens,
+			"TotalTokens":     result.Usage.TotalTokens,
+			"ReasoningTokens": 0,
+		},
+	}
+
+	// Map Responses output items into tool calls
+	for _, item := range result.Output {
+		if item.Type == "function_call" {
+			id := item.CallID
+			if id == "" {
+				id = item.ID
+			}
+			choice.ToolCalls = append(choice.ToolCalls, llms.ToolCall{
+				ID:   id,
+				Type: string(openaiclient.ToolTypeFunction),
+				FunctionCall: &llms.FunctionCall{
+					Name:      item.Name,
+					Arguments: item.Arguments,
+				},
+			})
+		}
+	}
+	if len(choice.ToolCalls) > 0 {
+		choice.FuncCall = choice.ToolCalls[0].FunctionCall
+	}
+
+	response := &llms.ContentResponse{Choices: []*llms.ContentChoice{choice}}
+	if response.Choices[0].Content == "" && len(response.Choices[0].ToolCalls) == 0 {
+		return nil, ErrEmptyResponse
+	}
+	return response, nil
+}
+
 // CreateEmbedding creates embeddings for the given input texts.
 func (o *LLM) CreateEmbedding(ctx context.Context, inputTexts []string) ([][]float32, error) {
 	embeddings, err := o.client.CreateEmbedding(ctx, &openaiclient.EmbeddingRequest{
@@ -249,4 +431,95 @@ func toolCallFromToolCall(tc llms.ToolCall) openaiclient.ToolCall {
 			Arguments: tc.FunctionCall.Arguments,
 		},
 	}
+}
+
+// responsesToolFromTool converts an llms.Tool to a Responses ToolUnionParam.
+func responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, error) {
+	switch t.Type {
+	case string(openaiclient.ToolTypeWebSearch):
+		var filters responses.WebSearchToolFiltersParam
+		if t.WebSearchOptions != nil {
+			filters.AllowedDomains = t.WebSearchOptions.AllowedDomains
+		}
+		return responses.ToolUnionParam{
+			OfWebSearch: &responses.WebSearchToolParam{
+				Type:    responses.WebSearchToolType(responses.WebSearchToolTypeWebSearch2025_08_26),
+				Filters: filters,
+			},
+		}, nil
+	case string(openaiclient.ToolTypeFunction):
+		if t.Function == nil {
+			return responses.ToolUnionParam{}, errors.Errorf("function tool missing definition")
+		}
+		// Convert jsonschema.Schema to map[string]any
+		var paramsMap map[string]any
+		if t.Function.Parameters != nil {
+			b, err := json.Marshal(t.Function.Parameters)
+			if err != nil {
+				return responses.ToolUnionParam{}, errors.Wrap(err, "marshal function parameters")
+			}
+			if err := json.Unmarshal(b, &paramsMap); err != nil {
+				return responses.ToolUnionParam{}, errors.Wrap(err, "unmarshal function parameters")
+			}
+		}
+		ft := &responses.FunctionToolParam{
+			Name:        t.Function.Name,
+			Description: param.NewOpt(t.Function.Description),
+			Parameters:  paramsMap,
+			Strict:      param.NewOpt(t.Function.Strict),
+		}
+		return responses.ToolUnionParam{OfFunction: ft}, nil
+	default:
+		return responses.ToolUnionParam{}, errors.Errorf("tool type %v not supported", t.Type)
+	}
+}
+
+// toResponsesText maps our schema.ResponseFormat to Responses API text config.
+func toResponsesText(f *schema.ResponseFormat) responses.ResponseTextConfigParam {
+	if f == nil {
+		return responses.ResponseTextConfigParam{Format: responses.ResponseFormatTextConfigUnionParam{OfText: &shared.ResponseFormatTextParam{}}}
+	}
+	switch f.Type {
+	case "json_schema":
+		var schemaMap map[string]any
+		if f.JSONSchema != nil {
+			// Build map from our schema struct
+			b, err := json.Marshal(f.JSONSchema.Schema)
+			if err == nil {
+				_ = json.Unmarshal(b, &schemaMap)
+			}
+		}
+		name := "response"
+		strict := false
+		if f.JSONSchema != nil {
+			if f.JSONSchema.Name != "" {
+				name = f.JSONSchema.Name
+			}
+			strict = f.JSONSchema.Strict
+		}
+		return responses.ResponseTextConfigParam{
+			Format: responses.ResponseFormatTextConfigUnionParam{OfJSONSchema: &responses.ResponseFormatTextJSONSchemaConfigParam{
+				Name:   name,
+				Schema: schemaMap,
+				Strict: param.NewOpt(strict),
+			}},
+		}
+	case "json_object":
+		// Older JSON mode; treat as plain text to avoid strict schema
+		fallthrough
+	default:
+		return responses.ResponseTextConfigParam{Format: responses.ResponseFormatTextConfigUnionParam{OfText: &shared.ResponseFormatTextParam{}}}
+	}
+}
+
+// convertMetadata converts map[string]any to shared.Metadata (map[string]string).
+func convertMetadata(in map[string]any) shared.Metadata {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = fmt.Sprint(v)
+	}
+	return out
 }
