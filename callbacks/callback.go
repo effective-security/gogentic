@@ -2,6 +2,7 @@ package callbacks
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/effective-security/x/slices"
 	"github.com/effective-security/xlog"
 )
 
@@ -267,7 +269,11 @@ func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants
 }
 
 func (l *PackageLogger) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
-	l.logger.ContextKV(ctx, xlog.ERROR,
+	level := xlog.ERROR
+	if IsTimeout(err) {
+		level = xlog.WARNING
+	}
+	l.logger.ContextKV(ctx, level,
 		"event", "assistant_error",
 		"assistant", assistant.Name(),
 		"err", err.Error(),
@@ -302,7 +308,11 @@ func (l *PackageLogger) OnToolEnd(ctx context.Context, tool tools.ITool, assista
 }
 
 func (l *PackageLogger) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
-	l.logger.ContextKV(ctx, xlog.ERROR,
+	level := xlog.ERROR
+	if IsTimeout(err) {
+		level = xlog.WARNING
+	}
+	l.logger.ContextKV(ctx, level,
 		"event", "tool_error",
 		"assistant", assistantName,
 		"tool", tool.Name(),
@@ -335,3 +345,16 @@ func (l *PackageLogger) OnToolNotFound(ctx context.Context, agent assistants.IAs
 		"tool", tool,
 	)
 }
+
+// IsTimeout returns true for timeout error
+func IsTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	str := err.Error()
+	return goerrors.Is(err, context.DeadlineExceeded) ||
+		goerrors.Is(err, context.Canceled) ||
+		slices.StringContainsOneOf(str, timeoutErrors)
+}
+
+var timeoutErrors = []string{"timeout", "deadline", "cancel"}

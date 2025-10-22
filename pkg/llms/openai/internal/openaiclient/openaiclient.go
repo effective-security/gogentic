@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/schema"
@@ -51,7 +52,8 @@ type Client struct {
 
 	EmbeddingModel string
 	// required when APIType is APITypeAzure or APITypeAzureAD
-	apiVersion string
+	apiVersion           string
+	supportsResponsesAPI bool
 
 	ResponseFormat *schema.ResponseFormat
 }
@@ -71,15 +73,16 @@ func New(provider ProviderType, model string, token string, baseURL string, orga
 	opts ...Option,
 ) (*Client, error) {
 	c := &Client{
-		Model:          model,
-		token:          token,
-		EmbeddingModel: embeddingModel,
-		baseURL:        strings.TrimSuffix(baseURL, "/"),
-		organization:   organization,
-		Provider:       provider,
-		apiVersion:     apiVersion,
-		httpClient:     httpClient,
-		ResponseFormat: responseFormat,
+		Model:                model,
+		token:                token,
+		EmbeddingModel:       embeddingModel,
+		baseURL:              strings.TrimSuffix(baseURL, "/"),
+		organization:         organization,
+		Provider:             provider,
+		apiVersion:           apiVersion,
+		httpClient:           httpClient,
+		ResponseFormat:       responseFormat,
+		supportsResponsesAPI: isResponsesAPI(provider, apiVersion),
 	}
 	if c.baseURL == "" {
 		c.baseURL = DefaultBaseURL
@@ -94,8 +97,26 @@ func New(provider ProviderType, model string, token string, baseURL string, orga
 	return c, nil
 }
 
+func isResponsesAPI(provider ProviderType, apiVersion string) bool {
+	if provider == ProviderAzure || provider == ProviderAzureAD {
+		// Azure API versions are dates like YYYY-MM-DD, optionally with a "-preview" suffix.
+		// Perform a proper date comparison instead of lexicographical string comparison.
+		if idx := strings.Index(apiVersion, "-preview"); idx != -1 {
+			apiVersion = apiVersion[:idx]
+		}
+		apiVersion = strings.TrimSpace(apiVersion)
+		versionDate, err := time.Parse("2006-01-02", apiVersion)
+		if err != nil {
+			return false
+		}
+		thresholdDate := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+		return !versionDate.Before(thresholdDate)
+	}
+	return provider == ProviderOpenAI || provider == "OPEN_AI"
+}
+
 func (c *Client) SupportsResponsesAPI() bool {
-	return c.Provider == ProviderOpenAI || c.Provider == ProviderAzure || c.Provider == ProviderAzureAD || c.Provider == "OPEN_AI"
+	return c.supportsResponsesAPI
 }
 
 // Completion is a completion.
