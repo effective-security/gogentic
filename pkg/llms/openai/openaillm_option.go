@@ -35,7 +35,7 @@ type options struct {
 
 	responseFormat *schema.ResponseFormat
 
-	// required when APIType is APITypeAzure or APITypeAzureAD
+	// required when provider is APITypeAzure or APITypeAzureAD
 	apiVersion     string
 	embeddingModel string
 }

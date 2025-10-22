@@ -58,49 +58,49 @@ var (
 		Type:         metrics.TypeCounter,
 		Name:         "stats_assistant_calls_succeeded",
 		Help:         "stats_assistant_calls_succeeded provides total assistant calls succeeded",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsAssistantCallsFailed = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_assistant_calls_failed",
 		Help:         "stats_assistant_calls_failed provides total assistant calls failed",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsAssistantCallsRetried = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_assistant_calls_retried",
 		Help:         "stats_assistant_calls_retried provides total assistant calls retried",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	StatsToolCallsSucceeded = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_tool_calls_succeeded",
 		Help:         "stats_tool_calls_succeeded provides total tool calls succeeded",
-		RequiredTags: []string{"tool"},
+		RequiredTags: []string{"tool", "model"},
 	}
 
 	StatsToolCallsFailed = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_tool_calls_failed",
 		Help:         "stats_tool_calls_failed provides total tool calls failed",
-		RequiredTags: []string{"tool"},
+		RequiredTags: []string{"tool", "model"},
 	}
 
 	StatsToolCallsNotFound = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_tool_calls_not_found",
 		Help:         "stats_tool_calls_not_found provides total tool calls not found",
-		RequiredTags: []string{"tool"},
+		RequiredTags: []string{"tool", "model"},
 	}
 
 	StatsAssistantLLMParseErrors = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_assistant_llm_parse_errors",
 		Help:         "stats_assistant_llm_parse_errors provides total assistant LLM parse errors",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 )
 

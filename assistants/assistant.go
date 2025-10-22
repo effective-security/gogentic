@@ -268,13 +268,13 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 	for range 2 {
 		resp, messages, err = a.run(ctx, cfg, input, optionalOutputType)
 		if err != nil {
-			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name())
+			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name(), cfg.Model)
 			if callback != nil {
 				callback.OnAssistantError(ctx, a, input.Input, err, messages)
 			}
 			// Google often return Text vs JSON
 			if isGoogle && errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
-				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.Name())
+				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.Name(), cfg.Model)
 
 				input.Input = "Return the response in JSON format as requested."
 				// remove the tools
@@ -291,7 +291,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		return nil, err
 	}
 
-	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name())
+	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name(), cfg.Model)
 	if callback != nil {
 		callback.OnAssistantEnd(ctx, a, input.Input, resp, messages)
 	}
@@ -516,7 +516,7 @@ func (a *Assistant[O]) run(ctx context.Context, cfg *Config, input *CallInput, o
 		if err != nil {
 			addResultToMessageHistory(result)
 
-			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName)
+			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName, cfg.Model)
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", assistantName,
 				"status", "failed_to_parse_llm_response",
@@ -619,7 +619,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			tool := a.toolsByName[strings.ToLower(toolName)]
 			if tool == nil {
 				notFoundCount++
-				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName)
+				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName, cfg.Model)
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolNotFound(ctx, a, toolName)
 				}
@@ -653,10 +653,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 			} else {
 				res, err = tool.Call(ctx, toolArgs)
 			}
-			metricskey.PerfToolCall.MeasureSince(started, toolName)
+			metricskey.PerfToolCall.MeasureSince(started, toolName, cfg.Model)
 
 			if err != nil {
-				metricskey.StatsToolCallsFailed.IncrCounter(1, toolName)
+				metricskey.StatsToolCallsFailed.IncrCounter(1, toolName, cfg.Model)
 
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolError(ctx, tool, a.Name(), toolArgs, err)
@@ -673,7 +673,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, cfg *Config, messag
 					return
 				}
 			}
-			metricskey.StatsToolCallsSucceeded.IncrCounter(1, toolName)
+			metricskey.StatsToolCallsSucceeded.IncrCounter(1, toolName, cfg.Model)
 
 			if cfg.CallbackHandler != nil {
 				cfg.CallbackHandler.OnToolEnd(ctx, tool, a.Name(), toolArgs, res)
