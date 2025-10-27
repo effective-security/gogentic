@@ -117,14 +117,14 @@ var (
 		Type:         metrics.TypeSample,
 		Name:         "perf_assistant_call",
 		Help:         "perf_assistant_call provides duration of assistant call",
-		RequiredTags: []string{"agent"},
+		RequiredTags: []string{"agent", "model"},
 	}
 
 	PerfToolCall = metrics.Describe{
 		Type:         metrics.TypeSample,
 		Name:         "perf_tool_call",
 		Help:         "perf_tool_call provides duration of tool call",
-		RequiredTags: []string{"tool"},
+		RequiredTags: []string{"tool", "model"},
 	}
 )
 

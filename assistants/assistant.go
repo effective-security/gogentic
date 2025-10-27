@@ -241,7 +241,7 @@ func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*llms.Conten
 
 func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
 	started := time.Now()
-	defer metricskey.PerfAssistantCall.MeasureSince(started, a.Name())
+	defer metricskey.PerfAssistantCall.MeasureSince(started, a.Name(), a.LLM.GetName())
 
 	// reset the run messages
 	a.runMessages = nil
