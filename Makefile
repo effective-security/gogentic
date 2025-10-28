@@ -29,10 +29,11 @@ clean:
 		${PROJ_BIN}
 
 tools:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
 	go install github.com/effective-security/cov-report/cmd/cov-report@latest
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	go install go.uber.org/mock/mockgen@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
+	go install github.com/effective-security/golangci-linters/cmd/custom-linters@latest
 
 change_log:
 	echo "Recent changes" > ./change_log.txt
