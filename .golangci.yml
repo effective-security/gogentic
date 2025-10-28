@@ -1,0 +1,51 @@
+version: "2"
+run:
+  build-tags:
+    - exclude_graphdriver_btrfs
+linters:
+  enable:
+    - asasalint
+    - bidichk
+    - copyloopvar
+    - misspell
+    - revive
+  settings:
+    revive:
+      max-open-files: 2048
+      confidence: 0.1
+      severity: warning
+      enable-all-rules: false
+      rules:
+        - name: empty-lines
+          severity: warning
+          disabled: false
+          exclude:
+            - ""
+        - name: error-strings
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: SA1019
+    paths:
+      - mocks/*
+      - test/*
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - mocks/*
+      - test/*
+      - third_party$
+      - builtin$
+      - examples$
