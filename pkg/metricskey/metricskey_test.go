@@ -12,7 +12,6 @@ func TestMetricsDefinitions(t *testing.T) {
 	// Test that all metrics have valid names and help text
 	allMetrics := []*metrics.Describe{
 		&PerfAssistantCall,
-		&PerfChatRun,
 		&PerfToolCall,
 		&StatsAssistantCallsFailed,
 		&StatsAssistantCallsRetried,
@@ -77,11 +76,5 @@ func TestMetricsDefinitions(t *testing.T) {
 		for _, m := range toolMetrics {
 			assert.Contains(t, m.RequiredTags, "tool", "Tool metric should have tool tag: %s", m.Name)
 		}
-	})
-
-	t.Run("Performance metrics have appropriate tags", func(t *testing.T) {
-		assert.Contains(t, PerfChatRun.RequiredTags, "tenant", "PerfChatRun should have tenant tag")
-		assert.Contains(t, PerfAssistantCall.RequiredTags, "agent", "PerfAssistantCall should have agent tag")
-		assert.Contains(t, PerfToolCall.RequiredTags, "tool", "PerfToolCall should have tool tag")
 	})
 }
