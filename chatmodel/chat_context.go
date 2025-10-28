@@ -29,14 +29,26 @@ type ChatContext interface {
 	SetMetadata(key string, value any)
 	// RunID returns the run ID for the chat
 	RunID() string
+	// GetOrgID retrieves the org ID from the context.
+	// This is also used in metrics.
+	// Used by some providers to identify the organization of the tenant,
+	// for example, "main" for the default organization.
+	GetOrgID() string
+	// SetOrgID updates the org ID in the context
+	SetOrgID(id string)
 }
 
 type chatContext struct {
+	orgID    string
 	tenantID string
 	chatID   string
 	runID    string
 	metadata sync.Map
 	appData  any
+}
+
+func (c *chatContext) GetOrgID() string {
+	return c.orgID
 }
 
 func (c *chatContext) GetTenantID() string {
@@ -54,6 +66,10 @@ func (c *chatContext) RunID() string {
 // SetChatID updates the chat ID in the context
 func (c *chatContext) SetChatID(id string) {
 	c.chatID = id
+}
+
+func (c *chatContext) SetOrgID(id string) {
+	c.orgID = id
 }
 
 func (c *chatContext) AppData() any {
@@ -75,6 +91,7 @@ func NewChatContext(tenantID, chatID string, appData any) ChatContext {
 		chatID = NewChatID()
 	}
 	return &chatContext{
+		orgID:    "main",
 		tenantID: tenantID,
 		chatID:   chatID,
 		runID:    NewChatID(),
@@ -127,6 +144,15 @@ func GetTenantAndChatID(ctx context.Context) (string, string, error) {
 		return v.GetTenantID(), v.GetChatID(), nil
 	}
 	return "", "", errors.WithStack(ErrInvalidChatContext)
+}
+
+// GetOrgID retrieves the org ID from the provided context.
+// If the context does not contain a ChatContext, it returns "main".
+func GetOrgID(ctx context.Context) string {
+	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+		return v.GetOrgID()
+	}
+	return "main"
 }
 
 // NewChatID generates a new chat ID using the flake ID generator.
