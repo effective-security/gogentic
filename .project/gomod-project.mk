@@ -205,9 +205,10 @@ vulns:
 	echo "Running vulns"
 	govulncheck ${PROJ_PACKAGE}/...
 
-lint: fmt vet
+lint: fmt
 	echo "Running lint"
 	golangci-lint run --timeout 20m0s ./...
+	custom-linters ./...
 
 test:
 	echo "Running test"

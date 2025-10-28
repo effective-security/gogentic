@@ -34,7 +34,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	go.uber.org/mock v0.6.0
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
+	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
 	golang.org/x/tools v0.38.0
 	google.golang.org/api v0.253.0
 	google.golang.org/genai v1.32.0
