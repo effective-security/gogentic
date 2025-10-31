@@ -157,7 +157,7 @@ func convertCandidates(candidates []*genai.Candidate, usage *genai.GenerateConte
 
 		if usage != nil {
 			metadata["InputTokens"] = usage.PromptTokenCount
-			metadata["OutputTokens"] = usage.CandidatesTokenCount
+			metadata["OutputTokens"] = usage.CandidatesTokenCount + usage.ToolUsePromptTokenCount + usage.ThoughtsTokenCount
 			metadata["TotalTokens"] = usage.TotalTokenCount
 		}
 
