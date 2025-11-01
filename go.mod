@@ -1,6 +1,6 @@
 module github.com/effective-security/gogentic
 
-go 1.24.7
+go 1.25.3
 
 require (
 	cloud.google.com/go/aiplatform v1.108.0
@@ -11,16 +11,16 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.39.5
 	github.com/aws/aws-sdk-go-v2/config v1.31.16
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.42.1
-	github.com/brianvoe/gofakeit/v7 v7.8.1
+	github.com/brianvoe/gofakeit/v7 v7.8.2
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.5.1+incompatible
-	github.com/effective-security/metrics v0.8.108
-	github.com/effective-security/x v0.15.73
-	github.com/effective-security/xdb v0.24.120
-	github.com/effective-security/xlog v0.10.47
+	github.com/effective-security/metrics v0.8.119
+	github.com/effective-security/x v0.15.75
+	github.com/effective-security/xdb v0.24.126
+	github.com/effective-security/xlog v0.10.48
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
