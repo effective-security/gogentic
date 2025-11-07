@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/porto/xhttp/httperror"
 	"github.com/effective-security/xlog"
 	"github.com/redis/go-redis/v9"
 )
@@ -65,7 +66,11 @@ func (m *redisStore) messages(ctx context.Context) []llms.Message {
 	// Get all messages in the list
 	data, err := m.client.LRange(ctx, key, 0, -1).Result()
 	if err != nil {
-		logger.ContextKV(ctx, xlog.ERROR, "reason", "GetRedisMessages", "err", err.Error())
+		l := xlog.ERROR
+		if httperror.IsTimeout(err) {
+			l = xlog.WARNING
+		}
+		logger.ContextKV(ctx, l, "reason", "GetRedisMessages", "err", err.Error())
 		return nil
 	}
 
