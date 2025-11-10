@@ -3,7 +3,7 @@ module github.com/effective-security/gogentic
 go 1.25.3
 
 require (
-	cloud.google.com/go/aiplatform v1.108.0
+	cloud.google.com/go/aiplatform v1.109.0
 	cloud.google.com/go/auth v0.17.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
