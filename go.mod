@@ -20,7 +20,7 @@ require (
 	github.com/effective-security/metrics v0.8.119
 	github.com/effective-security/porto v0.35.367
 	github.com/effective-security/x v0.15.77
-	github.com/effective-security/xdb v0.24.127
+	github.com/effective-security/xdb v0.24.128
 	github.com/effective-security/xlog v0.10.48
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/google/go-cmp v0.7.0
