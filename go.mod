@@ -18,9 +18,9 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/effective-security/metrics v0.8.119
-	github.com/effective-security/porto v0.35.367
+	github.com/effective-security/porto v0.35.371
 	github.com/effective-security/x v0.15.77
-	github.com/effective-security/xdb v0.24.127
+	github.com/effective-security/xdb v0.24.128
 	github.com/effective-security/xlog v0.10.48
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/google/go-cmp v0.7.0
@@ -91,10 +91,10 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
-	github.com/effective-security/xpki v0.26.248 // indirect
+	github.com/effective-security/xpki v0.26.249 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.11 // indirect
-	github.com/getsentry/sentry-go v0.38.0 // indirect
+	github.com/getsentry/sentry-go v0.39.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
