@@ -67,6 +67,16 @@ func (g *GoogleAI) GenerateContent(
 		TopK:            genaiutils.Float32Ptr(float32(opts.TopK)),
 		Seed:            genaiutils.Int32Ptr(int32(opts.Seed)),
 	}
+	switch opts.ReasoningEffort {
+	case llms.ReasoningEffortLow, llms.ReasoningEffortMedium:
+		callCfg.ThinkingConfig = &genai.ThinkingConfig{
+			ThinkingLevel: genai.ThinkingLevelLow,
+		}
+	case llms.ReasoningEffortHigh:
+		callCfg.ThinkingConfig = &genai.ThinkingConfig{
+			ThinkingLevel: genai.ThinkingLevelHigh,
+		}
+	}
 
 	callCfg.SafetySettings = []*genai.SafetySetting{
 		{

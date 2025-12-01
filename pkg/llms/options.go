@@ -10,6 +10,16 @@ import (
 // CallOption is a function that configures a CallOptions.
 type CallOption func(*CallOptions)
 
+type ReasoningEffort int
+
+const (
+	ReasoningEffortDefault = iota
+	ReasoningEffortMinimal
+	ReasoningEffortLow
+	ReasoningEffortMedium
+	ReasoningEffortHigh
+)
+
 // CallOptions is a set of options for calling models. Not all models support
 // all options.
 type CallOptions struct {
@@ -69,6 +79,8 @@ type CallOptions struct {
 	// Supported MIME types are: text/plain: (default) Text output.
 	// application/json: JSON response in the response candidates.
 	//ResponseMIMEType string `json:"response_mime_type,omitempty"`
+
+	ReasoningEffort ReasoningEffort
 }
 
 // Tool is a tool that can be used by the model.
@@ -280,5 +292,12 @@ func WithMetadata(metadata map[string]any) CallOption {
 func WithResponseFormat(responseFormat *schema.ResponseFormat) CallOption {
 	return func(o *CallOptions) {
 		o.ResponseFormat = responseFormat
+	}
+}
+
+// WithReasoningEffort allows setting the reasoning effort.
+func WithReasoningEffort(reasoningEffort ReasoningEffort) CallOption {
+	return func(o *CallOptions) {
+		o.ReasoningEffort = reasoningEffort
 	}
 }

@@ -184,6 +184,24 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
 	}
 
+	reasoningTokens := int64(0)
+	switch opts.ReasoningEffort {
+	case llms.ReasoningEffortLow:
+		reasoningTokens = 1000
+	case llms.ReasoningEffortMedium:
+		reasoningTokens = 5000
+	case llms.ReasoningEffortHigh:
+		reasoningTokens = 10000
+	}
+
+	if reasoningTokens > 0 {
+		params.Thinking = anthropic.ThinkingConfigParamUnion{
+			OfEnabled: &anthropic.ThinkingConfigEnabledParam{
+				BudgetTokens: reasoningTokens,
+			},
+		}
+	}
+
 	if systemPrompt != "" {
 		params.System = []anthropic.TextBlockParam{
 			{
