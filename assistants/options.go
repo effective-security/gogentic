@@ -106,6 +106,8 @@ type Config struct {
 	MaxToolCalls int
 	// MaxMessages is the maximum number of messages per run.
 	MaxMessages int
+
+	ReasoningEffort llms.ReasoningEffort
 }
 
 func NewConfig(opts ...Option) *Config {
@@ -399,6 +401,10 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 
 	if c.StreamingFunc != nil {
 		chainCallOption = append(chainCallOption, llms.WithStreamingFunc(c.StreamingFunc))
+	}
+
+	if c.ReasoningEffort != llms.ReasoningEffortDefault {
+		chainCallOption = append(chainCallOption, llms.WithReasoningEffort(c.ReasoningEffort))
 	}
 
 	return chainCallOption

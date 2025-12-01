@@ -279,6 +279,17 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		//TopP:            param.NewOpt(opts.TopP),
 	}
 
+	switch opts.ReasoningEffort {
+	case llms.ReasoningEffortLow:
+		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+	case llms.ReasoningEffortMedium:
+		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
+	case llms.ReasoningEffortHigh:
+		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
+	default:
+		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMinimal}
+	}
+
 	// Tool choice mapping (support simple string modes)
 	if opts.ToolChoice != nil {
 		if s, ok := opts.ToolChoice.(string); ok {
