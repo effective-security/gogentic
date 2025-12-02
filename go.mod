@@ -19,7 +19,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/effective-security/metrics v0.8.121
 	github.com/effective-security/porto v0.36.373
-	github.com/effective-security/x v0.15.77
+	github.com/effective-security/x v0.15.78
 	github.com/effective-security/xdb v0.24.128
 	github.com/effective-security/xlog v0.10.48
 	github.com/go-playground/validator/v10 v10.28.0
@@ -27,8 +27,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/nikolalohinski/gonja v1.5.3
-	github.com/openai/openai-go/v3 v3.8.1
-	github.com/redis/go-redis/v9 v9.17.1
+	github.com/openai/openai-go/v3 v3.9.0
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.40.0
@@ -72,7 +72,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.2 // indirect
-	github.com/aws/smithy-go v1.23.2 // indirect
+	github.com/aws/smithy-go v1.24.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
