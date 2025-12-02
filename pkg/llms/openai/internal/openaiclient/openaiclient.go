@@ -16,7 +16,7 @@ import (
 const (
 	DefaultBaseURL              = "https://api.openai.com/v1"
 	DefaultFunctionCallBehavior = "auto"
-	DefaultChatModel            = "gpt-4o"
+	DefaultChatModel            = "gpt-5-mini"
 	DefaultMaxTokens            = 2 * 16384
 )
 
