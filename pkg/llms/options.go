@@ -14,7 +14,7 @@ type ReasoningEffort int
 
 const (
 	ReasoningEffortDefault = iota
-	ReasoningEffortMinimal
+	ReasoningEffortNone
 	ReasoningEffortLow
 	ReasoningEffortMedium
 	ReasoningEffortHigh

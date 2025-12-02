@@ -287,7 +287,7 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 	case llms.ReasoningEffortHigh:
 		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
 	default:
-		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMinimal}
+		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
 	}
 
 	// Tool choice mapping (support simple string modes)
