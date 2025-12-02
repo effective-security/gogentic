@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -279,7 +280,13 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		//TopP:            param.NewOpt(opts.TopP),
 	}
 
-	switch opts.ReasoningEffort {
+	effort := opts.ReasoningEffort
+	if strings.HasPrefix(o.client.Model, "gpt-5-pro") {
+		//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
+		effort = llms.ReasoningEffortHigh
+	}
+
+	switch effort {
 	case llms.ReasoningEffortLow:
 		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
 	case llms.ReasoningEffortMedium:
@@ -287,7 +294,17 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 	case llms.ReasoningEffortHigh:
 		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
 	default:
-		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
+		if strings.HasPrefix(o.client.Model, "gpt-5.1") {
+			//   - `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported
+			//     reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool
+			//     calls are supported for all reasoning values in gpt-5.1.
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
+		} else {
+			//   - All models before `gpt-5.1` default to `medium` reasoning effort, and do not
+			//     support `none`.
+			//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+		}
 	}
 
 	// Tool choice mapping (support simple string modes)
