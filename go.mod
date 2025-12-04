@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.40.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.3
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.47.0
-	github.com/brianvoe/gofakeit/v7 v7.12.0
+	github.com/brianvoe/gofakeit/v7 v7.12.1
 	github.com/bububa/ljson v1.0.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.12.0
@@ -38,7 +38,7 @@ require (
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 	golang.org/x/tools v0.39.0
 	google.golang.org/api v0.257.0
-	google.golang.org/genai v1.36.0
+	google.golang.org/genai v1.37.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/yaml v1.6.0
