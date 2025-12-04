@@ -5,21 +5,21 @@ providers:
   # the first provider is the default one if default_provider is not set
   - name: OPENAI
     token: env://OPENAI_API_KEY
-    default_model: gpt-4.1
+    default_model: gpt-5
     available_models:
-      - gpt-5
-      - gpt-5-search-api
-      - gpt-4.1
-      - gpt-4o
-      - gpt-4
-      - gpt-4-mini
+    - gpt-5.1
+    - gpt-5.1-mini
+    - gpt-5.1-codex
+    - gpt-5
     open_ai:
       api_type: OPENAI
 
   - name: AZURE
     token: env://AZURE_OPENAI_API_KEY
-    default_model: gpt-5
+    default_model: gpt-5.1
     available_models:
+      - gpt-5.1
+      - gpt-5-mini
       - gpt-5
     open_ai:
       api_type: AZURE
@@ -54,19 +54,21 @@ providers:
 
   - name: GOOGLEAI
     token: env://GOOGLEAI_TOKEN
-    default_model: gemini-2.5-flash-preview-05-20
+    default_model: gemini-2.5-pro
     available_models:
-      - gemini-2.5-flash-preview-05-20
+      - gemini-2.5-pro
+      - gemini-3
     open_ai:
       api_type: GOOGLEAI
 
 tool_models:
   default:
-    - gpt-4o
+    - gpt-5
   web_search:
-    - gpt-4-mini
+    - gpt-5
 assistant_models:
   default:
-    - gpt-4o
+    - gpt-5
   orchestrator:
     - claude-opus-4-1-20250805
+    - claude-sonnet-4-5-20250929

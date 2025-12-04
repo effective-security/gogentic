@@ -156,8 +156,8 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	//llmModel, err := f.ModelByName("gpt-4.1")
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.ModelByName("gemini-2.5-pro")
+	//llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -283,7 +283,7 @@ func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("GOOGLEAI")
+	llmModel, err := f.ModelByType("AZURE")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -298,6 +298,7 @@ func Test_Real_Providers(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		//assistants.WithPromptCacheMode(llms.PromptCacheModeInMemory),
 	}
 
 	printHistory := func(ctx context.Context) {

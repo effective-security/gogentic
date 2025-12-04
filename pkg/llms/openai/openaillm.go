@@ -307,6 +307,17 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		}
 	}
 
+	switch opts.PromptCacheMode {
+	case llms.PromptCacheModeInMemory:
+		// TODO: SDK has a bug with invalid value
+		req.PromptCacheRetention = responses.ResponseNewParamsPromptCacheRetention("in_memory")
+	case llms.PromptCacheModeStore:
+		req.PromptCacheRetention = responses.ResponseNewParamsPromptCacheRetention24h
+	}
+	if opts.PromptCacheMode != llms.PromptCacheModeNone && opts.PromptCacheKey != "" {
+		req.PromptCacheKey = param.NewOpt(opts.PromptCacheKey)
+	}
+
 	// Tool choice mapping (support simple string modes)
 	if opts.ToolChoice != nil {
 		if s, ok := opts.ToolChoice.(string); ok {
@@ -346,8 +357,9 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 			"OutputTokens":    result.Usage.OutputTokens,
 			"InputTokens":     result.Usage.InputTokens,
 			"TotalTokens":     result.Usage.TotalTokens,
-			"ReasoningTokens": 0,
+			"ReasoningTokens": result.Usage.OutputTokensDetails.ReasoningTokens,
 		},
+		//ReasoningContent: // TODO,
 	}
 
 	// Map Responses output items into tool calls

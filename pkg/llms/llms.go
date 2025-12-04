@@ -76,6 +76,9 @@ const (
 
 	// Web Search tool support, used by models that support web search grounding.
 	CapabilityWebSearchTool
+
+	// Prompt Caching
+	CapabilityPromptCaching
 )
 
 var providerCapabilities = map[ProviderType]Capability{
@@ -88,7 +91,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityToolCallStreaming |
 		CapabilitySystemPrompt |
 		CapabilityVision |
-		CapabilityWebSearchTool,
+		CapabilityWebSearchTool |
+		CapabilityPromptCaching,
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
@@ -128,6 +132,7 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt,
+	//CapabilityPromptCaching,
 
 	ProviderAzureAD: CapabilityText, // Proxy passthrough
 }

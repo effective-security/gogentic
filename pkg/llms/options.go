@@ -20,6 +20,14 @@ const (
 	ReasoningEffortHigh
 )
 
+type PromptCacheMode int
+
+const (
+	PromptCacheModeNone PromptCacheMode = iota
+	PromptCacheModeInMemory
+	PromptCacheModeStore
+)
+
 // CallOptions is a set of options for calling models. Not all models support
 // all options.
 type CallOptions struct {
@@ -81,6 +89,15 @@ type CallOptions struct {
 	//ResponseMIMEType string `json:"response_mime_type,omitempty"`
 
 	ReasoningEffort ReasoningEffort
+
+	// PromptCacheMode controls whether and how prompt caching is used.
+	// Prompt caching allows storing and retrieving model responses for identical prompts,
+	// which can improve performance and reduce costs. The mode determines the caching strategy.
+	PromptCacheMode PromptCacheMode
+
+	// PromptCacheKey is the key used to identify a cached prompt/response pair.
+	// If set, it overrides the default cache key derived from the prompt and options.
+	PromptCacheKey string
 }
 
 // Tool is a tool that can be used by the model.
@@ -299,5 +316,19 @@ func WithResponseFormat(responseFormat *schema.ResponseFormat) CallOption {
 func WithReasoningEffort(reasoningEffort ReasoningEffort) CallOption {
 	return func(o *CallOptions) {
 		o.ReasoningEffort = reasoningEffort
+	}
+}
+
+// WithPromptCacheMode allows setting the prompt cache mode.
+func WithPromptCacheMode(promptCacheMode PromptCacheMode) CallOption {
+	return func(o *CallOptions) {
+		o.PromptCacheMode = promptCacheMode
+	}
+}
+
+// WithPromptCacheKey allows setting the prompt cache key.
+func WithPromptCacheKey(promptCacheKey string) CallOption {
+	return func(o *CallOptions) {
+		o.PromptCacheKey = promptCacheKey
 	}
 }
