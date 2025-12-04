@@ -33,23 +33,23 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm := model.(*fakeLLM)
-	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with single model
-	model, err = f.ModelByName("gpt-4-mini")
+	model, err = f.ModelByName("gpt-5")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4-mini", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with multiple preferred models
-	model, err = f.ModelByName("gpt-4-unknown", "gpt-4.1")
+	model, err = f.ModelByName("gpt-5.1-unknown", "gpt-5.1-mini")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5.1-mini", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with non-existent models (should fallback to default)
@@ -57,21 +57,21 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	model, err = f.ModelByType("AZURE")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "AZURE", fm.provider)
 
 	model, err = f.ModelByType("OPENAI")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	model, err = f.ModelByType("ANTHROPIC")
@@ -100,7 +100,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4-mini", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ToolModel with preferred models
@@ -108,7 +108,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4-mini", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ToolModel with non-existent tool (should use default)
@@ -116,7 +116,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4o", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test AssistantModel with specific assistant
@@ -128,11 +128,11 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	// Test AssistantModel with preferred models
-	model, err = f.AssistantModel("orchestrator", "gpt-4-mini")
+	model, err = f.AssistantModel("orchestrator", "gpt-5")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4-mini", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test AssistantModel with non-existent assistant (should use default)
@@ -140,7 +140,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4o", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test error cases
@@ -165,7 +165,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-4.1", fm.model)
+	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 }
 

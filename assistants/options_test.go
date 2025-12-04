@@ -84,7 +84,10 @@ func Test_ChainCallOptions(t *testing.T) {
 		assistants.WithCallback(nil),
 		assistants.WithPromptInput(map[string]any{"Input": "input"}),
 		//assistants.WithCallback(callbacks.StreamLogHandler{}),
+		assistants.WithReasoningEffort(llms.ReasoningEffortLow),
+		assistants.WithPromptCacheMode(llms.PromptCacheModeInMemory),
+		assistants.WithPromptCacheKey("test"),
 	)
 	llmOpts = cfg.GetCallOptions()
-	assert.Equal(t, 14, len(llmOpts))
+	assert.Equal(t, 17, len(llmOpts))
 }

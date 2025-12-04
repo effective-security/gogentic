@@ -395,7 +395,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 
 		resp, err = a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
-			return nil, messageHistory, errors.Wrapf(err, "failed to generate content from LLM")
+			return nil, messageHistory, errors.Wrapf(err, "assistant %s: model %s: failed to generate content from LLM", assistantName, modelName)
 		}
 
 		if cfg.CallbackHandler != nil {
@@ -417,6 +417,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			if retryCount >= maxRetries {
 				logger.ContextKV(ctx, xlog.ERROR,
 					"assistant", assistantName,
+					"model", modelName,
 					"status", "max_retries_exceeded",
 					"input", slices.StringUpto(parsedInput, 64),
 					"retry_count", retryCount,
@@ -425,6 +426,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			}
 			logger.ContextKV(ctx, xlog.WARNING,
 				"assistant", assistantName,
+				"model", modelName,
 				"status", "retrying_empty_response",
 				"retry_count", retryCount,
 			)
@@ -458,6 +460,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	if len(choices) < 1 {
 		logger.ContextKV(ctx, xlog.ERROR,
 			"assistant", assistantName,
+			"model", modelName,
 			"status", "empty_choices",
 			"input", slices.StringUpto(parsedInput, 64),
 		)
@@ -467,6 +470,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	// Log response analysis for debugging
 	logger.ContextKV(ctx, xlog.DEBUG,
 		"assistant", assistantName,
+		"model", modelName,
 		"status", "response_analysis",
 		"choices_count", len(choices),
 		"tool_calls", totalToolExecuted,
@@ -503,6 +507,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", assistantName,
+				"model", modelName,
 				"chat_id", chatID,
 				"status", "added_message_history",
 				"message_history", len(a.runMessages),
@@ -521,6 +526,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			logger.ContextKV(ctx, xlog.DEBUG,
 				"assistant", assistantName,
 				"status", "failed_to_parse_llm_response",
+				"model", modelName,
 				"err", err.Error(),
 				"output_parser", a.OutputParser.Type(),
 				"result", result,
