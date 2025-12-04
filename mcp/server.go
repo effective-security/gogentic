@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"reflect"
+	"runtime/debug"
 	"slices"
 	"sort"
 
@@ -12,8 +13,11 @@ import (
 	"github.com/effective-security/gogentic/mcp/internal/protocol"
 	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/x/maps"
+	"github.com/effective-security/xlog"
 	"github.com/invopop/jsonschema"
 )
+
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "mcp")
 
 // Here we define the actual MCP server that users will create and run
 // A server can be passed a number of handlers to handle requests from clients
@@ -540,30 +544,53 @@ func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToo
 	} else if handlerType.NumIn() == 1 {
 		argumentType = handlerType.In(0)
 	}
-	return func(ctx context.Context, arguments baseCallToolRequestParams) *toolResponseSent {
+	return func(ctx context.Context, arguments baseCallToolRequestParams) (resp *toolResponseSent) {
+		defer func() {
+			if r := recover(); r != nil {
+				var err error
+				switch recovered := r.(type) {
+				case error:
+					err = recovered
+				default:
+					err = errors.Errorf("%v", recovered)
+				}
+				resp = newToolResponseSentError(errors.Wrap(err, "internal error: tool panicked"))
+
+				logger.ContextKV(ctx, xlog.ERROR,
+					"reason", "panic",
+					"err", err.Error(),
+					"stack", string(debug.Stack()))
+			}
+		}()
+
 		// Instantiate a struct of the type of the arguments
-		if !reflect.New(argumentType).CanInterface() {
+		rt := reflect.New(argumentType)
+		if !rt.CanInterface() {
 			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
 		}
-		unmarshaledArguments := reflect.New(argumentType).Interface()
+		unmarshaledArguments := rt.Interface()
 
-		// Unmarshal the JSON into the correct type
-		err := json.Unmarshal(arguments.Arguments, &unmarshaledArguments)
-		if err != nil {
-			return newToolResponseSentError(errors.Wrap(err, "failed to unmarshal arguments"))
+		if len(arguments.Arguments) > 0 {
+			// Unmarshal the JSON into the correct type
+			err := json.Unmarshal(arguments.Arguments, &unmarshaledArguments)
+			if err != nil {
+				return newToolResponseSentError(errors.Wrap(err, "failed to unmarshal arguments"))
+			}
 		}
-
 		// Need to dereference the unmarshaled arguments
 		of := reflect.ValueOf(unmarshaledArguments)
-		if of.Kind() != reflect.Ptr || !of.Elem().CanInterface() {
+		if of.Kind() != reflect.Ptr {
 			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
 		}
-
+		elem := of.Elem()
+		if !elem.CanInterface() {
+			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
+		}
 		var args []reflect.Value
 		if handlerType.NumIn() == 2 {
-			args = []reflect.Value{reflect.ValueOf(ctx), of.Elem()}
+			args = []reflect.Value{reflect.ValueOf(ctx), elem}
 		} else {
-			args = []reflect.Value{of.Elem()}
+			args = []reflect.Value{elem}
 		}
 
 		// Call the handler with the typed arguments
@@ -707,20 +734,13 @@ func (s *Server) handleToolCalls(ctx context.Context, req *transport.BaseJSONRPC
 		return nil, errors.Wrap(err, "failed to unmarshal arguments")
 	}
 
-	var toolToUse *tool
-	s.tools.Range(func(k string, t *tool) bool {
-		if k != params.Name {
-			return true
-		}
-		toolToUse = t
-		return false
-	})
-
-	if toolToUse == nil {
-		return nil, errors.Wrapf(err, "unknown tool: %s", req.Method)
+	toolToUse, ok := s.tools.Load(params.Name)
+	if toolToUse == nil || !ok {
+		return nil, errors.Errorf("unknown tool: %s", params.Name)
 	}
 	return toolToUse.Handler(ctx, params), nil
 }
+
 func (s *Server) generateCapabilities() ServerCapabilities {
 	t := false
 	return ServerCapabilities{
