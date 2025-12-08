@@ -19,7 +19,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/effective-security/metrics v0.8.122
 	github.com/effective-security/porto v0.36.373
-	github.com/effective-security/x v0.15.79
+	github.com/effective-security/x v0.15.80
 	github.com/effective-security/xdb v0.24.130
 	github.com/effective-security/xlog v0.10.48
 	github.com/go-playground/validator/v10 v10.28.0
