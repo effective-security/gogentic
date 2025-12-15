@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	cloud.google.com/go/aiplatform v1.111.0
-	cloud.google.com/go/auth v0.17.0
+	cloud.google.com/go/auth v0.18.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
