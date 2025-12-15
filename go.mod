@@ -18,7 +18,7 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/effective-security/metrics v0.8.122
-	github.com/effective-security/porto v0.36.375
+	github.com/effective-security/porto v0.36.376
 	github.com/effective-security/x v0.15.80
 	github.com/effective-security/xdb v0.24.130
 	github.com/effective-security/xlog v0.10.48
