@@ -31,6 +31,8 @@ type RunStats struct {
 	LLMBytesIn              uint64
 	LLMInputTokens          uint64
 	LLMOutputTokens         uint64
+	LLMCacheWriteTokens     uint64
+	LLMCacheReadTokens      uint64
 	LLMTotalTokens          uint64
 	AssistantCalls          uint32
 	AssistantCallsSucceeded uint32
@@ -218,9 +220,11 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 		return
 	}
 
-	tokensIn, tokensOut, tokensTotal := llmutils.CountTokens(resp)
+	tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp)
 	atomic.AddUint64(&run.stats.LLMInputTokens, uint64(tokensIn))
 	atomic.AddUint64(&run.stats.LLMOutputTokens, uint64(tokensOut))
+	atomic.AddUint64(&run.stats.LLMCacheWriteTokens, uint64(tokensCacheWrite))
+	atomic.AddUint64(&run.stats.LLMCacheReadTokens, uint64(tokensCacheRead))
 	atomic.AddUint64(&run.stats.LLMTotalTokens, uint64(tokensTotal))
 
 	run.print(agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens", llm.GetName(), tokensIn, tokensOut, tokensTotal))

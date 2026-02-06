@@ -406,9 +406,11 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), assistantName, modelName, orgID)
 		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), assistantName, modelName, orgID)
 
-		tokensIn, tokensOut, tokensTotal := llmutils.CountTokens(resp)
+		tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp)
 		metricskey.StatsLLMInputTokens.IncrCounter(float64(tokensIn), assistantName, modelName, orgID)
 		metricskey.StatsLLMOutputTokens.IncrCounter(float64(tokensOut), assistantName, modelName, orgID)
+		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(tokensCacheWrite), assistantName, modelName, orgID)
+		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(tokensCacheRead), assistantName, modelName, orgID)
 		metricskey.StatsLLMTotalTokens.IncrCounter(float64(tokensTotal), assistantName, modelName, orgID)
 
 		// Check for empty response and retry if needed

@@ -356,6 +356,7 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		GenerationInfo: map[string]any{
 			"OutputTokens":    result.Usage.OutputTokens,
 			"InputTokens":     result.Usage.InputTokens,
+			"CacheReadTokens": result.Usage.InputTokensDetails.CachedTokens,
 			"TotalTokens":     result.Usage.TotalTokens,
 			"ReasoningTokens": result.Usage.OutputTokensDetails.ReasoningTokens,
 		},

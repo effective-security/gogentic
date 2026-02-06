@@ -23,6 +23,8 @@ func TestMetricsDefinitions(t *testing.T) {
 		&StatsLLMInputTokens,
 		&StatsLLMMessagesSent,
 		&StatsLLMOutputTokens,
+		&StatsLLMCachedWriteTokens,
+		&StatsLLMCachedReadTokens,
 		&StatsLLMTotalTokens,
 		&StatsToolCallsFailed,
 		&StatsToolCallsNotFound,
