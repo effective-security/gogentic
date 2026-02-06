@@ -292,11 +292,13 @@ func CountResponseContentSize(resp *llms.ContentResponse) uint64 {
 	return size
 }
 
-func CountTokens(resp *llms.ContentResponse) (in, out, total int64) {
+func CountTokens(resp *llms.ContentResponse) (in, out, cacheWrite, cacheRead, total int64) {
 	for _, choice := range resp.Choices {
 		ma := values.MapAny(choice.GenerationInfo)
 		in += ma.Int64("InputTokens")
 		out += ma.Int64("OutputTokens")
+		cacheWrite += ma.Int64("CacheWriteTokens")
+		cacheRead += ma.Int64("CacheReadTokens")
 		total += ma.Int64("TotalTokens")
 	}
 	return

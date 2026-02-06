@@ -246,11 +246,13 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 				Content:    content.Text,
 				StopReason: string(result.StopReason),
 				GenerationInfo: map[string]any{
-					"InputTokens":  result.Usage.InputTokens,
-					"OutputTokens": result.Usage.OutputTokens,
-					"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
-					"ID":           result.ID,
-					"Index":        i,
+					"InputTokens":      result.Usage.InputTokens,
+					"OutputTokens":     result.Usage.OutputTokens,
+					"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
+					"CacheReadTokens":  result.Usage.CacheReadInputTokens,
+					"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
+					"ID":               result.ID,
+					"Index":            i,
 				},
 			})
 		case anthropic.ToolUseBlock:
@@ -270,11 +272,13 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 				},
 				StopReason: string(result.StopReason),
 				GenerationInfo: map[string]any{
-					"InputTokens":  result.Usage.InputTokens,
-					"OutputTokens": result.Usage.OutputTokens,
-					"TotalTokens":  result.Usage.InputTokens + result.Usage.OutputTokens,
-					"ID":           result.ID,
-					"Index":        i,
+					"InputTokens":      result.Usage.InputTokens,
+					"OutputTokens":     result.Usage.OutputTokens,
+					"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
+					"CacheReadTokens":  result.Usage.CacheReadInputTokens,
+					"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
+					"ID":               result.ID,
+					"Index":            i,
 				},
 			})
 		case anthropic.ServerToolUseBlock:
@@ -341,7 +345,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 	var toolCalls []llms.ToolCall
 	var currentToolCall *llms.ToolCall
 	var stopReason string
-	var inputTokens, outputTokens int64
+	var inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens int64
 
 	for stream.Next() {
 		event := stream.Current()
@@ -382,6 +386,8 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 		case anthropic.MessageDeltaEvent:
 			stopReason = string(evt.Delta.StopReason)
 			outputTokens = evt.Usage.OutputTokens
+			cacheWriteTokens = evt.Usage.CacheCreationInputTokens
+			cacheReadTokens = evt.Usage.CacheReadInputTokens
 		}
 	}
 
@@ -396,9 +402,11 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			Content:    content.String(),
 			StopReason: stopReason,
 			GenerationInfo: map[string]any{
-				"InputTokens":  inputTokens,
-				"OutputTokens": outputTokens,
-				"TotalTokens":  inputTokens + outputTokens,
+				"InputTokens":      inputTokens,
+				"OutputTokens":     outputTokens,
+				"CacheWriteTokens": cacheWriteTokens,
+				"CacheReadTokens":  cacheReadTokens,
+				"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
 			},
 		})
 	}
@@ -408,9 +416,11 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			ToolCalls:  toolCalls,
 			StopReason: stopReason,
 			GenerationInfo: map[string]any{
-				"InputTokens":  inputTokens,
-				"OutputTokens": outputTokens,
-				"TotalTokens":  inputTokens + outputTokens,
+				"InputTokens":      inputTokens,
+				"OutputTokens":     outputTokens,
+				"CacheWriteTokens": cacheWriteTokens,
+				"CacheReadTokens":  cacheReadTokens,
+				"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
 			},
 		})
 	}

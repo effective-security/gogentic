@@ -47,6 +47,20 @@ var (
 		RequiredTags: []string{"agent", "model", "org"},
 	}
 
+	StatsLLMCachedWriteTokens = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_cached_write_tokens",
+		Help:         "stats_llm_cached_write_tokens provides total cached write tokens sent to LLM",
+		RequiredTags: []string{"agent", "model", "org"},
+	}
+
+	StatsLLMCachedReadTokens = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_cached_read_tokens",
+		Help:         "stats_llm_cached_read_tokens provides total cached read tokens received from LLM",
+		RequiredTags: []string{"agent", "model", "org"},
+	}
+
 	StatsLLMTotalTokens = metrics.Describe{
 		Type:         metrics.TypeCounter,
 		Name:         "stats_llm_total_tokens",
@@ -133,6 +147,8 @@ var Metrics = []*metrics.Describe{
 	&StatsLLMBytesReceived,
 	&StatsLLMBytesSent,
 	&StatsLLMBytesTotal,
+	&StatsLLMCachedReadTokens,
+	&StatsLLMCachedWriteTokens,
 	&StatsLLMInputTokens,
 	&StatsLLMMessagesSent,
 	&StatsLLMOutputTokens,
