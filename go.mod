@@ -1,13 +1,13 @@
 module github.com/effective-security/gogentic
 
-go 1.25.3
+go 1.25.7
 
 require (
 	cloud.google.com/go/aiplatform v1.115.0
 	cloud.google.com/go/auth v0.18.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/anthropics/anthropic-sdk-go v1.21.0
+	github.com/anthropics/anthropic-sdk-go v1.22.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.49.0
@@ -18,7 +18,7 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/effective-security/metrics v0.8.125
-	github.com/effective-security/porto v0.36.378
+	github.com/effective-security/porto v0.36.379
 	github.com/effective-security/x v0.15.86
 	github.com/effective-security/xdb v0.24.133
 	github.com/effective-security/xlog v0.10.50
@@ -114,7 +114,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kaptinlin/jsonrepair v0.2.7 // indirect
+	github.com/kaptinlin/jsonrepair v0.2.8 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -171,9 +171,9 @@ require (
 	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/lint v0.0.0-20241112194109-818c5a804067 // indirect
 	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/oauth2 v0.34.0 // indirect
+	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto v0.0.0-20260203192932-546029d2fa20 // indirect
