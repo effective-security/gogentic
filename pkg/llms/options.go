@@ -20,13 +20,92 @@ const (
 	ReasoningEffortHigh
 )
 
-type PromptCacheMode int
+// PromptCacheRetention specifies provider request-level prompt cache retention.
+//
+// This terminology ("retention") is provider-specific and follows OpenAI prompt
+// caching terminology:
+// https://platform.openai.com/docs/guides/prompt-caching
+type PromptCacheRetention string
 
 const (
-	PromptCacheModeNone PromptCacheMode = iota
-	PromptCacheModeInMemory
-	PromptCacheModeStore
+	PromptCacheRetentionInMemory PromptCacheRetention = "in-memory"
+	PromptCacheRetention24h      PromptCacheRetention = "24h"
 )
+
+// PromptCacheTTL specifies Anthropic cache breakpoint TTL.
+//
+// This terminology ("breakpoint", "TTL") follows Anthropic prompt caching
+// terminology:
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+type PromptCacheTTL string
+
+const (
+	PromptCacheTTL5m PromptCacheTTL = "5m"
+	PromptCacheTTL1h PromptCacheTTL = "1h"
+)
+
+// PromptCacheTargetKind identifies the kind of target for a cache breakpoint.
+//
+// "cache breakpoint" is Anthropic terminology:
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+type PromptCacheTargetKind string
+
+const (
+	PromptCacheTargetMessagePart PromptCacheTargetKind = "message_part"
+	PromptCacheTargetTool        PromptCacheTargetKind = "tool"
+)
+
+// PromptCacheTarget identifies a cacheable prompt element.
+type PromptCacheTarget struct {
+	// Kind identifies whether the target is a message part or a tool definition.
+	Kind PromptCacheTargetKind
+	// MessageIndex selects the original llms.Message index for message_part targets.
+	MessageIndex int
+	// PartIndex selects the llms.Message.Parts index for message_part targets.
+	PartIndex int
+	// ToolIndex selects the llms.Tool index for tool targets.
+	ToolIndex int
+}
+
+// PromptCacheBreakpoint defines a provider-native cache breakpoint.
+//
+// The term "cache breakpoint" comes from Anthropic prompt caching:
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+type PromptCacheBreakpoint struct {
+	// Target identifies the prompt element that should become a cache breakpoint.
+	Target PromptCacheTarget
+	// TTL overrides the provider cache breakpoint TTL where supported.
+	TTL PromptCacheTTL
+}
+
+// PromptCacheRequestPolicy configures provider request-level prompt caching.
+//
+// Field names such as "Key" and "Retention" align with OpenAI prompt caching
+// request terminology ("prompt_cache_key", "prompt_cache_retention"):
+// https://platform.openai.com/docs/guides/prompt-caching
+type PromptCacheRequestPolicy struct {
+	// Key identifies a reusable prompt cache entry on providers that support it.
+	Key string
+	// Retention controls how long the provider should retain the cached prompt.
+	Retention PromptCacheRetention
+}
+
+// PromptCachePolicy configures provider-native prompt caching.
+//
+// It intentionally combines provider-specific terminology:
+//   - OpenAI-like providers use request-level cache key/retention terms:
+//     https://platform.openai.com/docs/guides/prompt-caching
+//   - Anthropic uses explicit cache breakpoint/TTL terms:
+//     https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+//
+// For OpenAI-like providers, Request controls prompt cache key/retention.
+// For Anthropic, Breakpoints control explicit cache breakpoints on prompt blocks/tools.
+type PromptCachePolicy struct {
+	// Request configures request-level prompt caching (e.g. OpenAI).
+	Request *PromptCacheRequestPolicy
+	// Breakpoints configures explicit cache breakpoints (e.g. Anthropic).
+	Breakpoints []PromptCacheBreakpoint
+}
 
 // CallOptions is a set of options for calling models. Not all models support
 // all options.
@@ -90,14 +169,8 @@ type CallOptions struct {
 
 	ReasoningEffort ReasoningEffort
 
-	// PromptCacheMode controls whether and how prompt caching is used.
-	// Prompt caching allows storing and retrieving model responses for identical prompts,
-	// which can improve performance and reduce costs. The mode determines the caching strategy.
-	PromptCacheMode PromptCacheMode
-
-	// PromptCacheKey is the key used to identify a cached prompt/response pair.
-	// If set, it overrides the default cache key derived from the prompt and options.
-	PromptCacheKey string
+	// PromptCachePolicy configures provider-native prompt caching.
+	PromptCachePolicy *PromptCachePolicy
 }
 
 // Tool is a tool that can be used by the model.
@@ -319,16 +392,9 @@ func WithReasoningEffort(reasoningEffort ReasoningEffort) CallOption {
 	}
 }
 
-// WithPromptCacheMode allows setting the prompt cache mode.
-func WithPromptCacheMode(promptCacheMode PromptCacheMode) CallOption {
+// WithPromptCachePolicy allows setting provider-native prompt cache policy.
+func WithPromptCachePolicy(promptCachePolicy *PromptCachePolicy) CallOption {
 	return func(o *CallOptions) {
-		o.PromptCacheMode = promptCacheMode
-	}
-}
-
-// WithPromptCacheKey allows setting the prompt cache key.
-func WithPromptCacheKey(promptCacheKey string) CallOption {
-	return func(o *CallOptions) {
-		o.PromptCacheKey = promptCacheKey
+		o.PromptCachePolicy = promptCachePolicy
 	}
 }

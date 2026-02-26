@@ -170,7 +170,10 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, opti
 // messages, converts tools to the Anthropic format, and handles both streaming
 // and non-streaming responses.
 func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Message, opts *llms.CallOptions) (*llms.ContentResponse, error) {
-	sdkMessages, systemPrompt, err := ProcessMessages(messages)
+	// Keep system blocks separate (Anthropic top-level `system`) and track original
+	// message/part -> Anthropic block locations so explicit prompt-cache breakpoints
+	// can be applied later.
+	sdkMessages, systemBlocks, partLocations, err := processMessagesForRequest(messages)
 	if err != nil {
 		return nil, errors.Wrap(err, "anthropic: failed to process messages")
 	}
@@ -202,13 +205,8 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		}
 	}
 
-	if systemPrompt != "" {
-		params.System = []anthropic.TextBlockParam{
-			{
-				Type: "text",
-				Text: systemPrompt,
-			},
-		}
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
 	}
 
 	if opts.Temperature > 0 {
@@ -227,58 +225,53 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		params.Tools = tools
 	}
 
+	requestOpts, err := applyPromptCachePolicyToRequest(o, &params, opts, partLocations)
+	if err != nil {
+		return nil, err
+	}
+
 	// Handle streaming
 	if opts.StreamingFunc != nil {
-		return GenerateStreamingContent(ctx, o, params, opts.StreamingFunc)
+		return GenerateStreamingContent(ctx, o, params, opts.StreamingFunc, requestOpts...)
 	}
 
 	// Non-streaming message creation
-	result, err := o.Client.Messages.New(ctx, params)
+	result, err := o.Client.Messages.New(ctx, params, requestOpts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "anthropic: failed to create message")
 	}
 
-	choices := make([]*llms.ContentChoice, 0, len(result.Content))
-	for i, contentBlock := range result.Content {
+	// Merge all content blocks into a single ContentChoice.
+	// Sonnet 4.x (and later) frequently emits a TextBlock preamble followed by one or more
+	// ToolUseBlocks in the same response turn. Splitting them into separate choices breaks
+	// callers that expect tool calls in Choices[0], so we accumulate all blocks here and
+	// produce exactly one merged choice per API response.
+	generationInfo := map[string]any{
+		"InputTokens":      result.Usage.InputTokens,
+		"OutputTokens":     result.Usage.OutputTokens,
+		"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
+		"CacheReadTokens":  result.Usage.CacheReadInputTokens,
+		"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
+		"ID":               result.ID,
+	}
+
+	var textParts []string
+	var toolCalls []llms.ToolCall
+
+	for _, contentBlock := range result.Content {
 		switch content := contentBlock.AsAny().(type) {
 		case anthropic.TextBlock:
-			choices = append(choices, &llms.ContentChoice{
-				Content:    content.Text,
-				StopReason: string(result.StopReason),
-				GenerationInfo: map[string]any{
-					"InputTokens":      result.Usage.InputTokens,
-					"OutputTokens":     result.Usage.OutputTokens,
-					"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
-					"CacheReadTokens":  result.Usage.CacheReadInputTokens,
-					"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
-					"ID":               result.ID,
-					"Index":            i,
-				},
-			})
+			textParts = append(textParts, content.Text)
 		case anthropic.ToolUseBlock:
 			argumentsJSON, err := json.Marshal(content.Input)
 			if err != nil {
 				return nil, errors.Wrap(err, "anthropic: failed to marshal tool use arguments")
 			}
-			choices = append(choices, &llms.ContentChoice{
-				ToolCalls: []llms.ToolCall{
-					{
-						ID: content.ID,
-						FunctionCall: &llms.FunctionCall{
-							Name:      content.Name,
-							Arguments: string(argumentsJSON),
-						},
-					},
-				},
-				StopReason: string(result.StopReason),
-				GenerationInfo: map[string]any{
-					"InputTokens":      result.Usage.InputTokens,
-					"OutputTokens":     result.Usage.OutputTokens,
-					"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
-					"CacheReadTokens":  result.Usage.CacheReadInputTokens,
-					"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
-					"ID":               result.ID,
-					"Index":            i,
+			toolCalls = append(toolCalls, llms.ToolCall{
+				ID: content.ID,
+				FunctionCall: &llms.FunctionCall{
+					Name:      content.Name,
+					Arguments: string(argumentsJSON),
 				},
 			})
 		case anthropic.ServerToolUseBlock:
@@ -318,8 +311,15 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		}
 	}
 
+	choice := &llms.ContentChoice{
+		Content:        strings.Join(textParts, ""),
+		ToolCalls:      toolCalls,
+		StopReason:     string(result.StopReason),
+		GenerationInfo: generationInfo,
+	}
+
 	resp := &llms.ContentResponse{
-		Choices: choices,
+		Choices: []*llms.ContentChoice{choice},
 	}
 	return resp, nil
 }
@@ -335,8 +335,8 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 //
 // The streaming function is called for each text chunk received, allowing for
 // real-time display or processing of the generated content.
-func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.MessageNewParams, streamingFunc func(context.Context, []byte) error) (*llms.ContentResponse, error) {
-	stream := o.Client.Messages.NewStreaming(ctx, params)
+func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.MessageNewParams, streamingFunc func(context.Context, []byte) error, requestOpts ...option.RequestOption) (*llms.ContentResponse, error) {
+	stream := o.Client.Messages.NewStreaming(ctx, params, requestOpts...)
 	defer func() {
 		_ = stream.Close()
 	}()
@@ -395,38 +395,23 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 		return nil, errors.Wrap(err, "anthropic: streaming error")
 	}
 
-	// Build response
-	var choices []*llms.ContentChoice
-	if content.Len() > 0 {
-		choices = append(choices, &llms.ContentChoice{
-			Content:    content.String(),
-			StopReason: stopReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":      inputTokens,
-				"OutputTokens":     outputTokens,
-				"CacheWriteTokens": cacheWriteTokens,
-				"CacheReadTokens":  cacheReadTokens,
-				"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
-			},
-		})
-	}
-
-	if len(toolCalls) > 0 {
-		choices = append(choices, &llms.ContentChoice{
-			ToolCalls:  toolCalls,
-			StopReason: stopReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":      inputTokens,
-				"OutputTokens":     outputTokens,
-				"CacheWriteTokens": cacheWriteTokens,
-				"CacheReadTokens":  cacheReadTokens,
-				"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
-			},
-		})
+	// Produce a single merged choice (text + tool calls) to match the non-streaming path and
+	// to ensure Choices[0] always carries both Content and ToolCalls when the model emits both.
+	choice := &llms.ContentChoice{
+		Content:    content.String(),
+		ToolCalls:  toolCalls,
+		StopReason: stopReason,
+		GenerationInfo: map[string]any{
+			"InputTokens":      inputTokens,
+			"OutputTokens":     outputTokens,
+			"CacheWriteTokens": cacheWriteTokens,
+			"CacheReadTokens":  cacheReadTokens,
+			"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
+		},
 	}
 
 	return &llms.ContentResponse{
-		Choices: choices,
+		Choices: []*llms.ContentChoice{choice},
 	}, nil
 }
 

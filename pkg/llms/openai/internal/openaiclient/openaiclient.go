@@ -204,6 +204,27 @@ func (c *Client) CreateResponse(ctx context.Context, r *responses.ResponseNewPar
 	return c.createResponse(ctx, r)
 }
 
+// CreateStreamingResponse creates a response using the Responses API with SSE streaming.
+// streamFunc is called for each text delta chunk. The full Response (with usage stats) is returned
+// once the response.completed event is received.
+func (c *Client) CreateStreamingResponse(
+	ctx context.Context,
+	r *responses.ResponseNewParams,
+	streamFunc func(ctx context.Context, chunk []byte) error,
+) (*responses.Response, error) {
+	if r.Model == "" {
+		if c.Model == "" {
+			r.Model = DefaultChatModel
+		} else {
+			r.Model = c.Model
+		}
+	}
+	if !r.MaxOutputTokens.Valid() {
+		r.MaxOutputTokens = param.NewOpt(int64(DefaultMaxTokens))
+	}
+	return c.createStreamingResponse(ctx, r, streamFunc)
+}
+
 func IsAzure(apiType ProviderType) bool {
 	return apiType == ProviderAzure || apiType == ProviderAzureAD
 }

@@ -128,6 +128,22 @@ func TestChatMessage_MarshalUnmarshal_WithReasoning(t *testing.T) {
 	require.Equal(t, msg, msg2)
 }
 
+func TestChatRequest_Marshal_WithPromptCacheFields(t *testing.T) {
+	t.Parallel()
+
+	req := ChatRequest{
+		Model:                "gpt-5-mini",
+		PromptCacheKey:       "cache-key",
+		PromptCacheRetention: "in_memory",
+	}
+
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	assert.Contains(t, string(data), `"prompt_cache_key":"cache-key"`)
+	assert.Contains(t, string(data), `"prompt_cache_retention":"in_memory"`)
+}
+
 func TestTool_MarshalUnmarshal(t *testing.T) {
 	t.Parallel()
 	tool1 := Tool{
