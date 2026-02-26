@@ -131,6 +131,7 @@ func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Messa
 		Metadata:       opts.Metadata,
 		ResponseFormat: opts.ResponseFormat,
 	}
+	applyPromptCacheToChatRequest(req, o.client.Provider, &opts)
 
 	// if opts.Tools is not empty, append them to req.Tools
 	for _, tool := range opts.Tools {
@@ -271,7 +272,7 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 	}
 
 	req := &responses.ResponseNewParams{
-		Model:           values.StringsCoalesce(opts.Model, openaiclient.DefaultChatModel),
+		Model:           values.StringsCoalesce(opts.Model, o.client.Model, openaiclient.DefaultChatModel),
 		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
 		MaxOutputTokens: param.NewOpt(int64(values.NumbersCoalesce(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
 		Metadata:        convertMetadata(opts.Metadata),
@@ -279,6 +280,7 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		//Temperature:     param.NewOpt(opts.Temperature),
 		//TopP:            param.NewOpt(opts.TopP),
 	}
+	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
 
 	effort := opts.ReasoningEffort
 	if strings.HasPrefix(o.client.Model, "gpt-5-pro") {
@@ -286,36 +288,30 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		effort = llms.ReasoningEffortHigh
 	}
 
-	switch effort {
-	case llms.ReasoningEffortLow:
-		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
-	case llms.ReasoningEffortMedium:
-		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
-	case llms.ReasoningEffortHigh:
-		req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
-	default:
-		if strings.HasPrefix(o.client.Model, "gpt-5.1") {
-			//   - `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported
-			//     reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool
-			//     calls are supported for all reasoning values in gpt-5.1.
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
-		} else {
-			//   - All models before `gpt-5.1` default to `medium` reasoning effort, and do not
-			//     support `none`.
-			//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
+	// Only configure reasoning for models that support the reasoning.effort parameter.
+	// Explicitly set effort on an unsupported model (e.g. gpt-4o) is silently ignored to
+	// avoid sending an invalid parameter that the API will reject with a 400.
+	if modelSupportsReasoning(o.client.Model) {
+		switch effort {
+		case llms.ReasoningEffortLow:
 			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+		case llms.ReasoningEffortMedium:
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
+		case llms.ReasoningEffortHigh:
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
+		default:
+			if strings.HasPrefix(o.client.Model, "gpt-5.1") {
+				//   - `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported
+				//     reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool
+				//     calls are supported for all reasoning values in gpt-5.1.
+				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
+			} else {
+				//   - All models before `gpt-5.1` default to `medium` reasoning effort, and do not
+				//     support `none`.
+				//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
+				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+			}
 		}
-	}
-
-	switch opts.PromptCacheMode {
-	case llms.PromptCacheModeInMemory:
-		// TODO: SDK has a bug with invalid value
-		req.PromptCacheRetention = responses.ResponseNewParamsPromptCacheRetention("in_memory")
-	case llms.PromptCacheModeStore:
-		req.PromptCacheRetention = responses.ResponseNewParamsPromptCacheRetention24h
-	}
-	if opts.PromptCacheMode != llms.PromptCacheModeNone && opts.PromptCacheKey != "" {
-		req.PromptCacheKey = param.NewOpt(opts.PromptCacheKey)
 	}
 
 	// Tool choice mapping (support simple string modes)
@@ -342,7 +338,15 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 		req.Text = toResponsesText(opts.ResponseFormat)
 	}
 
-	result, err := o.client.CreateResponse(ctx, req)
+	var (
+		result *responses.Response
+		err    error
+	)
+	if opts.StreamingFunc != nil {
+		result, err = o.client.CreateStreamingResponse(ctx, req, opts.StreamingFunc)
+	} else {
+		result, err = o.client.CreateResponse(ctx, req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -503,6 +507,10 @@ func responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, error) {
 				return responses.ToolUnionParam{}, errors.Wrap(err, "unmarshal function parameters")
 			}
 		}
+		// Strict mode requires additionalProperties: false at every object level.
+		if t.Function.Strict {
+			enforceStrictSchema(paramsMap)
+		}
 		ft := &responses.FunctionToolParam{
 			Name:        t.Function.Name,
 			Description: param.NewOpt(t.Function.Description),
@@ -551,6 +559,37 @@ func toResponsesText(f *schema.ResponseFormat) responses.ResponseTextConfigParam
 	default:
 		return responses.ResponseTextConfigParam{Format: responses.ResponseFormatTextConfigUnionParam{OfText: &shared.ResponseFormatTextParam{}}}
 	}
+}
+
+// enforceStrictSchema recursively sets "additionalProperties": false on every object node
+// in the schema map. OpenAI strict function calling requires this at all levels.
+func enforceStrictSchema(m map[string]any) {
+	if m == nil {
+		return
+	}
+	if t, ok := m["type"]; !ok || t == "object" {
+		m["additionalProperties"] = false
+	}
+	if props, ok := m["properties"].(map[string]any); ok {
+		for _, v := range props {
+			if child, ok := v.(map[string]any); ok {
+				enforceStrictSchema(child)
+			}
+		}
+	}
+	// Handle array items
+	if items, ok := m["items"].(map[string]any); ok {
+		enforceStrictSchema(items)
+	}
+}
+
+// modelSupportsReasoning returns true for models that accept the reasoning.effort parameter.
+// gpt-4o and older chat models do not support it.
+func modelSupportsReasoning(model string) bool {
+	return strings.HasPrefix(model, "o1") ||
+		strings.HasPrefix(model, "o3") ||
+		strings.HasPrefix(model, "o4") ||
+		strings.HasPrefix(model, "gpt-5")
 }
 
 // convertMetadata converts map[string]any to shared.Metadata (map[string]string).

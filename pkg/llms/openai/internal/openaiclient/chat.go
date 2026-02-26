@@ -72,6 +72,11 @@ type ChatRequest struct {
 
 	// Metadata allows you to specify additional information that will be passed to the model.
 	Metadata map[string]any `json:"metadata,omitempty"`
+
+	// PromptCacheKey identifies a cached prompt on providers that support prompt caching.
+	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
+	// PromptCacheRetention controls request-level prompt cache retention.
+	PromptCacheRetention string `json:"prompt_cache_retention,omitempty"`
 }
 
 // Tool is a tool to use in a chat request.

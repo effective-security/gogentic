@@ -8,6 +8,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOptions(t *testing.T) {
@@ -30,10 +31,15 @@ func TestOptions(t *testing.T) {
 		Type: "json",
 	}
 	stopWords := []string{"stop"}
+	promptCachePolicy := &llms.PromptCachePolicy{
+		Request: &llms.PromptCacheRequestPolicy{
+			Key:       "test",
+			Retention: llms.PromptCacheRetentionInMemory,
+		},
+	}
 	opts := []llms.CallOption{
 		llms.WithModel("test"),
-		llms.WithPromptCacheMode(llms.PromptCacheModeInMemory),
-		llms.WithPromptCacheKey("test"),
+		llms.WithPromptCachePolicy(promptCachePolicy),
 		llms.WithMaxTokens(100),
 		llms.WithTemperature(0.5),
 		llms.WithStopWords(stopWords),
@@ -62,8 +68,7 @@ func TestOptions(t *testing.T) {
 
 	expected := llms.CallOptions{
 		Model:                  "test",
-		PromptCacheMode:        llms.PromptCacheModeInMemory,
-		PromptCacheKey:         "test",
+		PromptCachePolicy:      promptCachePolicy,
 		MaxTokens:              100,
 		Temperature:            0.5,
 		StopWords:              stopWords,
@@ -85,4 +90,35 @@ func TestOptions(t *testing.T) {
 		ReasoningEffort:        llms.ReasoningEffortLow,
 	}
 	assert.Equal(t, llmutils.ToJSON(&expected), llmutils.ToJSON(&cfg))
+}
+
+func TestWithPromptCachePolicy(t *testing.T) {
+	t.Parallel()
+
+	policy := &llms.PromptCachePolicy{
+		Request: &llms.PromptCacheRequestPolicy{
+			Key:       "cache-key",
+			Retention: llms.PromptCacheRetentionInMemory,
+		},
+		Breakpoints: []llms.PromptCacheBreakpoint{
+			{
+				Target: llms.PromptCacheTarget{
+					Kind:         llms.PromptCacheTargetMessagePart,
+					MessageIndex: 0,
+					PartIndex:    1,
+				},
+				TTL: llms.PromptCacheTTL5m,
+			},
+		},
+	}
+
+	var cfg llms.CallOptions
+	llms.WithPromptCachePolicy(policy)(&cfg)
+
+	require.NotNil(t, cfg.PromptCachePolicy)
+	assert.Same(t, policy, cfg.PromptCachePolicy)
+	assert.Equal(t, "cache-key", cfg.PromptCachePolicy.Request.Key)
+	assert.Equal(t, llms.PromptCacheRetentionInMemory, cfg.PromptCachePolicy.Request.Retention)
+	require.Len(t, cfg.PromptCachePolicy.Breakpoints, 1)
+	assert.Equal(t, llms.PromptCacheTargetMessagePart, cfg.PromptCachePolicy.Breakpoints[0].Target.Kind)
 }

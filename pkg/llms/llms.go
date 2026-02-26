@@ -99,7 +99,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt |
-		CapabilityWebSearchTool,
+		CapabilityWebSearchTool |
+		CapabilityPromptCaching,
 
 	ProviderGoogleAI: CapabilityText |
 		CapabilitySystemPrompt |

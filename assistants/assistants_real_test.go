@@ -298,7 +298,7 @@ func Test_Real_Providers(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
-		//assistants.WithPromptCacheMode(llms.PromptCacheModeInMemory),
+		//assistants.WithPromptCachePolicy(&llms.PromptCachePolicy{Request: &llms.PromptCacheRequestPolicy{Retention: llms.PromptCacheRetentionInMemory}}),
 	}
 
 	printHistory := func(ctx context.Context) {

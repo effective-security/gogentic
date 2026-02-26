@@ -109,8 +109,8 @@ type Config struct {
 
 	ReasoningEffort llms.ReasoningEffort
 
-	PromptCacheMode llms.PromptCacheMode
-	PromptCacheKey  string
+	// PromptCachePolicy configures provider-native prompt caching for the underlying llm call.
+	PromptCachePolicy *llms.PromptCachePolicy
 }
 
 func NewConfig(opts ...Option) *Config {
@@ -137,17 +137,10 @@ func WithReasoningEffort(effort llms.ReasoningEffort) Option {
 	}
 }
 
-// WithPromptCacheMode allows setting the prompt cache mode.
-func WithPromptCacheMode(promptCacheMode llms.PromptCacheMode) Option {
+// WithPromptCachePolicy configures provider-native prompt caching for the underlying llm call.
+func WithPromptCachePolicy(promptCachePolicy *llms.PromptCachePolicy) Option {
 	return func(o *Config) {
-		o.PromptCacheMode = promptCacheMode
-	}
-}
-
-// WithPromptCacheKey allows setting the prompt cache key.
-func WithPromptCacheKey(promptCacheKey string) Option {
-	return func(o *Config) {
-		o.PromptCacheKey = promptCacheKey
+		o.PromptCachePolicy = promptCachePolicy
 	}
 }
 
@@ -429,11 +422,8 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 	if c.ReasoningEffort != llms.ReasoningEffortDefault {
 		chainCallOption = append(chainCallOption, llms.WithReasoningEffort(c.ReasoningEffort))
 	}
-	if c.PromptCacheMode != llms.PromptCacheModeNone {
-		chainCallOption = append(chainCallOption, llms.WithPromptCacheMode(c.PromptCacheMode))
-	}
-	if c.PromptCacheKey != "" {
-		chainCallOption = append(chainCallOption, llms.WithPromptCacheKey(c.PromptCacheKey))
+	if c.PromptCachePolicy != nil {
+		chainCallOption = append(chainCallOption, llms.WithPromptCachePolicy(c.PromptCachePolicy))
 	}
 
 	return chainCallOption

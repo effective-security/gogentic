@@ -1,9 +1,14 @@
 package anthropic_test
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +21,11 @@ import (
 
 // Integration tests that require a real API key
 // These tests are skipped when ANTHROPIC_API_KEY is not set
+
+// claudeSonnetModel is the default for integration tests. Use claude-sonnet-4-6;
+const (
+	claudeSonnetModel = "claude-sonnet-4-6"
+)
 
 func checkAnthropicAPIKeyOrSkip(t *testing.T) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -65,6 +75,71 @@ func TestIntegrationChatSequence(t *testing.T) {
 
 	choice := resp.Choices[0]
 	assert.Contains(t, strings.ToLower(choice.Content), "6")
+}
+
+func TestIntegrationPromptCaching(t *testing.T) {
+	checkAnthropicAPIKeyOrSkip(t)
+	llm := newTestClient(t, anthropic.WithModel(claudeSonnetModel))
+
+	// Make the cacheable prefix large enough to reliably trigger Anthropic prompt caching.
+	stableSystemBlock := strings.Repeat(
+		"Policy section: reviewers must verify identity, business address, tax classification, and sanctions screening before approval. ",
+		120,
+	)
+
+	content := []llms.Message{
+		{
+			Role:  llms.RoleSystem,
+			Parts: []llms.ContentPart{llms.TextPart(stableSystemBlock)},
+		},
+		{
+			Role:  llms.RoleHuman,
+			Parts: []llms.ContentPart{llms.TextPart("Summarize the approval prerequisites in one short sentence.")},
+		},
+	}
+
+	cachePolicy := &llms.PromptCachePolicy{
+		Breakpoints: []llms.PromptCacheBreakpoint{
+			{
+				Target: llms.PromptCacheTarget{
+					Kind:         llms.PromptCacheTargetMessagePart,
+					MessageIndex: 0,
+					PartIndex:    0, // cache the large system prompt block
+				},
+				TTL: llms.PromptCacheTTL5m,
+			},
+		},
+	}
+
+	var writes []int64
+	var reads []int64
+
+	for i := 0; i < 3; i++ {
+		resp, err := llm.GenerateContent(context.Background(), content,
+			llms.WithPromptCachePolicy(cachePolicy),
+			llms.WithMaxTokens(80),
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.Choices)
+
+		choice := resp.Choices[0]
+		writes = append(writes, requireGenerationInfoInt64(t, choice.GenerationInfo, "CacheWriteTokens"))
+		reads = append(reads, requireGenerationInfoInt64(t, choice.GenerationInfo, "CacheReadTokens"))
+
+		// Some accounts/regions can behave slightly asynchronously on the first cached read.
+		// If we see a cache read hit on the second or third call, that's sufficient.
+		if i >= 1 && reads[i] > 0 {
+			break
+		}
+	}
+
+	// First call should either create cache tokens or read from an already-warm cache.
+	assert.True(t, writes[0] > 0 || reads[0] > 0,
+		"expected first call to create or read prompt cache tokens (writes=%d reads=%d)", writes[0], reads[0])
+
+	require.GreaterOrEqual(t, len(reads), 2)
+	assert.Greater(t, slices.Max(reads[1:]), int64(0),
+		"expected a cache read hit on a repeated identical request, reads=%v writes=%v", reads, writes)
 }
 
 func TestIntegrationStreaming(t *testing.T) {
@@ -144,7 +219,9 @@ func TestIntegrationToolCalling(t *testing.T) {
 		},
 	}
 
+	// System prompt instructs model to use the tool (Sonnet 4.x may otherwise answer from context).
 	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You must use the get_current_weather tool when the user asks about weather. Call the tool with the requested location."),
 		llms.MessageFromTextParts(llms.RoleHuman, "What's the weather like in Boston?"),
 	}
 
@@ -184,8 +261,9 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 		},
 	}
 
-	// First request: ask for calculation
+	// System prompt instructs model to use the calculate tool (Sonnet 4.x may otherwise answer from context).
 	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "You must use the calculate tool for any math. Call the tool with the expression, then report the result."),
 		llms.MessageFromTextParts(llms.RoleHuman, "Calculate 15 * 23"),
 	}
 
@@ -230,24 +308,26 @@ func TestIntegrationToolCallAndResponse(t *testing.T) {
 
 func TestIntegrationMultimodalImage(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
-	llm := newTestClient(t, anthropic.WithModel("claude-3-5-sonnet-20241022"))
+	llm := newTestClient(t, anthropic.WithModel(claudeSonnetModel))
 
-	// Create a simple red pixel as a test image (1x1 PNG)
-	redPixelPNG := []byte{
-		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-		0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00,
-		0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0x99, 0x01, 0x01, 0x00, 0x00, 0x00,
-		0xFF, 0xFF, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33,
-		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+	// Anthropic recommends images with at least 200px on each edge; 1x1 PNG returns "Could not process image".
+	img := image.NewRGBA(image.Rect(0, 0, 200, 200))
+	red := color.RGBA{R: 255, G: 0, B: 0, A: 255}
+	for y := 0; y < 200; y++ {
+		for x := 0; x < 200; x++ {
+			img.Set(x, y, red)
+		}
 	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	redImagePNG := buf.Bytes()
 
 	content := []llms.Message{
 		{
 			Role: llms.RoleHuman,
 			Parts: []llms.ContentPart{
-				llms.TextPart("What do you see in this image? Be very brief."),
-				llms.BinaryPart("image/png", redPixelPNG),
+				llms.TextPart("What color is this image? Reply in one short sentence."),
+				llms.BinaryPart("image/png", redImagePNG),
 			},
 		},
 	}
@@ -257,14 +337,10 @@ func TestIntegrationMultimodalImage(t *testing.T) {
 	assert.NotEmpty(t, resp.Choices)
 
 	choice := resp.Choices[0]
-	// Should mention it's a small/tiny image or single pixel
-	content_lower := strings.ToLower(choice.Content)
+	contentLower := strings.ToLower(choice.Content)
 	assert.True(t,
-		strings.Contains(content_lower, "pixel") ||
-			strings.Contains(content_lower, "small") ||
-			strings.Contains(content_lower, "tiny") ||
-			strings.Contains(content_lower, "1x1"),
-		"Response should mention the image is small/tiny/pixel: %s", choice.Content)
+		strings.Contains(contentLower, "red") || strings.Contains(contentLower, "colour") || strings.Contains(contentLower, "color"),
+		"Response should mention the image is red: %s", choice.Content)
 }
 
 func TestIntegrationErrorHandling(t *testing.T) {
@@ -366,7 +442,7 @@ func BenchmarkIntegrationSimpleGeneration(b *testing.B) {
 		b.Skip("ANTHROPIC_API_KEY not set")
 	}
 
-	llm, err := anthropic.New(anthropic.WithModel("claude-3-5-sonnet-20241022"))
+	llm, err := anthropic.New(anthropic.WithModel(claudeSonnetModel))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -382,4 +458,13 @@ func BenchmarkIntegrationSimpleGeneration(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func requireGenerationInfoInt64(t *testing.T, info map[string]any, key string) int64 {
+	t.Helper()
+
+	require.Contains(t, info, key)
+	value, ok := info[key].(int64)
+	require.True(t, ok, "generation info %q must be int64, got %T", key, info[key])
+	return value
 }

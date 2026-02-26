@@ -642,7 +642,7 @@ func newTestClient(t *testing.T, opts ...anthropic.Option) llms.Model {
 	}
 
 	defaultOpts := []anthropic.Option{
-		anthropic.WithModel("claude-3-5-sonnet-20241022"),
+		anthropic.WithModel(claudeSonnetModel),
 	}
 	defaultOpts = append(defaultOpts, opts...)
 

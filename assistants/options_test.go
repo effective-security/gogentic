@@ -9,6 +9,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_ChainCallOptions(t *testing.T) {
@@ -85,9 +86,36 @@ func Test_ChainCallOptions(t *testing.T) {
 		assistants.WithPromptInput(map[string]any{"Input": "input"}),
 		//assistants.WithCallback(callbacks.StreamLogHandler{}),
 		assistants.WithReasoningEffort(llms.ReasoningEffortLow),
-		assistants.WithPromptCacheMode(llms.PromptCacheModeInMemory),
-		assistants.WithPromptCacheKey("test"),
+		assistants.WithPromptCachePolicy(&llms.PromptCachePolicy{
+			Request: &llms.PromptCacheRequestPolicy{
+				Key:       "test",
+				Retention: llms.PromptCacheRetentionInMemory,
+			},
+		}),
 	)
 	llmOpts = cfg.GetCallOptions()
-	assert.Equal(t, 17, len(llmOpts))
+	assert.Equal(t, 16, len(llmOpts))
+}
+
+func Test_ChainCallOptions_PromptCachePolicy(t *testing.T) {
+	t.Parallel()
+
+	policy := &llms.PromptCachePolicy{
+		Request: &llms.PromptCacheRequestPolicy{
+			Key:       "policy-key",
+			Retention: llms.PromptCacheRetention24h,
+		},
+	}
+
+	cfg := assistants.NewConfig(
+		assistants.WithPromptCachePolicy(policy),
+	)
+
+	var got llms.CallOptions
+	for _, opt := range cfg.GetCallOptions() {
+		opt(&got)
+	}
+
+	require.NotNil(t, got.PromptCachePolicy)
+	assert.Same(t, policy, got.PromptCachePolicy)
 }
