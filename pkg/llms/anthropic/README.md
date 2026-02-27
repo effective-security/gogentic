@@ -99,6 +99,8 @@ anthropic.WithAnthropicBetaHeader("beta-feature-1")    // Beta features
 - `claude-3-sonnet-20240229` (Balanced performance)
 - `claude-3-haiku-20240307` (Fastest response times)
 
+Structured JSON outputs (see [Structured JSON Outputs](#structured-json-outputs)) are supported on: `claude-opus-4-6`, `claude-sonnet-4-5`, `claude-opus-4-5`, `claude-haiku-4-5`.
+
 ## Advanced Usage
 
 ### System Messages and Conversation
@@ -233,6 +235,74 @@ func main() {
     }
 }
 ```
+
+### Structured JSON Outputs
+
+Claude can generate JSON responses that strictly follow a specified schema using [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Use `llms.WithResponseFormat()` with a schema from `schema.NewResponseFormat()`:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "reflect"
+
+    "github.com/effective-security/gogentic/pkg/llms"
+    "github.com/effective-security/gogentic/pkg/llms/anthropic"
+    "github.com/effective-security/gogentic/pkg/schema"
+)
+
+// Define your expected output structure
+type InvoiceData struct {
+    InvoiceNumber string  `json:"invoice_number" description:"The invoice number"`
+    Date          string  `json:"date" description:"Invoice date"`
+    TotalAmount   float64 `json:"total_amount" description:"Total amount"`
+    CustomerName  string  `json:"customer_name" description:"Customer name"`
+}
+
+func main() {
+    llm, err := anthropic.New(
+        anthropic.WithModel("claude-sonnet-4-5-20241022"), // or claude-opus-4-6 for structured outputs
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Create schema from struct
+    responseFormat, err := schema.NewResponseFormat(reflect.TypeOf(InvoiceData{}), true)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    messages := []llms.Message{
+        llms.MessageFromTextParts(llms.RoleHuman,
+            "Extract invoice data: Invoice #INV-2024-001 dated Jan 15, 2024 for $1,234.56 to John Doe"),
+    }
+
+    resp, err := llm.GenerateContent(context.Background(), messages,
+        llms.WithResponseFormat(responseFormat),
+        llms.WithMaxTokens(1024),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Response is guaranteed to be valid JSON matching the schema
+    fmt.Println(resp.Choices[0].Content)
+}
+```
+
+**Features:**
+
+- Guaranteed valid JSON output
+- Type-safe schema validation
+- No parsing errors
+- Consistent field types
+- All required fields present
+
+**Supported models for structured outputs:** `claude-opus-4-6`, `claude-sonnet-4-5`, `claude-opus-4-5`, `claude-haiku-4-5`
 
 ### Configuration Parameters
 
