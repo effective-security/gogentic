@@ -11,8 +11,10 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/x/values"
 )
 
@@ -230,6 +232,13 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		return nil, err
 	}
 
+	if opts.ResponseFormat != nil {
+		outputConfig := toAnthropicOutputConfig(opts.ResponseFormat)
+		if outputConfig != nil {
+			params.OutputConfig = *outputConfig
+		}
+	}
+
 	// Handle streaming
 	if opts.StreamingFunc != nil {
 		return GenerateStreamingContent(ctx, o, params, opts.StreamingFunc, requestOpts...)
@@ -413,6 +422,65 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 	return &llms.ContentResponse{
 		Choices: []*llms.ContentChoice{choice},
 	}, nil
+}
+
+// toAnthropicOutputConfig converts schema.ResponseFormat to Anthropic's OutputConfigParam
+// for structured JSON outputs. Returns nil if the response format is not a valid json_schema.
+func toAnthropicOutputConfig(rf *schema.ResponseFormat) *anthropic.OutputConfigParam {
+	if rf == nil || rf.Type != "json_schema" || rf.JSONSchema == nil || rf.JSONSchema.Schema == nil {
+		return nil
+	}
+	schemaMap := convertToAnthropicSchema(rf.JSONSchema.Schema)
+	if len(schemaMap) == 0 {
+		return nil
+	}
+	return &anthropic.OutputConfigParam{
+		Format: anthropic.JSONOutputFormatParam{
+			Type:   constant.JSONSchema("json_schema"),
+			Schema: schemaMap,
+		},
+	}
+}
+
+// convertToAnthropicSchema converts ResponseFormatJSONSchemaProperty to map[string]any
+// for the Anthropic API. Anthropic requires additionalProperties to be false for objects.
+func convertToAnthropicSchema(prop *schema.ResponseFormatJSONSchemaProperty) map[string]any {
+	if prop == nil {
+		return nil
+	}
+	result := make(map[string]any)
+	result["type"] = prop.Type
+	if prop.Title != "" {
+		result["title"] = prop.Title
+	}
+	if prop.Description != "" {
+		result["description"] = prop.Description
+	}
+	if len(prop.Enum) > 0 {
+		result["enum"] = prop.Enum
+	}
+	if prop.Default != nil {
+		result["default"] = prop.Default
+	}
+	if len(prop.Required) > 0 {
+		result["required"] = prop.Required
+	}
+	if prop.AdditionalProperties != nil {
+		result["additionalProperties"] = *prop.AdditionalProperties
+	} else if prop.Type == "object" {
+		result["additionalProperties"] = false
+	}
+	if len(prop.Properties) > 0 {
+		props := make(map[string]any)
+		for k, v := range prop.Properties {
+			props[k] = convertToAnthropicSchema(v)
+		}
+		result["properties"] = props
+	}
+	if prop.Items != nil {
+		result["items"] = convertToAnthropicSchema(prop.Items)
+	}
+	return result
 }
 
 // ToTools converts LLM tool definitions to Anthropic SDK tool parameters.

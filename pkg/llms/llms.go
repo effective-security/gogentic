@@ -96,6 +96,7 @@ var providerCapabilities = map[ProviderType]Capability{
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
+		CapabilityJSONSchema |
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt |
