@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
@@ -21,6 +23,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/store"
 	"github.com/effective-security/gogentic/tools/tavily"
+	"github.com/effective-security/x/values"
 	"github.com/effective-security/xlog"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
@@ -217,7 +220,21 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 func Test_Real_WebSearch_Text(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
-	f := llmfactory.New(cfg)
+	awsCfgFunc := func() (*aws.Config, error) {
+		region := os.Getenv("AWS_REGION")
+		cfg := aws.Config{
+			Region: values.StringsCoalesce(region, "us-west-2"),
+		}
+
+		keyID := os.Getenv("AWS_ACCESS_KEY_ID")
+		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		if keyID != "" && secretKey != "" {
+			cfg.Credentials = credentials.NewStaticCredentialsProvider(keyID, secretKey, "")
+		}
+		return &cfg, nil
+	}
+
+	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
 	//llmModel, err := f.ModelByName("gpt-5")
 	llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
@@ -281,9 +298,22 @@ func Test_Real_Providers(t *testing.T) {
 	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	awsCfgFunc := func() (*aws.Config, error) {
+		region := os.Getenv("AWS_REGION")
+		cfg := aws.Config{
+			Region: values.StringsCoalesce(region, "us-west-2"),
+		}
 
-	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("AZURE")
+		keyID := os.Getenv("AWS_ACCESS_KEY_ID")
+		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		if keyID != "" && secretKey != "" {
+			cfg.Credentials = credentials.NewStaticCredentialsProvider(keyID, secretKey, "")
+		}
+		return &cfg, nil
+	}
+
+	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
+	llmModel, err := f.ModelByType("ANTHROPIC")
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)

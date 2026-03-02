@@ -1,6 +1,7 @@
 package bedrock
 
 import (
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 )
 
@@ -10,6 +11,7 @@ type Option func(*options)
 type options struct {
 	modelID string
 	client  *bedrockruntime.Client
+	awsCfg  *aws.Config
 }
 
 // WithModel allows setting a custom modelId.
@@ -32,5 +34,11 @@ func WithModel(modelID string) Option {
 func WithClient(client *bedrockruntime.Client) Option {
 	return func(o *options) {
 		o.client = client
+	}
+}
+
+func WithConfig(cfg *aws.Config) Option {
+	return func(opts *options) {
+		opts.awsCfg = cfg
 	}
 }

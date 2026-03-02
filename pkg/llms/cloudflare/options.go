@@ -6,11 +6,15 @@ import (
 	"net/url"
 )
 
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type options struct {
 	cloudflareAccountID string
 	cloudflareServerURL *url.URL
 	cloudflareToken     string
-	httpClient          *http.Client
+	httpClient          HTTPClient
 	model               string
 	embeddingModel      string
 	system              string
@@ -67,7 +71,7 @@ func WithEmbeddingModel(model string) Option {
 }
 
 // WithHTTPClient Set custom http client.
-func WithHTTPClient(client *http.Client) Option {
+func WithHTTPClient(client HTTPClient) Option {
 	return func(opts *options) {
 		opts.httpClient = client
 	}

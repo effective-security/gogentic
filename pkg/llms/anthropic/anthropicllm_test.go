@@ -383,12 +383,12 @@ func TestToolsToTools(t *testing.T) {
 				if len(result) > 0 {
 					tool := result[0]
 					if tt.name == "web_search" {
-						assert.NotNil(t, tool.OfWebSearchTool20250305)
-						assert.Equal(t, []string{"example.com"}, tool.OfWebSearchTool20250305.AllowedDomains)
-						assert.Equal(t, []string{"excluded.com"}, tool.OfWebSearchTool20250305.BlockedDomains)
-						assert.Equal(t, int64(10), tool.OfWebSearchTool20250305.MaxUses.Value)
+						require.NotNil(t, tool.OfWebFetchTool20260209)
+						assert.Equal(t, []string{"example.com"}, tool.OfWebFetchTool20260209.AllowedDomains)
+						assert.Equal(t, []string{"excluded.com"}, tool.OfWebFetchTool20260209.BlockedDomains)
+						assert.Equal(t, int64(10), tool.OfWebFetchTool20260209.MaxUses.Value)
 					} else {
-						assert.NotNil(t, tool.OfTool)
+						require.NotNil(t, tool.OfTool)
 						assert.Equal(t, tt.tools[0].Function.Name, tool.OfTool.Name)
 						assert.NotNil(t, tool.OfTool.Description)
 						assert.Equal(t, "object", string(tool.OfTool.InputSchema.Type))

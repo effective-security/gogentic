@@ -12,6 +12,8 @@ type ProviderType string
 const (
 	// ProviderAnthropic is the type of provider.
 	ProviderAnthropic ProviderType = "ANTHROPIC"
+	// ProviderAnthropicBedrock is the type of provider.
+	ProviderAnthropicBedrock ProviderType = "ANTHROPIC_BEDROCK"
 	// ProviderAzure is the type of provider.
 	ProviderAzure ProviderType = "AZURE"
 	// ProviderAzureAD is the type of provider.
@@ -102,6 +104,15 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilitySystemPrompt |
 		CapabilityWebSearchTool |
 		CapabilityPromptCaching,
+
+	ProviderAnthropicBedrock: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilitySystemPrompt,
+	//CapabilityWebSearchTool |
+	//CapabilityPromptCaching,
 
 	ProviderGoogleAI: CapabilityText |
 		CapabilitySystemPrompt |

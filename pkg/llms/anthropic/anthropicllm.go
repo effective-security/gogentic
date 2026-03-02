@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/bedrock"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	"github.com/cockroachdb/errors"
@@ -94,12 +96,51 @@ func New(opts ...Option) (*LLM, error) {
 	}, nil
 }
 
+func NewBedrock(opts ...Option) (*LLM, error) {
+	options := &Options{
+		//BaseURL:    "https://api.anthropic.com",
+		//HttpClient: http.DefaultClient,
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	if options.Model == "" {
+		return nil, errors.New("anthropic: model is required")
+	}
+	if options.AWSCfg == nil {
+		return nil, errors.New("anthropic: AWS config is required")
+	}
+	if options.AWSCfg.Region == "" {
+		return nil, errors.New("anthropic: AWS region is required")
+	}
+	if options.BaseURL == "" {
+		options.BaseURL = fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com", options.AWSCfg.Region)
+	}
+
+	c, err := newClient(options)
+	if err != nil {
+		return nil, errors.Wrap(err, "anthropic: failed to create client")
+	}
+	return &LLM{
+		Client:  c,
+		Options: options,
+	}, nil
+}
+
 func newClient(options *Options) (*anthropic.Client, error) {
 	// Build SDK options
 	sdkOpts := []option.RequestOption{
-		option.WithAPIKey(options.Token),
 		option.WithMaxRetries(2),
 		option.WithRequestTimeout(5 * time.Minute),
+	}
+	if options.AWSCfg != nil {
+		sdkOpts = append(sdkOpts, bedrock.WithConfig(*options.AWSCfg))
+	}
+
+	if options.Token != "" {
+		sdkOpts = append(sdkOpts, option.WithAPIKey(options.Token))
 	}
 
 	if options.BaseURL != "" {
@@ -187,6 +228,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		Model:     anthropic.Model(opts.Model),
 		Messages:  sdkMessages,
 		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+		},
 	}
 
 	reasoningTokens := int64(0)
@@ -315,6 +359,8 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 			// 		"Index":        i,
 			// 	},
 			// })
+		case anthropic.WebFetchToolResultBlock:
+			// TODO: option to add WebSearchToolResultBlock to the response
 		default:
 			return nil, errors.WithMessagef(ErrUnsupportedContentType, "response content type: %T", content)
 		}
@@ -435,6 +481,7 @@ func toAnthropicOutputConfig(rf *schema.ResponseFormat) *anthropic.OutputConfigP
 		return nil
 	}
 	return &anthropic.OutputConfigParam{
+		Effort: anthropic.OutputConfigEffortLow,
 		Format: anthropic.JSONOutputFormatParam{
 			Type:   constant.JSONSchema("json_schema"),
 			Schema: schemaMap,
@@ -501,14 +548,14 @@ func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
 	sdkTools := make([]anthropic.ToolUnionParam, len(tools))
 	for i, tool := range tools {
 		if tool.Type == "web_search" {
-			wsp := &anthropic.WebSearchTool20250305Param{}
+			wsp := &anthropic.WebFetchTool20260209Param{}
 			if tool.WebSearchOptions != nil {
 				wsp.AllowedDomains = tool.WebSearchOptions.AllowedDomains
 				wsp.BlockedDomains = tool.WebSearchOptions.ExcludedDomains
 				wsp.MaxUses = anthropic.Opt(int64(values.NumbersCoalesce(tool.WebSearchOptions.MaxUses, 3)))
 			}
 			sdkTools[i] = anthropic.ToolUnionParam{
-				OfWebSearchTool20250305: wsp,
+				OfWebFetchTool20260209: wsp,
 			}
 			continue
 		}

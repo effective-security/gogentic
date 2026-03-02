@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 const (
@@ -16,6 +17,9 @@ type Options struct {
 
 	// If supplied, the 'anthropic-beta' header will be added to the request with the given value.
 	AnthropicBetaHeader string
+
+	// AWSCfg is used with Bedrock
+	AWSCfg *aws.Config
 }
 
 type Option func(*Options)
@@ -55,5 +59,11 @@ func WithHTTPClient(client option.HTTPClient) Option {
 func WithAnthropicBetaHeader(value string) Option {
 	return func(opts *Options) {
 		opts.AnthropicBetaHeader = value
+	}
+}
+
+func WithConfig(cfg *aws.Config) Option {
+	return func(opts *Options) {
+		opts.AWSCfg = cfg
 	}
 }
