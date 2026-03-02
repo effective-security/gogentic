@@ -28,12 +28,19 @@ providers:
 
   - name: ANTHROPIC
     token: env://ANTHROPIC_API_KEY
-    default_model: claude-opus-4-1-20250805
+    default_model: claude-sonnet-4-6
     available_models:
-      - claude-opus-4-1-20250805
-      - claude-sonnet-4-5-20250929
+      - claude-opus-4-6
+      - claude-sonnet-4-6
     open_ai:
       api_type: ANTHROPIC
+
+  - name: ANTHROPIC_BEDROCK
+    default_model: global.anthropic.claude-sonnet-4-6
+    available_models:
+      - global.anthropic.claude-sonnet-4-6
+    open_ai:
+      api_type: ANTHROPIC_BEDROCK
 
   - name: BEDROCK
     default_model: us.anthropic.claude-opus-4-20250514-v1:0
@@ -70,5 +77,5 @@ assistant_models:
   default:
     - gpt-5
   orchestrator:
-    - claude-opus-4-1-20250805
-    - claude-sonnet-4-5-20250929
+    - claude-opus-4-6
+    - claude-sonnet-4-6

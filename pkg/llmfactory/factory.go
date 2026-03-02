@@ -55,16 +55,19 @@ type factory struct {
 	byType          map[llms.ProviderType]llms.Model
 	byName          map[string]llms.Model
 	lock            sync.Mutex
+
+	options []Option
 }
 
 // New creates a new LLM factory
-func New(cfg *Config) Factory {
+func New(cfg *Config, opts ...Option) Factory {
 	f := &factory{
 		cfg:             cfg,
 		byType:          make(map[llms.ProviderType]llms.Model),
 		byName:          make(map[string]llms.Model),
 		toolModels:      make(map[string][]string),
 		assistantModels: make(map[string][]string),
+		options:         opts,
 	}
 
 	for k, v := range cfg.ToolModels {
@@ -90,28 +93,30 @@ func New(cfg *Config) Factory {
 	return f
 }
 
-func CreateLLM(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts ...Option) (llms.Model, error) {
 	provType := strings.ToUpper(cfg.OpenAI.APIType)
 	switch provType {
 	case string(llms.ProviderOpenAI), "OPEN_AI":
-		return newOpenAI(cfg, preferredModels...)
+		return newOpenAI(cfg, preferredModels, opts...)
 	case string(llms.ProviderPerplexity):
-		return newPerplexity(cfg, preferredModels...)
+		return newPerplexity(cfg, preferredModels, opts...)
 	case string(llms.ProviderAzure), string(llms.ProviderAzureAD):
-		return newAzure(cfg, preferredModels...)
+		return newAzure(cfg, preferredModels, opts...)
 	case string(llms.ProviderAnthropic):
-		return newAnthropic(cfg, preferredModels...)
+		return newAnthropic(cfg, preferredModels, opts...)
 	case string(llms.ProviderGoogleAI):
-		return newGoogleAI(cfg, preferredModels...)
+		return newGoogleAI(cfg, preferredModels, opts...)
 	case string(llms.ProviderBedrock):
-		return newBedrock(cfg, preferredModels...)
+		return newBedrock(cfg, preferredModels, opts...)
+	case string(llms.ProviderAnthropicBedrock):
+		return newAnthropicBedrock(cfg, preferredModels, opts...)
 	case string(llms.ProviderCloudflare):
-		return newCloudflare(cfg, preferredModels...)
+		return newCloudflare(cfg, preferredModels, opts...)
 	}
 	return nil, errors.Errorf("unsupported provider type: %s", provType)
 }
 
-func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newOpenAI(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, openai.WithProvider(openai.ProviderOpenAI), openai.WithModel(model))
@@ -125,7 +130,7 @@ func newOpenAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, erro
 	return openai.New(opts...)
 }
 
-func newPerplexity(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newPerplexity(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, openai.WithProvider(openai.ProviderPerplexity), openai.WithModel(model))
@@ -139,7 +144,7 @@ func newPerplexity(cfg *ProviderConfig, preferredModels ...string) (llms.Model, 
 	return openai.New(opts...)
 }
 
-func newAzure(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newAzure(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
 	var opts []openai.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, openai.WithAPIVersion(cfg.OpenAI.APIVersion), openai.WithModel(model))
@@ -158,17 +163,21 @@ func newAzure(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error
 	return openai.New(opts...)
 }
 
-func newAnthropic(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newAnthropic(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
+	o := NewOptions(options...)
 	var opts []anthropic.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, anthropic.WithModel(model))
 	if cfg.Token != "" {
 		opts = append(opts, anthropic.WithToken(cfg.Token))
 	}
+	if o.HTTPClient != nil {
+		opts = append(opts, anthropic.WithHTTPClient(o.HTTPClient))
+	}
 	return anthropic.New(opts...)
 }
 
-func newGoogleAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newGoogleAI(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
 	var opts []googleai.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, googleai.WithDefaultModel(model))
@@ -178,14 +187,45 @@ func newGoogleAI(cfg *ProviderConfig, preferredModels ...string) (llms.Model, er
 	return googleai.New(context.Background(), opts...)
 }
 
-func newBedrock(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newBedrock(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
+	o := NewOptions(options...)
 	var opts []bedrock.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, bedrock.WithModel(model))
+	if o.AwsConfigFactory != nil {
+		cfg, err := o.AwsConfigFactory()
+		if err != nil {
+			return nil, err
+		}
+		if o.HTTPClient != nil {
+			cfg.HTTPClient = o.HTTPClient
+		}
+		opts = append(opts, bedrock.WithConfig(cfg))
+	}
+
 	return bedrock.New(opts...)
 }
 
-func newCloudflare(cfg *ProviderConfig, preferredModels ...string) (llms.Model, error) {
+func newAnthropicBedrock(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
+	o := NewOptions(options...)
+	var opts []anthropic.Option
+	model := cfg.FindModel(preferredModels...)
+	opts = append(opts, anthropic.WithModel(model))
+	if o.AwsConfigFactory != nil {
+		cfg, err := o.AwsConfigFactory()
+		if err != nil {
+			return nil, err
+		}
+		if o.HTTPClient != nil {
+			cfg.HTTPClient = o.HTTPClient
+		}
+		opts = append(opts, anthropic.WithConfig(cfg))
+	}
+	return anthropic.NewBedrock(opts...)
+}
+
+func newCloudflare(cfg *ProviderConfig, preferredModels []string, options ...Option) (llms.Model, error) {
+	o := NewOptions(options...)
 	var opts []cloudflare.Option
 	model := cfg.FindModel(preferredModels...)
 	opts = append(opts, cloudflare.WithModel(model))
@@ -194,6 +234,9 @@ func newCloudflare(cfg *ProviderConfig, preferredModels ...string) (llms.Model, 
 	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, cloudflare.WithServerURL(cfg.OpenAI.BaseURL))
+	}
+	if o.HTTPClient != nil {
+		opts = append(opts, cloudflare.WithHTTPClient(o.HTTPClient))
 	}
 	return cloudflare.New(opts...)
 }
@@ -204,7 +247,7 @@ func (f *factory) DefaultModel() (llms.Model, error) {
 		return nil, errors.New("no providers configured")
 	}
 
-	return NewLLM(f.defaultProvider, f.defaultProvider.DefaultModel)
+	return NewLLM(f.defaultProvider, []string{f.defaultProvider.DefaultModel}, f.options...)
 }
 
 func (f *factory) ModelByType(providerType llms.ProviderType) (llms.Model, error) {
@@ -217,7 +260,7 @@ func (f *factory) ModelByType(providerType llms.ProviderType) (llms.Model, error
 
 	for _, cfg := range f.cfg.Providers {
 		if cfg.OpenAI.APIType == string(providerType) {
-			model, err := NewLLM(cfg)
+			model, err := NewLLM(cfg, nil, f.options...)
 			if err != nil {
 				return nil, err
 			}
@@ -246,7 +289,7 @@ func (f *factory) ModelByName(modelNames ...string) (llms.Model, error) {
 
 		for _, cfg := range f.cfg.Providers {
 			if slices.Contains(cfg.AvailableModels, modelName) {
-				model, err := NewLLM(cfg, modelNames...)
+				model, err := NewLLM(cfg, modelNames, f.options...)
 				if err != nil {
 					logger.KV(xlog.ERROR,
 						"reason", "NewLLM",

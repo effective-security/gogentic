@@ -40,11 +40,15 @@ func newClient(opts ...Option) (*options, *bedrockclient.Client, error) {
 	}
 
 	if options.client == nil {
-		cfg, err := config.LoadDefaultConfig(context.Background())
-		if err != nil {
-			return options, nil, err
+		if options.awsCfg != nil {
+			options.client = bedrockruntime.NewFromConfig(*options.awsCfg)
+		} else {
+			cfg, err := config.LoadDefaultConfig(context.Background())
+			if err != nil {
+				return options, nil, err
+			}
+			options.client = bedrockruntime.NewFromConfig(cfg)
 		}
-		options.client = bedrockruntime.NewFromConfig(cfg)
 	}
 
 	return options, bedrockclient.NewClient(options.client), nil

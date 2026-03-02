@@ -21,7 +21,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -78,7 +78,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "claude-opus-4-1-20250805", fm.model)
+	assert.Equal(t, "claude-sonnet-4-6", fm.model)
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	model, err = f.ModelByType("BEDROCK")
@@ -124,7 +124,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "claude-opus-4-1-20250805", fm.model)
+	assert.Equal(t, "claude-opus-4-6", fm.model)
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	// Test AssistantModel with preferred models
@@ -206,37 +206,37 @@ func Test_CreateLLM(t *testing.T) {
 	}
 
 	// Test OpenAI provider
-	model, err := llmfactory.CreateLLM(cfg)
+	model, err := llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Azure provider
 	cfg.OpenAI.APIType = "AZURE"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Azure AD provider
 	cfg.OpenAI.APIType = "AZURE_AD"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Anthropic provider
 	cfg.OpenAI.APIType = "ANTHROPIC"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Bedrock provider
 	cfg.OpenAI.APIType = "BEDROCK"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Perplexity provider
 	cfg.OpenAI.APIType = "PERPLEXITY"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
@@ -248,7 +248,7 @@ func Test_CreateLLM(t *testing.T) {
 
 	// Test unsupported provider
 	cfg.OpenAI.APIType = "UNSUPPORTED"
-	_, err = llmfactory.CreateLLM(cfg)
+	_, err = llmfactory.CreateLLM(cfg, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported provider type")
 }
@@ -279,7 +279,7 @@ func Test_GoogleAIProvider(t *testing.T) {
 		DefaultModel:    "gemini-2.5-flash-preview-05-20",
 	}
 
-	model, err := llmfactory.CreateLLM(cfg)
+	model, err := llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
@@ -287,7 +287,7 @@ func Test_GoogleAIProvider(t *testing.T) {
 	t.Setenv("GOOGLEAI_TOKEN", "")
 	cfg.Token = ""
 
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	// GoogleAI might fail due to missing API key, but we should handle it gracefully
 	if err != nil {
 		// If it fails, it should be due to missing API key or auth
@@ -313,19 +313,19 @@ func Test_ProviderConfigEdgeCases(t *testing.T) {
 		DefaultModel:    "gpt-4",
 	}
 
-	model, err := llmfactory.CreateLLM(cfg)
+	model, err := llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test provider with nil available models
 	cfg.AvailableModels = nil
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test provider with empty default model
 	cfg.DefaultModel = ""
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 }
@@ -348,7 +348,7 @@ func Test_ModelCaching(t *testing.T) {
 		},
 	}
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -403,7 +403,7 @@ func Test_ToolModelFallback(t *testing.T) {
 		},
 	}
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -455,7 +455,7 @@ func Test_AssistantModelFallback(t *testing.T) {
 		},
 	}
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -504,7 +504,7 @@ func Test_ConcurrentAccess(t *testing.T) {
 		},
 	}
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -619,7 +619,7 @@ func Test_ProviderConfigWithBaseURL(t *testing.T) {
 		DefaultModel:    "gpt-4",
 	}
 
-	model, err := llmfactory.CreateLLM(cfg)
+	model, err := llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
@@ -628,7 +628,7 @@ func Test_ProviderConfigWithBaseURL(t *testing.T) {
 	cfg.OpenAI.BaseURL = "https://azure-test.openai.azure.com"
 	cfg.OpenAI.APIVersion = "2024-02-15-preview"
 
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 }
@@ -658,7 +658,7 @@ func Test_ModelByNameWithFallback(t *testing.T) {
 		},
 	}
 
-	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels ...string) (llms.Model, error) {
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts ...llmfactory.Option) (llms.Model, error) {
 		return &fakeLLM{provider: cfg.Name, model: cfg.FindModel(preferredModels...)}, nil
 	}
 	defer func() {
@@ -702,20 +702,20 @@ func Test_ProviderConfigWithTokens(t *testing.T) {
 		DefaultModel:    "gpt-4",
 	}
 
-	model, err := llmfactory.CreateLLM(cfg)
+	model, err := llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test OpenAI without token (should still work as it uses env var)
 	cfg.Token = ""
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 
 	// Test Anthropic with token
 	cfg.OpenAI.APIType = "ANTHROPIC"
 	cfg.Token = "fakekey"
-	model, err = llmfactory.CreateLLM(cfg)
+	model, err = llmfactory.CreateLLM(cfg, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
 }
