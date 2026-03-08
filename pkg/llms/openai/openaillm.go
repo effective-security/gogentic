@@ -379,7 +379,7 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 				Type: string(openaiclient.ToolTypeFunction),
 				FunctionCall: &llms.FunctionCall{
 					Name:      item.Name,
-					Arguments: item.Arguments,
+					Arguments: item.Arguments.OfString,
 				},
 			})
 		}

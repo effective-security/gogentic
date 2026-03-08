@@ -159,8 +159,8 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByName("gemini-2.5-pro")
-	//llmModel, err := f.ModelByType("ANTHROPIC")
+	//llmModel, err := f.ModelByName("gemini-2.5-pro")
+	llmModel, err := f.ModelByType("AZURE")
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -202,7 +202,7 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	req := &assistants.CallInput{
-		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
+		Input: "What is the classification for CVE-2026-29612 vulnerability? Provide at least 2 sources and include the summary from using web_search tool.",
 	}
 	var output1 CVEResult
 	apiResp, err := ag.Run(ctx, req, &output1)
