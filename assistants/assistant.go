@@ -258,8 +258,6 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		callback.OnAssistantStart(ctx, a, input.Input)
 	}
 
-	isGoogle := a.LLM.GetProviderType() == llms.ProviderGoogleAI
-
 	var (
 		resp     *llms.ContentResponse
 		messages []llms.Message
@@ -273,8 +271,8 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 			if callback != nil {
 				callback.OnAssistantError(ctx, a, input.Input, err, messages)
 			}
-			// Google often return Text vs JSON
-			if isGoogle && errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
+			// Sometimes the LLM returns Text vs JSON
+			if errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
 				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.Name(), cfg.Model, orgID)
 
 				input.Input = "Return the response in JSON format as requested."
