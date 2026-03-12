@@ -154,7 +154,9 @@ func TestConvertToAnthropicSchema(t *testing.T) {
 	}
 }
 
-func TestStructuredOutputObjectSchema(t *testing.T) {
+func TestStructuredOutputObjectSchema_Real(t *testing.T) {
+	t.Skip("skipping real test")
+
 	t.Parallel()
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" || apiKey == "fakekey" {
