@@ -37,6 +37,30 @@ const (
 	DefaultMaxTokens = 4096
 )
 
+// modelIsOlderThan4_5 returns true for models that are 4.0-era or older (e.g. claude-sonnet-4-0,
+// claude-sonnet-4-20250514). These models do not support OutputConfig.Effort and need legacy
+// tool type versions (e.g. web_fetch_20250910 instead of web_fetch_20260209).
+func modelIsOlderThan4_5(model string) bool {
+	return !strings.Contains(model, "-4-5") &&
+		!strings.Contains(model, "-4-6") &&
+		!strings.Contains(model, "-4-7") &&
+		!strings.Contains(model, "-4-8") &&
+		!strings.Contains(model, "-4-9")
+}
+
+// modelSupportsOutputEffort returns true for models that accept the OutputConfig.Effort field.
+// Only claude-4.5+ models (sonnet-4-5, haiku-4-5, opus-4-5, -4-6, etc.) support it.
+func modelSupportsOutputEffort(model string) bool {
+	return !modelIsOlderThan4_5(model)
+}
+
+// modelNeedsLegacyToolVersions returns true for models that only support older tool type
+// versions (e.g. web_fetch_20250910 instead of web_fetch_20260209). Same notion as
+// "older than 4.5": 4.0-era models need legacy tool versions.
+func modelNeedsLegacyToolVersions(model string) bool {
+	return modelIsOlderThan4_5(model)
+}
+
 type LLM struct {
 	Client  *anthropic.Client
 	Options *Options
@@ -221,16 +245,18 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		return nil, errors.Wrap(err, "anthropic: failed to process messages")
 	}
 
-	tools := ToTools(opts.Tools)
+	tools := ToTools(opts.Tools, opts.Model)
 
 	// Build message parameters
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		Messages:  sdkMessages,
 		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
-		OutputConfig: anthropic.OutputConfigParam{
+	}
+	if modelSupportsOutputEffort(opts.Model) {
+		params.OutputConfig = anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortLow,
-		},
+		}
 	}
 
 	reasoningTokens := int64(0)
@@ -277,7 +303,7 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	}
 
 	if opts.ResponseFormat != nil {
-		outputConfig := toAnthropicOutputConfig(opts.ResponseFormat)
+		outputConfig := toAnthropicOutputConfig(opts.ResponseFormat, opts.Model)
 		if outputConfig != nil {
 			params.OutputConfig = *outputConfig
 		}
@@ -472,7 +498,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 
 // toAnthropicOutputConfig converts schema.ResponseFormat to Anthropic's OutputConfigParam
 // for structured JSON outputs. Returns nil if the response format is not a valid json_schema.
-func toAnthropicOutputConfig(rf *schema.ResponseFormat) *anthropic.OutputConfigParam {
+func toAnthropicOutputConfig(rf *schema.ResponseFormat, model string) *anthropic.OutputConfigParam {
 	if rf == nil || rf.Type != "json_schema" || rf.JSONSchema == nil || rf.JSONSchema.Schema == nil {
 		return nil
 	}
@@ -480,13 +506,16 @@ func toAnthropicOutputConfig(rf *schema.ResponseFormat) *anthropic.OutputConfigP
 	if len(schemaMap) == 0 {
 		return nil
 	}
-	return &anthropic.OutputConfigParam{
-		Effort: anthropic.OutputConfigEffortLow,
+	cfg := &anthropic.OutputConfigParam{
 		Format: anthropic.JSONOutputFormatParam{
 			Type:   constant.JSONSchema("json_schema"),
 			Schema: schemaMap,
 		},
 	}
+	if modelSupportsOutputEffort(model) {
+		cfg.Effort = anthropic.OutputConfigEffortLow
+	}
+	return cfg
 }
 
 // convertToAnthropicSchema converts ResponseFormatJSONSchemaProperty to map[string]any
@@ -538,9 +567,11 @@ func convertToAnthropicSchema(prop *schema.ResponseFormatJSONSchemaProperty) map
 //   - JSON schema property mapping from orderedmap to regular map
 //   - Required parameter specification
 //   - Tool description formatting
+//   - Model-aware web_fetch: legacy models (e.g. claude-sonnet-4-0) get WebFetchTool20250910Param,
+//     newer models get WebFetchTool20260209Param.
 //
 // Returns nil if no tools are provided, which is handled gracefully by the API.
-func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
+func ToTools(tools []llms.Tool, model string) []anthropic.ToolUnionParam {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -548,14 +579,26 @@ func ToTools(tools []llms.Tool) []anthropic.ToolUnionParam {
 	sdkTools := make([]anthropic.ToolUnionParam, len(tools))
 	for i, tool := range tools {
 		if tool.Type == "web_search" {
-			wsp := &anthropic.WebFetchTool20260209Param{}
-			if tool.WebSearchOptions != nil {
-				wsp.AllowedDomains = tool.WebSearchOptions.AllowedDomains
-				wsp.BlockedDomains = tool.WebSearchOptions.ExcludedDomains
-				wsp.MaxUses = anthropic.Opt(int64(values.NumbersCoalesce(tool.WebSearchOptions.MaxUses, 3)))
-			}
-			sdkTools[i] = anthropic.ToolUnionParam{
-				OfWebFetchTool20260209: wsp,
+			if modelNeedsLegacyToolVersions(model) {
+				wsp := &anthropic.WebFetchTool20250910Param{}
+				if tool.WebSearchOptions != nil {
+					wsp.AllowedDomains = tool.WebSearchOptions.AllowedDomains
+					wsp.BlockedDomains = tool.WebSearchOptions.ExcludedDomains
+					wsp.MaxUses = anthropic.Opt(int64(values.NumbersCoalesce(tool.WebSearchOptions.MaxUses, 3)))
+				}
+				sdkTools[i] = anthropic.ToolUnionParam{
+					OfWebFetchTool20250910: wsp,
+				}
+			} else {
+				wsp := &anthropic.WebFetchTool20260209Param{}
+				if tool.WebSearchOptions != nil {
+					wsp.AllowedDomains = tool.WebSearchOptions.AllowedDomains
+					wsp.BlockedDomains = tool.WebSearchOptions.ExcludedDomains
+					wsp.MaxUses = anthropic.Opt(int64(values.NumbersCoalesce(tool.WebSearchOptions.MaxUses, 3)))
+				}
+				sdkTools[i] = anthropic.ToolUnionParam{
+					OfWebFetchTool20260209: wsp,
+				}
 			}
 			continue
 		}
