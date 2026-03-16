@@ -207,7 +207,7 @@ func newAnthropicPromptCacheTestParams(t *testing.T) (sdkanthropic.MessageNewPar
 				Parameters:  &jsonschema.Schema{Type: "object"},
 			},
 		},
-	})
+	}, "claude-sonnet-4-5")
 	require.Len(t, tools, 1)
 
 	params := sdkanthropic.MessageNewParams{

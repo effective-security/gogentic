@@ -20,11 +20,13 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 	tests := []struct {
 		name   string
 		rf     *schema.ResponseFormat
+		model  string
 		nonNil bool
 	}{
 		{
 			name:   "nil response format",
 			rf:     nil,
+			model:  "",
 			nonNil: false,
 		},
 		{
@@ -32,6 +34,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 			rf: &schema.ResponseFormat{
 				Type: "text",
 			},
+			model:  "",
 			nonNil: false,
 		},
 		{
@@ -40,6 +43,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 				Type:       "json_schema",
 				JSONSchema: nil,
 			},
+			model:  "",
 			nonNil: false,
 		},
 		{
@@ -50,6 +54,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 					Schema: nil,
 				},
 			},
+			model:  "",
 			nonNil: false,
 		},
 		{
@@ -67,6 +72,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 					},
 				},
 			},
+			model:  "claude-sonnet-4-5",
 			nonNil: true,
 		},
 	}
@@ -74,7 +80,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := toAnthropicOutputConfig(tt.rf)
+			got := toAnthropicOutputConfig(tt.rf, tt.model)
 			if tt.nonNil {
 				require.NotNil(t, got)
 				assert.NotEmpty(t, got.Format.Schema)

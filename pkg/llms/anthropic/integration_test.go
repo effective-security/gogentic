@@ -58,6 +58,38 @@ func TestIntegrationTextGeneration(t *testing.T) {
 	assert.Greater(t, info["OutputTokens"], int64(0))
 }
 
+// TestIntegrationClaudeSonnet4_0 verifies that claude-sonnet-4-0 works without the effort parameter.
+// This model does not support OutputConfig.Effort; the client must not send it (see modelSupportsOutputEffort).
+// It also verifies that the web_search tool is accepted and can be used.
+func TestIntegrationClaudeSonnet4_0(t *testing.T) {
+	checkAnthropicAPIKeyOrSkip(t)
+	llm := newTestClient(t, anthropic.WithModel("claude-sonnet-4-0"))
+
+	tools := []llms.Tool{
+		{
+			Type: "web_search",
+			WebSearchOptions: &llms.WebSearchOptions{
+				MaxUses: 3,
+			},
+		},
+	}
+
+	content := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "When asked about current or recent information, use the web_search tool if needed, then reply briefly."),
+		llms.MessageFromTextParts(llms.RoleHuman, "What is today's date? Use web search if needed and reply with just the date."),
+	}
+
+	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
+	require.NoError(t, err, "claude-sonnet-4-0 must not receive effort parameter and must accept web_search tool")
+	assert.NotEmpty(t, resp.Choices)
+
+	choice := resp.Choices[0]
+	// Response may be direct content or tool calls for web search
+	assert.True(t, len(choice.Content) > 0 || len(choice.ToolCalls) > 0,
+		"expected either content or tool calls from model")
+	assert.NotEmpty(t, choice.GenerationInfo)
+}
+
 func TestIntegrationChatSequence(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
 	llm := newTestClient(t)

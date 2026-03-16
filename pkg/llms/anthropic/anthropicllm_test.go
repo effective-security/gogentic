@@ -308,16 +308,19 @@ func TestToolsToTools(t *testing.T) {
 	tests := []struct {
 		name      string
 		tools     []llms.Tool
+		model     string
 		wantTools int
 	}{
 		{
 			name:      "empty tools",
 			tools:     []llms.Tool{},
+			model:     "claude-sonnet-4-5",
 			wantTools: 0,
 		},
 		{
 			name:      "nil tools",
 			tools:     nil,
+			model:     "claude-sonnet-4-5",
 			wantTools: 0,
 		},
 		{
@@ -331,6 +334,7 @@ func TestToolsToTools(t *testing.T) {
 					},
 				},
 			},
+			model:     "claude-sonnet-4-5",
 			wantTools: 1,
 		},
 		{
@@ -351,10 +355,11 @@ func TestToolsToTools(t *testing.T) {
 					},
 				},
 			},
+			model:     "claude-sonnet-4-5",
 			wantTools: 2,
 		},
 		{
-			name: "web_search",
+			name: "web_search non-legacy model",
 			tools: []llms.Tool{
 				{
 					Type: "web_search",
@@ -365,6 +370,22 @@ func TestToolsToTools(t *testing.T) {
 					},
 				},
 			},
+			model:     "claude-sonnet-4-5",
+			wantTools: 1,
+		},
+		{
+			name: "web_search legacy model",
+			tools: []llms.Tool{
+				{
+					Type: "web_search",
+					WebSearchOptions: &llms.WebSearchOptions{
+						AllowedDomains:  []string{"example.com"},
+						ExcludedDomains: []string{"excluded.com"},
+						MaxUses:         10,
+					},
+				},
+			},
+			model:     "claude-sonnet-4-0",
 			wantTools: 1,
 		},
 	}
@@ -373,7 +394,7 @@ func TestToolsToTools(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := anthropic.ToTools(tt.tools)
+			result := anthropic.ToTools(tt.tools, tt.model)
 			if tt.wantTools == 0 {
 				assert.Nil(t, result)
 			} else {
@@ -382,12 +403,18 @@ func TestToolsToTools(t *testing.T) {
 				// Verify first tool structure if any
 				if len(result) > 0 {
 					tool := result[0]
-					if tt.name == "web_search" {
+					switch {
+					case tt.name == "web_search non-legacy model":
 						require.NotNil(t, tool.OfWebFetchTool20260209)
 						assert.Equal(t, []string{"example.com"}, tool.OfWebFetchTool20260209.AllowedDomains)
 						assert.Equal(t, []string{"excluded.com"}, tool.OfWebFetchTool20260209.BlockedDomains)
 						assert.Equal(t, int64(10), tool.OfWebFetchTool20260209.MaxUses.Value)
-					} else {
+					case tt.name == "web_search legacy model":
+						require.NotNil(t, tool.OfWebFetchTool20250910)
+						assert.Equal(t, []string{"example.com"}, tool.OfWebFetchTool20250910.AllowedDomains)
+						assert.Equal(t, []string{"excluded.com"}, tool.OfWebFetchTool20250910.BlockedDomains)
+						assert.Equal(t, int64(10), tool.OfWebFetchTool20250910.MaxUses.Value)
+					default:
 						require.NotNil(t, tool.OfTool)
 						assert.Equal(t, tt.tools[0].Function.Name, tool.OfTool.Name)
 						assert.NotNil(t, tool.OfTool.Description)
@@ -698,7 +725,7 @@ func BenchmarkToolsToTools(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		result := anthropic.ToTools(tools)
+		result := anthropic.ToTools(tools, "claude-sonnet-4-5")
 		if len(result) != 1 {
 			b.Fatal("unexpected result length")
 		}
