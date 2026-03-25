@@ -76,10 +76,9 @@ func (s *Transport) Send(ctx context.Context, message *transport.BaseJsonRpcMess
 		"type", message.Type,
 		"key", key,
 	)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	s.mu.RLock()
 	responseChannel := s.responseMap[int64(key)]
+	s.mu.RUnlock()
 	if responseChannel == nil {
 		logger.ContextKV(ctx, xlog.ERROR,
 			"type", message.Type,
@@ -88,16 +87,19 @@ func (s *Transport) Send(ctx context.Context, message *transport.BaseJsonRpcMess
 		)
 		return errors.Errorf("no response channel found for key: %d", key)
 	}
-	responseChannel <- message
-	return nil
+	select {
+	case responseChannel <- message:
+		return nil
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "send cancelled")
+	}
 }
 
 // HandleMessage processes an incoming message and returns a response
 func (s *Transport) HandleMessage(ctx context.Context, body []byte) (*transport.BaseJsonRpcMessage, error) {
+	key := atomic.AddInt64(&s.atomicCounter, 1)
 	// Store the response writer for later use
 	s.mu.Lock()
-
-	key := atomic.AddInt64(&s.atomicCounter, 1)
 	s.responseMap[key] = make(chan *transport.BaseJsonRpcMessage)
 	s.mu.Unlock()
 
@@ -168,9 +170,9 @@ func (s *Transport) HandleMessage(ctx context.Context, body []byte) (*transport.
 	}
 
 	// Block until the response is received
-	s.mu.Lock()
+	s.mu.RLock()
 	ch := s.responseMap[key]
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
 	responseToUse := <-ch
 
