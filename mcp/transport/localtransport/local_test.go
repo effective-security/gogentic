@@ -542,4 +542,77 @@ func TestTransport_Send(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no response channel found for key: 999")
 	})
+
+	t.Run("send does not deadlock while handler waits", func(t *testing.T) {
+		tr := localtransport.New()
+
+		handlerReady := make(chan struct{}, 1)
+		handlerRelease := make(chan struct{})
+		var releaseOnce sync.Once
+		release := func() {
+			releaseOnce.Do(func() {
+				close(handlerRelease)
+			})
+		}
+		t.Cleanup(release)
+
+		tr.SetMessageHandler(func(ctx context.Context, message *transport.BaseJsonRpcMessage) {
+			handlerReady <- struct{}{}
+			<-handlerRelease
+		})
+
+		request := transport.BaseJSONRPCRequest{
+			Jsonrpc: "2.0",
+			Method:  "test_method",
+			Id:      transport.RequestId(123),
+		}
+
+		requestBody, err := json.Marshal(request)
+		require.NoError(t, err)
+
+		handleDone := make(chan error, 1)
+		go func() {
+			_, err := tr.HandleMessage(context.Background(), requestBody)
+			handleDone <- err
+		}()
+
+		select {
+		case <-handlerReady:
+		case <-time.After(time.Second):
+			t.Fatal("handler was not invoked in time")
+		}
+
+		resultData, err := json.Marshal(map[string]any{"status": "ok"})
+		require.NoError(t, err)
+		response := &transport.BaseJsonRpcMessage{
+			Type: transport.BaseMessageTypeJSONRPCResponseType,
+			JsonRpcResponse: &transport.BaseJSONRPCResponse{
+				Jsonrpc: "2.0",
+				Id:      transport.RequestId(1),
+				Result:  resultData,
+			},
+		}
+
+		sendDone := make(chan error, 1)
+		go func() {
+			sendDone <- tr.Send(context.Background(), response)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+		release()
+
+		select {
+		case err := <-sendDone:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("send did not complete in time")
+		}
+
+		select {
+		case err := <-handleDone:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("handle did not complete in time")
+		}
+	})
 }
