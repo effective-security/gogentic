@@ -58,36 +58,48 @@ func TestIntegrationTextGeneration(t *testing.T) {
 	assert.Greater(t, info["OutputTokens"], int64(0))
 }
 
-// TestIntegrationClaudeSonnet4_0 verifies that claude-sonnet-4-0 works without the effort parameter.
-// This model does not support OutputConfig.Effort; the client must not send it (see modelSupportsOutputEffort).
-// It also verifies that the web_search tool is accepted and can be used.
-func TestIntegrationClaudeSonnet4_0(t *testing.T) {
+// TestIntegrationLegacyModels verifies that models older than 4.6 work without the effort
+// parameter and accept the web_search tool. Neither claude-sonnet-4-0 nor claude-sonnet-4-5
+// support OutputConfig.Effort; the client must not send it (see modelSupportsOutputEffort).
+func TestIntegrationLegacyModels(t *testing.T) {
 	checkAnthropicAPIKeyOrSkip(t)
-	llm := newTestClient(t, anthropic.WithModel("claude-sonnet-4-0"))
 
-	tools := []llms.Tool{
-		{
-			Type: "web_search",
-			WebSearchOptions: &llms.WebSearchOptions{
-				MaxUses: 3,
-			},
-		},
+	cases := []struct {
+		name  string
+		model string
+	}{
+		{name: "claude-sonnet-4-0", model: "claude-sonnet-4-0"},
+		{name: "claude-sonnet-4-5", model: "claude-sonnet-4-5"},
 	}
 
-	content := []llms.Message{
-		llms.MessageFromTextParts(llms.RoleSystem, "When asked about current or recent information, use the web_search tool if needed, then reply briefly."),
-		llms.MessageFromTextParts(llms.RoleHuman, "What is today's date? Use web search if needed and reply with just the date."),
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			llm := newTestClient(t, anthropic.WithModel(tc.model))
+
+			tools := []llms.Tool{
+				{
+					Type: "web_search",
+					WebSearchOptions: &llms.WebSearchOptions{
+						MaxUses: 3,
+					},
+				},
+			}
+
+			content := []llms.Message{
+				llms.MessageFromTextParts(llms.RoleSystem, "When asked about current or recent information, use the web_search tool if needed, then reply briefly."),
+				llms.MessageFromTextParts(llms.RoleHuman, "What is today's date? Use web search if needed and reply with just the date."),
+			}
+
+			resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
+			require.NoError(t, err, "%s must not receive effort parameter and must accept web_search tool", tc.model)
+			assert.NotEmpty(t, resp.Choices)
+
+			choice := resp.Choices[0]
+			assert.True(t, len(choice.Content) > 0 || len(choice.ToolCalls) > 0,
+				"expected either content or tool calls from model")
+			assert.NotEmpty(t, choice.GenerationInfo)
+		})
 	}
-
-	resp, err := llm.GenerateContent(context.Background(), content, llms.WithTools(tools))
-	require.NoError(t, err, "claude-sonnet-4-0 must not receive effort parameter and must accept web_search tool")
-	assert.NotEmpty(t, resp.Choices)
-
-	choice := resp.Choices[0]
-	// Response may be direct content or tool calls for web search
-	assert.True(t, len(choice.Content) > 0 || len(choice.ToolCalls) > 0,
-		"expected either content or tool calls from model")
-	assert.NotEmpty(t, choice.GenerationInfo)
 }
 
 func TestIntegrationChatSequence(t *testing.T) {

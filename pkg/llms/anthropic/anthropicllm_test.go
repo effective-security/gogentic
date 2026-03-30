@@ -370,7 +370,7 @@ func TestToolsToTools(t *testing.T) {
 					},
 				},
 			},
-			model:     "claude-sonnet-4-5",
+			model:     "claude-sonnet-4-6",
 			wantTools: 1,
 		},
 		{
