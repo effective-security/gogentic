@@ -37,28 +37,27 @@ const (
 	DefaultMaxTokens = 4096
 )
 
-// modelIsOlderThan4_5 returns true for models that are 4.0-era or older (e.g. claude-sonnet-4-0,
-// claude-sonnet-4-20250514). These models do not support OutputConfig.Effort and need legacy
+// modelIsOlderThan4_6 returns true for models that are 4.5-era or older (e.g. claude-sonnet-4-5,
+// claude-sonnet-4-20250929). These models do not support OutputConfig.Effort and need legacy
 // tool type versions (e.g. web_fetch_20250910 instead of web_fetch_20260209).
-func modelIsOlderThan4_5(model string) bool {
-	return !strings.Contains(model, "-4-5") &&
-		!strings.Contains(model, "-4-6") &&
+func modelIsOlderThan4_6(model string) bool {
+	return !strings.Contains(model, "-4-6") &&
 		!strings.Contains(model, "-4-7") &&
 		!strings.Contains(model, "-4-8") &&
 		!strings.Contains(model, "-4-9")
 }
 
 // modelSupportsOutputEffort returns true for models that accept the OutputConfig.Effort field.
-// Only claude-4.5+ models (sonnet-4-5, haiku-4-5, opus-4-5, -4-6, etc.) support it.
+// Only claude-4.6+ models support it.
 func modelSupportsOutputEffort(model string) bool {
-	return !modelIsOlderThan4_5(model)
+	return !modelIsOlderThan4_6(model)
 }
 
 // modelNeedsLegacyToolVersions returns true for models that only support older tool type
 // versions (e.g. web_fetch_20250910 instead of web_fetch_20260209). Same notion as
-// "older than 4.5": 4.0-era models need legacy tool versions.
+// "older than 4.6": 4.5-era models and below need legacy tool versions.
 func modelNeedsLegacyToolVersions(model string) bool {
-	return modelIsOlderThan4_5(model)
+	return modelIsOlderThan4_6(model)
 }
 
 type LLM struct {
