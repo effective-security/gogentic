@@ -17,6 +17,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/metricskey"
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/pkg/schema"
+	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/x/values"
@@ -154,6 +155,34 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 	}
 
 	return a
+}
+
+// WithSkills integrates Agent Skills support (https://agentskills.io) into the
+// assistant. It injects a compact catalog of all loaded skills into the system
+// prompt via the "skills_catalog" template variable, and registers the
+// activate_skill tool so the model can load full skill instructions on demand.
+//
+// No-op if loader is nil or has no loaded skills.
+func (a *Assistant[O]) WithSkills(loader *skills.Loader) *Assistant[O] {
+	if loader == nil {
+		return a
+	}
+	catalog := loader.Catalog()
+	if catalog == "" {
+		return a
+	}
+
+	if a.cfg.PromptInput == nil {
+		a.cfg.PromptInput = make(map[string]any)
+	}
+	a.cfg.PromptInput[skills.CatalogPromptKey] = catalog
+
+	tool, err := skills.NewActivateSkillTool(loader)
+	if err != nil {
+		logger.KV(xlog.WARNING, "reason", "activate_skill_tool", "err", err.Error())
+		return a
+	}
+	return a.WithTools(tool)
 }
 
 func (a *Assistant[O]) LastRunMessages() []llms.Message {
