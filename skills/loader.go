@@ -79,7 +79,17 @@ func (l *Loader) Load() error {
 		}
 
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			// entry can be a symlink as well as a directory
+			// so we need to stat the entry to get the actual path
+			entryPath := filepath.Join(dir, entry.Name())
+			info, err := os.Stat(entryPath)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					logger.KV(xlog.WARNING, "reason", "stat_entry", "path", entryPath, "err", err.Error())
+				}
+				continue
+			}
+			if !info.IsDir() {
 				continue
 			}
 			skillMdPath := filepath.Join(dir, entry.Name(), "SKILL.md")

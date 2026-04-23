@@ -42,6 +42,29 @@ Step 1: check CVSS score.
 	assert.Equal(t, filepath.Join(dir, "vuln-triage"), list[0].Dir)
 }
 
+func TestLoad_SymlinkedSkillDirectory(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "..2026_04_23_06_50_24")
+	writeSkillFile(t, dataDir, "cve-impact-analysis", `---
+name: cve-impact-analysis
+description: Use when analyzing CVE impact.
+---
+
+Use tenant data to determine impact.
+`)
+	require.NoError(t, os.Symlink(filepath.Base(dataDir), filepath.Join(dir, "..data")))
+	require.NoError(t, os.Symlink(filepath.Join("..data", "cve-impact-analysis"), filepath.Join(dir, "cve-impact-analysis")))
+
+	loader := skills.NewDefaultLoader("", dir)
+	require.NoError(t, loader.Load())
+
+	list := loader.Skills()
+	require.Len(t, list, 1)
+	assert.Equal(t, "cve-impact-analysis", list[0].Name)
+	assert.Equal(t, "Use when analyzing CVE impact.", list[0].Description)
+	assert.Equal(t, filepath.Join(dir, "cve-impact-analysis"), list[0].Dir)
+}
+
 func TestLoad_CollisionPriority(t *testing.T) {
 	lowPriority := t.TempDir()
 	highPriority := t.TempDir()
