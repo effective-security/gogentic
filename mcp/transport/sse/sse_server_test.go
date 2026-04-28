@@ -129,6 +129,35 @@ func TestSSEServerTransport_HandlePostMessage(t *testing.T) {
 		assert.Equal(t, transport.RequestId(123), receivedMessage.JsonRpcRequest.Id)
 	})
 
+	t.Run("successful JSON-RPC notification with params", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		sseTransport, err := sse.NewSSEServerTransport("/messages", w)
+		require.NoError(t, err)
+
+		var receivedMessage *transport.BaseJsonRpcMessage
+		sseTransport.SetMessageHandler(func(msg *transport.BaseJsonRpcMessage) {
+			receivedMessage = msg
+		})
+
+		params, _ := json.Marshal(map[string]any{"requestId": 1, "reason": "timeout"})
+		notification := transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "notifications/cancelled",
+			Params:  params,
+		}
+		notificationBytes, err := json.Marshal(notification)
+		require.NoError(t, err)
+
+		httpReq := httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(notificationBytes))
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		err = sseTransport.HandlePostMessage(httpReq)
+		assert.NoError(t, err)
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, receivedMessage.Type)
+		assert.Equal(t, "notifications/cancelled", receivedMessage.JsonRpcNotification.Method)
+	})
+
 	t.Run("successful JSON-RPC response", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		sseTransport, err := sse.NewSSEServerTransport("/messages", w)

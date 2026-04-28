@@ -92,6 +92,11 @@ func (t *HTTPClientTransport) Send(ctx context.Context, message *transport.BaseJ
 		return errors.Wrap(err, "failed to read response")
 	}
 
+	if resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent {
+		// Notification acknowledged — no response body expected
+		return nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return errors.Errorf("server returned error: %s (status: %d)", string(body), resp.StatusCode)
 	}

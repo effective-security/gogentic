@@ -374,8 +374,7 @@ func TestTransport_HandleMessage(t *testing.T) {
 		require.NoError(t, err)
 		response, err := tr.HandleMessage(context.Background(), notificationBody)
 		require.NoError(t, err)
-		require.NotNil(t, response)
-		assert.Equal(t, transport.BaseMessageTypeJSONRPCResponseType, response.Type)
+		assert.Nil(t, response)
 		require.NotNil(t, receivedMessage)
 		assert.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, receivedMessage.Type)
 		assert.Equal(t, "test_notification", receivedMessage.JsonRpcNotification.Method)
@@ -398,10 +397,9 @@ func TestTransport_HandleMessage(t *testing.T) {
 
 		result, err := tr.HandleMessage(context.Background(), responseBody)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-		// The message handler is not called for responses (based on the code logic)
-		// So receivedMessage should be nil
-		assert.Nil(t, receivedMessage)
+		assert.Nil(t, result)
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCResponseType, receivedMessage.Type)
 	})
 
 	t.Run("handle JSON-RPC error", func(t *testing.T) {
@@ -423,10 +421,9 @@ func TestTransport_HandleMessage(t *testing.T) {
 
 		result, err := tr.HandleMessage(context.Background(), errorBody)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-		// The message handler is not called for errors (based on the code logic)
-		// So receivedMessage should be nil
-		assert.Nil(t, receivedMessage)
+		assert.Nil(t, result)
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCErrorType, receivedMessage.Type)
 	})
 
 	t.Run("handle invalid JSON", func(t *testing.T) {

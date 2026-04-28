@@ -150,14 +150,27 @@ func (t *SSETransport) HandleMessage(msg []byte) error {
 	var jsonrpcMsg *transport.BaseJsonRpcMessage
 
 	if _, ok := rpcMsg["method"]; ok {
-		var req transport.BaseJSONRPCRequest
-		if err := json.Unmarshal(msg, &req); err != nil {
-			if t.errorHandler != nil {
-				t.errorHandler(err)
+		if _, hasID := rpcMsg["id"]; hasID {
+			// Has both method and id: it's a request
+			var req transport.BaseJSONRPCRequest
+			if err := json.Unmarshal(msg, &req); err != nil {
+				if t.errorHandler != nil {
+					t.errorHandler(err)
+				}
+				return err
 			}
-			return err
+			jsonrpcMsg = transport.NewBaseMessageRequest(&req)
+		} else {
+			// Has method but no id: it's a notification
+			var notification transport.BaseJSONRPCNotification
+			if err := json.Unmarshal(msg, &notification); err != nil {
+				if t.errorHandler != nil {
+					t.errorHandler(err)
+				}
+				return err
+			}
+			jsonrpcMsg = transport.NewBaseMessageNotification(&notification)
 		}
-		jsonrpcMsg = transport.NewBaseMessageRequest(&req)
 	} else {
 		var resp transport.BaseJSONRPCResponse
 		if err := json.Unmarshal(msg, &resp); err != nil {

@@ -115,6 +115,11 @@ func (t *HTTPTransport) SetMessageHandler(handler func(ctx context.Context, mess
 	t.messageHandler = handler
 }
 
+// ServeHTTP implements http.Handler, allowing HTTPTransport to be used directly
+func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	t.handleRequest(w, r)
+}
+
 func (t *HTTPTransport) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is supported", http.StatusMethodNotAllowed)
@@ -134,6 +139,12 @@ func (t *HTTPTransport) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if response == nil {
+		// Notifications produce no response body; return 202 Accepted
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
 	jsonData, err := json.Marshal(response)
 	if err != nil {
 		if t.errorHandler != nil {
@@ -149,87 +160,74 @@ func (t *HTTPTransport) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 // handleMessage processes an incoming message and returns a response
 func (t *HTTPTransport) handleMessage(ctx context.Context, body []byte) (*transport.BaseJsonRpcMessage, error) {
-	// Store the response writer for later use
-	t.mu.Lock()
-
-	key := atomic.AddInt64(&t.atomicCounter, 1)
-	t.responseMap[key] = make(chan *transport.BaseJsonRpcMessage)
-	t.mu.Unlock()
-
-	var prevId *transport.RequestId = nil
-	deserialized := false
-	// Try to unmarshal as a request first
+	// Try to unmarshal as a request first (requests have an id field)
 	var request transport.BaseJSONRPCRequest
 	if err := json.Unmarshal(body, &request); err == nil {
-		deserialized = true
-		id := request.Id
-		prevId = &id
+		key := atomic.AddInt64(&t.atomicCounter, 1)
+		t.mu.Lock()
+		t.responseMap[key] = make(chan *transport.BaseJsonRpcMessage)
+		t.mu.Unlock()
+
+		prevId := request.Id
 		request.Id = transport.RequestId(key)
+
 		t.mu.RLock()
 		handler := t.messageHandler
 		t.mu.RUnlock()
-
 		if handler != nil {
 			handler(ctx, transport.NewBaseMessageRequest(&request))
 		}
+
+		// Block until the protocol layer sends the response via Send()
+		responseToUse := <-t.responseMap[key]
+		t.mu.Lock()
+		delete(t.responseMap, key)
+		t.mu.Unlock()
+
+		if responseToUse.JsonRpcResponse != nil {
+			responseToUse.JsonRpcResponse.Id = prevId
+		}
+		return responseToUse, nil
 	}
 
-	// Try as a notification
+	// Try as a notification (has method, no id)
 	var notification transport.BaseJSONRPCNotification
-	if !deserialized {
-		if err := json.Unmarshal(body, &notification); err == nil {
-			//deserialized = true
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageNotification(&notification))
-			}
+	if err := json.Unmarshal(body, &notification); err == nil {
+		t.mu.RLock()
+		handler := t.messageHandler
+		t.mu.RUnlock()
+		if handler != nil {
+			handler(ctx, transport.NewBaseMessageNotification(&notification))
 		}
-		return &transport.BaseJsonRpcMessage{
-			Type: transport.BaseMessageTypeJSONRPCResponseType,
-		}, nil
+		// Notifications require no response body
+		return nil, nil
 	}
 
 	// Try as a response
 	var response transport.BaseJSONRPCResponse
-	if !deserialized {
-		if err := json.Unmarshal(body, &response); err == nil {
-			deserialized = true
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageResponse(&response))
-			}
+	if err := json.Unmarshal(body, &response); err == nil {
+		t.mu.RLock()
+		handler := t.messageHandler
+		t.mu.RUnlock()
+		if handler != nil {
+			handler(ctx, transport.NewBaseMessageResponse(&response))
 		}
+		return nil, nil
 	}
 
-	// Try as an error
+	// Try as an error response
 	var errorResponse transport.BaseJSONRPCError
-	if !deserialized {
-		if err := json.Unmarshal(body, &errorResponse); err == nil {
-			//deserialized = true
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageError(&errorResponse))
-			}
+	if err := json.Unmarshal(body, &errorResponse); err == nil {
+		t.mu.RLock()
+		handler := t.messageHandler
+		t.mu.RUnlock()
+		if handler != nil {
+			handler(ctx, transport.NewBaseMessageError(&errorResponse))
 		}
+		return nil, nil
 	}
 
-	// Block until the response is received
-	responseToUse := <-t.responseMap[key]
-	delete(t.responseMap, key)
-	if prevId != nil && responseToUse.JsonRpcResponse != nil {
-		responseToUse.JsonRpcResponse.Id = *prevId
-	}
-
-	return responseToUse, nil
+	return nil, nil
 }
 
 // readBody reads and returns the body from an io.Reader
