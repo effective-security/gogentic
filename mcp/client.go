@@ -74,6 +74,13 @@ func (c *Client) Initialize(ctx context.Context) (*InitializeResponse, error) {
 
 	c.capabilities = &initResult.Capabilities
 	c.initialized = true
+
+	// Per MCP spec: after receiving the initialize response, the client MUST
+	// send a notifications/initialized notification before any other requests.
+	if err := c.protocol.Notification("notifications/initialized", nil); err != nil {
+		return nil, errors.Wrap(err, "failed to send initialized notification")
+	}
+
 	return &initResult, nil
 }
 

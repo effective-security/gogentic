@@ -2,10 +2,12 @@ package sse_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/gogentic/mcp/transport/sse/internal/sse"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -132,6 +134,117 @@ func TestSSETransport_HandleMessage(t *testing.T) {
 		require.NoError(t, err)
 		err = transport.HandleMessage(nil)
 		assert.Error(t, err)
+	})
+
+	t.Run("notification without id is dispatched correctly", func(t *testing.T) {
+		w := newMockResponseWriter()
+		tr, err := sse.NewSSETransport("/messages", w)
+		require.NoError(t, err)
+
+		var receivedMessage *transport.BaseJsonRpcMessage
+		tr.SetMessageHandler(func(msg *transport.BaseJsonRpcMessage) {
+			receivedMessage = msg
+		})
+		var receivedError error
+		tr.SetErrorHandler(func(e error) { receivedError = e })
+
+		notification := transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "notifications/initialized",
+		}
+		body, err := json.Marshal(notification)
+		require.NoError(t, err)
+
+		err = tr.HandleMessage(body)
+		require.NoError(t, err)
+		assert.Nil(t, receivedError, "no error expected for a valid notification")
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, receivedMessage.Type)
+		assert.Equal(t, "notifications/initialized", receivedMessage.JsonRpcNotification.Method)
+	})
+
+	t.Run("notification with params", func(t *testing.T) {
+		w := newMockResponseWriter()
+		tr, err := sse.NewSSETransport("/messages", w)
+		require.NoError(t, err)
+
+		var receivedMessage *transport.BaseJsonRpcMessage
+		tr.SetMessageHandler(func(msg *transport.BaseJsonRpcMessage) { receivedMessage = msg })
+
+		params, _ := json.Marshal(map[string]any{"key": "value"})
+		notification := transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "notifications/tools/list_changed",
+			Params:  params,
+		}
+		body, err := json.Marshal(notification)
+		require.NoError(t, err)
+
+		err = tr.HandleMessage(body)
+		require.NoError(t, err)
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, receivedMessage.Type)
+		assert.Equal(t, "notifications/tools/list_changed", receivedMessage.JsonRpcNotification.Method)
+		assert.NotEmpty(t, receivedMessage.JsonRpcNotification.Params)
+	})
+
+	t.Run("request with id is dispatched as request", func(t *testing.T) {
+		w := newMockResponseWriter()
+		tr, err := sse.NewSSETransport("/messages", w)
+		require.NoError(t, err)
+
+		var receivedMessage *transport.BaseJsonRpcMessage
+		tr.SetMessageHandler(func(msg *transport.BaseJsonRpcMessage) { receivedMessage = msg })
+
+		request := transport.BaseJSONRPCRequest{
+			Jsonrpc: "2.0",
+			Method:  "initialize",
+			Id:      transport.RequestId(1),
+		}
+		body, err := json.Marshal(request)
+		require.NoError(t, err)
+
+		err = tr.HandleMessage(body)
+		require.NoError(t, err)
+		require.NotNil(t, receivedMessage)
+		assert.Equal(t, transport.BaseMessageTypeJSONRPCRequestType, receivedMessage.Type)
+		assert.Equal(t, "initialize", receivedMessage.JsonRpcRequest.Method)
+		assert.Equal(t, transport.RequestId(1), receivedMessage.JsonRpcRequest.Id)
+	})
+
+	t.Run("all standard MCP notifications are dispatched without error", func(t *testing.T) {
+		mcpNotifications := []string{
+			"notifications/initialized",
+			"notifications/cancelled",
+			"notifications/tools/list_changed",
+			"notifications/prompts/list_changed",
+			"notifications/resources/list_changed",
+			"$/progress",
+		}
+
+		for _, method := range mcpNotifications {
+			t.Run(method, func(t *testing.T) {
+				w := newMockResponseWriter()
+				tr, err := sse.NewSSETransport("/messages", w)
+				require.NoError(t, err)
+
+				var receivedMessage *transport.BaseJsonRpcMessage
+				tr.SetMessageHandler(func(msg *transport.BaseJsonRpcMessage) { receivedMessage = msg })
+				var receivedError error
+				tr.SetErrorHandler(func(e error) { receivedError = e })
+
+				body, _ := json.Marshal(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  method,
+				})
+				err = tr.HandleMessage(body)
+				require.NoError(t, err)
+				assert.Nil(t, receivedError)
+				require.NotNil(t, receivedMessage)
+				assert.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, receivedMessage.Type)
+				assert.Equal(t, method, receivedMessage.JsonRpcNotification.Method)
+			})
+		}
 	})
 }
 
