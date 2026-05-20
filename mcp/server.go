@@ -415,7 +415,7 @@ func createWrappedPromptHandler(userHandler any) func(context.Context, baseGetPr
 
 		// Need to dereference the unmarshaled arguments
 		of := reflect.ValueOf(unmarshaledArguments)
-		if of.Kind() != reflect.Ptr || !of.Elem().CanInterface() {
+		if of.Kind() != reflect.Pointer || !of.Elem().CanInterface() {
 			return newPromptResponseSentError(errors.Errorf("arguments must be a struct"))
 		}
 		// Call the handler with the typed arguments
@@ -508,7 +508,7 @@ func validatePromptHandler(handler any) error {
 		if field.Type.Kind() == reflect.String {
 			isValid = true
 		}
-		if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.String {
+		if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.String {
 			isValid = true
 		}
 		if !isValid {
@@ -579,7 +579,7 @@ func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToo
 		}
 		// Need to dereference the unmarshaled arguments
 		of := reflect.ValueOf(unmarshaledArguments)
-		if of.Kind() != reflect.Ptr {
+		if of.Kind() != reflect.Pointer {
 			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
 		}
 		elem := of.Elem()

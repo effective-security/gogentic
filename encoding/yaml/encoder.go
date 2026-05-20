@@ -145,7 +145,7 @@ func (e *Encoder) structToYAMLWithComments(v any) (*yaml.Node, error) {
 // Recursively parse values, supporting pointers and interfaces
 func (e *Encoder) getValueNode(v reflect.Value) *yaml.Node {
 	// Handle pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return &yaml.Node{Kind: yaml.ScalarNode, Value: "null", Tag: "!!null"}
 		}
@@ -215,7 +215,7 @@ func extractDescription(tag string) string {
 
 // Recursively dereference pointers until `v` is not a pointer type
 func dereference(v reflect.Value) reflect.Value {
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return reflect.Value{} // Return an empty value to prevent nil pointer dereference
 		}
