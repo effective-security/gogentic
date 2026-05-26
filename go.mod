@@ -21,7 +21,7 @@ require (
 	github.com/effective-security/porto v0.37.398
 	github.com/effective-security/x v0.16.91
 	github.com/effective-security/xdb v0.24.144
-	github.com/effective-security/xlog v0.10.53
+	github.com/effective-security/xlog v0.11.54
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0

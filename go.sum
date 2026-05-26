@@ -168,8 +168,8 @@ github.com/effective-security/x v0.16.91 h1:poLrICqyvaXy66yb5CJw/2oDnHbveZR+qKQM
 github.com/effective-security/x v0.16.91/go.mod h1:Q3Gqt98XrwZnNRapA1zlhfRuzLJAu5oimzp5DzQVlvs=
 github.com/effective-security/xdb v0.24.144 h1:iCWxSABT5iwTDQVkQpv4GgJ1W3MCLP5YEsWnpA9r270=
 github.com/effective-security/xdb v0.24.144/go.mod h1:jg/WK4Uz2e+kn7ancvM5Bkw6AZumumYJ39ZFJgniz8k=
-github.com/effective-security/xlog v0.10.53 h1:VvzCkPqa0/CTzWl7y4Exznk00QD/JSF2X/HLNJARtrc=
-github.com/effective-security/xlog v0.10.53/go.mod h1:5OJUl++O7F5LcZStQQI0Yl92UcRP1Kf9eZ5l2btrSo4=
+github.com/effective-security/xlog v0.11.54 h1:hOV5up3dGHoiY6bW1Yi5wjNG+7siuawhMXcQ10nIZLk=
+github.com/effective-security/xlog v0.11.54/go.mod h1:o+SHMLjX93I9o198OUn5DoG83ZBNM6544swMkb/L6dI=
 github.com/effective-security/xpki v0.26.264 h1:JaVLYXBzcuRgF+tmC4CnM9Jmf2j0yuwHIwi5I1/VoNE=
 github.com/effective-security/xpki v0.26.264/go.mod h1:tP+JOAZXLgZNKd5JIeJbQ7kFkiRbkxZ6jPascEasZQA=
 github.com/envoyproxy/go-control-plane v0.14.0 h1:hbG2kr4RuFj222B6+7T83thSPqLjwBIfQawTkC++2HA=
