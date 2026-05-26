@@ -39,7 +39,7 @@ require (
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
 	golang.org/x/tools v0.45.0
 	google.golang.org/api v0.280.0
-	google.golang.org/genai v1.57.0
+	google.golang.org/genai v1.58.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/yaml v1.6.0
