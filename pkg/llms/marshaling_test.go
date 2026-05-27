@@ -13,6 +13,10 @@ type unknownContent struct{}
 
 func (unknownContent) isPart() {}
 
+func (unknownContent) ContentLength() int {
+	return 0
+}
+
 func TestUnmarshalYAML(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

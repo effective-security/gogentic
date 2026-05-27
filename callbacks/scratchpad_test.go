@@ -2,7 +2,6 @@ package callbacks
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,7 +49,9 @@ func newTestChatContext() (context.Context, chatmodel.ChatContext) {
 	tenantID := "tenant1"
 	chatID := "chatid"
 	chatCtx := chatmodel.NewChatContext(tenantID, chatID, nil)
+	chatCtx.SetRunID("run1")
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+	ctx = chatmodel.WithStepID(ctx, "step1")
 	return ctx, chatCtx
 }
 
@@ -98,25 +99,34 @@ func TestScratchpad_getRun_nil(t *testing.T) {
 }
 
 func TestScratchpad_OnCallbacks(t *testing.T) {
-	t.Parallel()
+	TimeNowFn = func() time.Time { return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) }
+	defer func() { TimeNowFn = time.Now }()
+
 	sp := NewScratchpad(ModeVerbose)
 	ctx, _ := newTestChatContext()
 	sp.StartRun(ctx)
 	ast := &fakeAssistant{name: "A1"}
 	tool := &fakeTool{name: "T1"}
-	resp := &llms.ContentResponse{
-		Choices: []*llms.ContentChoice{{Content: "Answer 1"}}}
+
+	src := &llms.MessageSource{
+		Name:   "A1",
+		RunID:  "run1",
+		StepID: "step2",
+	}
+
+	resp := &llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: "Answer 1"}}}
+
 	// Test various callbacks
 	sp.OnAssistantStart(ctx, ast, "input")
 	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\nagsjhdfgkajshdfg gajkshdgfkjasdhjfg ahsdfkgasjhdfga akjhsdgfakjhsdgfakj gasjdkhfgakjsdhga aksjdhfgakjdsfg"}}},
 	})
 	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parseerr"))
 	sp.OnAssistantError(ctx, ast, "input", errors.New("fail"), []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnToolStart(ctx, tool, "A1", "tinput")
 	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
@@ -126,25 +136,61 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	stats, output := sp.EndRun(ctx)
 	require.NotNil(t, stats)
 	outStr := string(output)
-	assert.Contains(t, outStr, "A1 *** Assistant Start ***")
-	assert.Contains(t, outStr, "A1 *** Assistant End ***")
-	assert.Contains(t, outStr, "T1 *** Tool Start ***")
-	assert.Contains(t, outStr, "T1 *** Tool End ***")
-	assert.Contains(t, outStr, "A1 *** LLM Call ***")
-	assert.Contains(t, outStr, "A1 *** LLM Parse Error ***")
-	assert.Contains(t, outStr, "A1 *** Error ***")
-	assert.Contains(t, outStr, "A1 *** Tool Not Found ***")
+
+	exp := `2024-01-01 12:00:00 run1: *** Run Started: chatid ***
+2024-01-01 12:00:00 run1: step1 A1 *** Assistant Start ***
+2024-01-01 12:00:00 run1: step1 A1 Input: input
+2024-01-01 12:00:00 run1: step1 A1 Output:
+2024-01-01 12:00:00 run1: Answer 1
+2024-01-01 12:00:00 run1: step1 A1 Messages:
+[0] human:
+  - very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\n... (105 more)
+  * 1 texts, 0 tool calls, 0 tool responses, content length: 184
+  * source: run1.step2.A1
+
+2024-01-01 12:00:00 run1: step1 A1 *** Assistant End ***
+2024-01-01 12:00:00 run1: step1 A1 *** LLM Call *** gpt-4o model, 1 messages
+2024-01-01 12:00:00 run1: step1 A1 Messages:
+[0] human:
+  - foo
+  * 1 texts, 0 tool calls, 0 tool responses, content length: 3
+  * source: run1.step2.A1
+
+2024-01-01 12:00:00 run1: step1 A1 *** LLM Parse Error *** parseerr
+2024-01-01 12:00:00 run1: step1 A1  Response: output
+2024-01-01 12:00:00 run1: step1 A1 *** Error *** fail
+2024-01-01 12:00:00 run1: step1 A1 Messages:
+[0] human:
+  - foo
+  * 1 texts, 0 tool calls, 0 tool responses, content length: 3
+  * source: run1.step2.A1
+
+2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool Start ***
+2024-01-01 12:00:00 run1: step1 A1 T1 Input: tinput
+2024-01-01 12:00:00 run1: step1 A1 T1 Output: toutput
+2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool End ***
+2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool Error *** terr
+2024-01-01 12:00:00 run1: step1 A1 *** Tool Not Found *** T2
+2024-01-01 12:00:00 run1: Assistant calls: 1, Failed: 2
+2024-01-01 12:00:00 run1: Tool calls: 1, Failed: 1, Not Found: 1
+2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16, Input Tokens: 0, Output Tokens: 0, Total Tokens: 0
+2024-01-01 12:00:00 run1: *** Run Ended. Duration: 0s ***
+`
+	assert.Equal(t, exp, outStr)
+
+	ctx = chatmodel.WithStepID(ctx, "step2")
+
 	// test callback methods again: should still work if no run
 	sp.OnAssistantStart(ctx, ast, "input")
 	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parse2"))
 	sp.OnAssistantError(ctx, ast, "input", errors.New("fail2"), []llms.Message{
-		{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
 	sp.OnToolStart(ctx, tool, "A1", "tinput")
 	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
@@ -154,16 +200,14 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 }
 
 func Test_run_print_format(t *testing.T) {
-	t.Parallel()
 	_, chatCtx := newTestChatContext()
 	r := &run{chatCtx: chatCtx}
-	oldTimeFn := TimeNowFn
+
 	TimeNowFn = func() time.Time { return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) }
-	defer func() { TimeNowFn = oldTimeFn }()
+	defer func() { TimeNowFn = time.Now }()
 
 	r.print("hello", "again")
-	lines := strings.Split(r.w.String(), "\n")
-	require.NotEmpty(t, lines[0])
-	// Format: [timestamp chatID.runID] hello again
-	assert.Contains(t, lines[0], "2024-01-01 12:00:00 "+chatCtx.GetChatID()+"."+chatCtx.RunID()+" hello again")
+
+	exp := "2024-01-01 12:00:00 run1: hello again\n"
+	assert.Equal(t, exp, r.w.String())
 }

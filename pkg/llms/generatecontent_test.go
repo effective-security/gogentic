@@ -96,7 +96,7 @@ AAEC
 			t.Parallel()
 			js := llmutils.ToJSON(tt.msg)
 			assert.Equal(t, tt.js, js)
-			content := tt.msg.GetContent()
+			content := tt.msg.String()
 			assert.Equal(t, tt.content, content)
 		})
 	}

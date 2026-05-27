@@ -2,9 +2,10 @@ package chatmodel
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestChatContext_Basics(t *testing.T) {
@@ -16,7 +17,7 @@ func TestChatContext_Basics(t *testing.T) {
 	assert.Equal(t, "cid", c.GetChatID())
 	assert.Equal(t, 123, c.AppData())
 	// RunID present and not empty
-	assert.NotEmpty(t, c.RunID())
+	assert.NotEmpty(t, c.GetRunID())
 
 	// SetChatID
 	c.SetChatID("newid")
@@ -38,7 +39,7 @@ func TestNewChatContext_DefaultIDs(t *testing.T) {
 	require.NotNil(t, c)
 	assert.NotEmpty(t, c.GetTenantID())
 	assert.NotEmpty(t, c.GetChatID())
-	assert.NotEmpty(t, c.RunID())
+	assert.NotEmpty(t, c.GetRunID())
 }
 
 func TestContextPlumbing(t *testing.T) {
