@@ -69,82 +69,9 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.Message, opti
 
 // GenerateContent implements the Model interface.
 func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, goerr113, funlen
-	opts := llms.CallOptions{}
-	for _, opt := range options {
-		opt(&opts)
-	}
-
-	chatMsgs := make([]*ChatMessage, 0, len(messages))
-	for _, mc := range messages {
-		msg := &ChatMessage{MultiContent: mc.Parts}
-		switch mc.Role {
-		case llms.RoleSystem:
-			msg.Role = RoleSystem
-		case llms.RoleAI:
-			msg.Role = RoleAssistant
-		case llms.RoleHuman:
-			msg.Role = RoleUser
-		case llms.RoleGeneric:
-			msg.Role = RoleUser
-		case llms.RoleTool:
-			msg.Role = RoleTool
-			// Here we extract tool calls from the message and populate the ToolCalls field.
-
-			// parse mc.Parts (which should have one entry of type ToolCallResponse) and populate msg.Content and msg.ToolCallID
-			if len(mc.Parts) != 1 {
-				return nil, errors.Errorf("expected exactly one part for role %v, got %v", mc.Role, len(mc.Parts))
-			}
-			switch p := mc.Parts[0].(type) {
-			case llms.ToolCallResponse:
-				msg.ToolCallID = p.ToolCallID
-				msg.Content = p.Content
-			default:
-				return nil, errors.Errorf("expected part of type ToolCallResponse for role %v, got %T", mc.Role, mc.Parts[0])
-			}
-
-		default:
-			return nil, errors.Errorf("role %v not supported", mc.Role)
-		}
-
-		// Here we extract tool calls from the message and populate the ToolCalls field.
-		newParts, toolCalls := ExtractToolParts(msg)
-		msg.MultiContent = newParts
-		msg.ToolCalls = toolCallsFromToolCalls(toolCalls)
-
-		chatMsgs = append(chatMsgs, msg)
-	}
-	req := &openaiclient.ChatRequest{
-		Model:                  opts.Model,
-		StopWords:              opts.StopWords,
-		Messages:               chatMsgs,
-		StreamingFunc:          opts.StreamingFunc,
-		StreamingReasoningFunc: opts.StreamingReasoningFunc,
-		Temperature:            opts.Temperature,
-		N:                      opts.N,
-		FrequencyPenalty:       opts.FrequencyPenalty,
-		PresencePenalty:        opts.PresencePenalty,
-
-		MaxCompletionTokens: opts.MaxTokens,
-
-		ToolChoice:     opts.ToolChoice,
-		Seed:           opts.Seed,
-		Metadata:       opts.Metadata,
-		ResponseFormat: opts.ResponseFormat,
-	}
-	applyPromptCacheToChatRequest(req, o.client.Provider, &opts)
-
-	// if opts.Tools is not empty, append them to req.Tools
-	for _, tool := range opts.Tools {
-		t, err := toolFromTool(tool)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
-		}
-		req.Tools = append(req.Tools, t)
-	}
-
-	// if o.client.ResponseFormat is set, use it for the request
-	if o.client.ResponseFormat != nil {
-		req.ResponseFormat = o.client.ResponseFormat
+	req, err := o.buildChatRequestBody(messages, options...)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := o.client.CreateChat(ctx, req)
@@ -152,7 +79,7 @@ func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Messa
 		return nil, err
 	}
 	if len(result.Choices) == 0 {
-		return nil, ErrEmptyResponse
+		return nil, errors.Wrap(ErrEmptyResponse, "empty response from chat")
 	}
 
 	choices := make([]*llms.ContentChoice, len(result.Choices))
@@ -187,161 +114,96 @@ func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Messa
 	return response, nil
 }
 
-func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
+// buildChatRequestBody converts gogentic messages and CallOptions into an
+// openaiclient.ChatRequest. The request is returned without being sent and is
+// shared between the live chat path and the batch path.
+func (o *LLM) buildChatRequestBody(messages []llms.Message, options ...llms.CallOption) (*openaiclient.ChatRequest, error) {
 	opts := llms.CallOptions{}
 	for _, opt := range options {
 		opt(&opts)
 	}
 
-	logger.ContextKV(ctx, xlog.DEBUG, "messages", len(messages))
-
-	// Build Responses API input from generic messages
-	var inputItems responses.ResponseInputParam
+	chatMsgs := make([]*ChatMessage, 0, len(messages))
 	for _, mc := range messages {
+		msg := &ChatMessage{MultiContent: mc.Parts}
 		switch mc.Role {
-		case llms.RoleSystem, llms.RoleHuman:
-			role := "user"
-			if mc.Role == llms.RoleSystem {
-				role = "system"
-			}
-			var contents responses.ResponseInputMessageContentListParam
-			for _, p := range mc.Parts {
-				switch v := p.(type) {
-				case llms.TextContent:
-					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: v.Text}})
-				case llms.ImageURLContent:
-					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputImage: &responses.ResponseInputImageParam{ImageURL: param.NewOpt(v.URL), Detail: responses.ResponseInputImageDetail(v.Detail)}})
-				case llms.BinaryContent:
-					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputFile: &responses.ResponseInputFileParam{FileData: param.NewOpt(v.String())}})
-				default:
-					return nil, errors.Errorf("unsupported content part type %T", p)
-				}
-			}
-			if len(contents) == 0 {
-				contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: ""}})
-			}
-			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfInputMessage: &responses.ResponseInputItemMessageParam{Role: role, Content: contents}})
-
-		case llms.RoleAI, llms.RoleGeneric:
-			// Assistant messages must use output content types (output_text/refusal)
-			var outContents []responses.ResponseOutputMessageContentUnionParam
-			var fnCalls []responses.ResponseFunctionToolCallParam
-			for _, p := range mc.Parts {
-				switch v := p.(type) {
-				case llms.TextContent:
-					outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: v.Text}})
-				case llms.ToolCall:
-					if v.FunctionCall != nil {
-						fnCalls = append(fnCalls, responses.ResponseFunctionToolCallParam{
-							Name:      v.FunctionCall.Name,
-							Arguments: v.FunctionCall.Arguments,
-							CallID:    v.ID,
-						})
-					}
-				default:
-					// ignore non-text assistant parts in history
-				}
-			}
-			if len(outContents) == 0 {
-				outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: ""}})
-			}
-			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfOutputMessage: &responses.ResponseOutputMessageParam{Content: outContents, Status: responses.ResponseOutputMessageStatusCompleted}})
-			// Append function_call items so that tool outputs can reference them by call_id
-			for _, fc := range fnCalls {
-				fcCopy := fc
-				inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCall: &fcCopy})
-			}
-
+		case llms.RoleSystem:
+			msg.Role = RoleSystem
+		case llms.RoleAI:
+			msg.Role = RoleAssistant
+		case llms.RoleHuman:
+			msg.Role = RoleUser
+		case llms.RoleGeneric:
+			msg.Role = RoleUser
 		case llms.RoleTool:
+			msg.Role = RoleTool
 			if len(mc.Parts) != 1 {
 				return nil, errors.Errorf("expected exactly one part for role %v, got %v", mc.Role, len(mc.Parts))
 			}
-			tr, ok := mc.Parts[0].(llms.ToolCallResponse)
-			if !ok {
-				return nil, errors.Errorf("expected ToolCallResponse for tool role, got %T", mc.Parts[0])
+			switch p := mc.Parts[0].(type) {
+			case llms.ToolCallResponse:
+				msg.ToolCallID = p.ToolCallID
+				msg.Content = p.Content
+			default:
+				return nil, errors.Errorf("expected part of type ToolCallResponse for role %v, got %T", mc.Role, mc.Parts[0])
 			}
-			fco := responses.ResponseInputItemFunctionCallOutputParam{
-				CallID: tr.ToolCallID,
-				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: param.NewOpt(tr.Content)},
-			}
-			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCallOutput: &fco})
 
 		default:
 			return nil, errors.Errorf("role %v not supported", mc.Role)
 		}
-	}
 
-	req := &responses.ResponseNewParams{
-		Model:           values.StringsCoalesce(opts.Model, o.client.Model, openaiclient.DefaultChatModel),
-		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
-		MaxOutputTokens: param.NewOpt(int64(values.NumbersCoalesce(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
-		Metadata:        convertMetadata(opts.Metadata),
-		// not supported with gpt5
-		//Temperature:     param.NewOpt(opts.Temperature),
-		//TopP:            param.NewOpt(opts.TopP),
-	}
-	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
+		newParts, toolCalls := ExtractToolParts(msg)
+		msg.MultiContent = newParts
+		msg.ToolCalls = toolCallsFromToolCalls(toolCalls)
 
-	effort := opts.ReasoningEffort
-	if strings.HasPrefix(o.client.Model, "gpt-5-pro") {
-		//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
-		effort = llms.ReasoningEffortHigh
+		chatMsgs = append(chatMsgs, msg)
 	}
+	req := &openaiclient.ChatRequest{
+		Model:                  opts.Model,
+		StopWords:              opts.StopWords,
+		Messages:               chatMsgs,
+		StreamingFunc:          opts.StreamingFunc,
+		StreamingReasoningFunc: opts.StreamingReasoningFunc,
+		Temperature:            opts.Temperature,
+		N:                      opts.N,
+		FrequencyPenalty:       opts.FrequencyPenalty,
+		PresencePenalty:        opts.PresencePenalty,
 
-	// Only configure reasoning for models that support the reasoning.effort parameter.
-	// Explicitly set effort on an unsupported model (e.g. gpt-4o) is silently ignored to
-	// avoid sending an invalid parameter that the API will reject with a 400.
-	if modelSupportsReasoning(o.client.Model) {
-		switch effort {
-		case llms.ReasoningEffortLow:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
-		case llms.ReasoningEffortMedium:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
-		case llms.ReasoningEffortHigh:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
-		default:
-			if strings.HasPrefix(o.client.Model, "gpt-5.1") {
-				//   - `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported
-				//     reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool
-				//     calls are supported for all reasoning values in gpt-5.1.
-				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
-			} else {
-				//   - All models before `gpt-5.1` default to `medium` reasoning effort, and do not
-				//     support `none`.
-				//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
-				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
-			}
-		}
+		MaxCompletionTokens: opts.MaxTokens,
+
+		ToolChoice:     opts.ToolChoice,
+		Seed:           opts.Seed,
+		Metadata:       opts.Metadata,
+		ResponseFormat: opts.ResponseFormat,
 	}
+	applyPromptCacheToChatRequest(req, o.client.Provider, &opts)
 
-	// Tool choice mapping (support simple string modes)
-	if opts.ToolChoice != nil {
-		if s, ok := opts.ToolChoice.(string); ok {
-			req.ToolChoice = responses.ResponseNewParamsToolChoiceUnion{OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptions(s))}
-		}
-	}
-
-	// Map tools to responses ToolUnionParam
 	for _, tool := range opts.Tools {
-		t, err := responsesToolFromTool(tool)
+		t, err := toolFromTool(tool)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
 		}
 		req.Tools = append(req.Tools, t)
 	}
 
-	// Map ResponseFormat to Responses API text.format
 	if o.client.ResponseFormat != nil {
-		req.Text = toResponsesText(o.client.ResponseFormat)
+		req.ResponseFormat = o.client.ResponseFormat
 	}
-	if opts.ResponseFormat != nil {
-		req.Text = toResponsesText(opts.ResponseFormat)
+	return req, nil
+}
+
+func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	opts := llms.CallOptions{}
+	for _, opt := range options {
+		opt(&opts)
 	}
 
-	var (
-		result *responses.Response
-		err    error
-	)
+	req, err := o.buildResponsesRequestBody(messages, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *responses.Response
 	if opts.StreamingFunc != nil {
 		result, err = o.client.CreateStreamingResponse(ctx, req, opts.StreamingFunc)
 	} else {
@@ -350,8 +212,6 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 	if err != nil {
 		return nil, err
 	}
-
-	logger.ContextKV(ctx, xlog.DEBUG, "outputs", len(result.Output))
 
 	// Build a single choice from output_text and propagate tool calls if present.
 	choice := &llms.ContentChoice{
@@ -390,9 +250,143 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 
 	response := &llms.ContentResponse{Choices: []*llms.ContentChoice{choice}}
 	if response.Choices[0].Content == "" && len(response.Choices[0].ToolCalls) == 0 {
-		return nil, ErrEmptyResponse
+		return nil, errors.Wrap(ErrEmptyResponse, "empty response from chat")
 	}
 	return response, nil
+}
+
+// buildResponsesRequestBody converts gogentic messages and CallOptions into a
+// responses.ResponseNewParams. The request is returned without being sent and
+// is shared between the live Responses path and the batch path.
+func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms.CallOption) (*responses.ResponseNewParams, error) {
+	opts := llms.CallOptions{}
+	for _, opt := range options {
+		opt(&opts)
+	}
+
+	var inputItems responses.ResponseInputParam
+	for _, mc := range messages {
+		switch mc.Role {
+		case llms.RoleSystem, llms.RoleHuman:
+			role := "user"
+			if mc.Role == llms.RoleSystem {
+				role = "system"
+			}
+			var contents responses.ResponseInputMessageContentListParam
+			for _, p := range mc.Parts {
+				switch v := p.(type) {
+				case llms.TextContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: v.Text}})
+				case llms.ImageURLContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputImage: &responses.ResponseInputImageParam{ImageURL: param.NewOpt(v.URL), Detail: responses.ResponseInputImageDetail(v.Detail)}})
+				case llms.BinaryContent:
+					contents = append(contents, responses.ResponseInputContentUnionParam{OfInputFile: &responses.ResponseInputFileParam{FileData: param.NewOpt(v.String())}})
+				default:
+					return nil, errors.Errorf("unsupported content part type %T", p)
+				}
+			}
+			if len(contents) == 0 {
+				contents = append(contents, responses.ResponseInputContentUnionParam{OfInputText: &responses.ResponseInputTextParam{Text: ""}})
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfInputMessage: &responses.ResponseInputItemMessageParam{Role: role, Content: contents}})
+
+		case llms.RoleAI, llms.RoleGeneric:
+			var outContents []responses.ResponseOutputMessageContentUnionParam
+			var fnCalls []responses.ResponseFunctionToolCallParam
+			for _, p := range mc.Parts {
+				switch v := p.(type) {
+				case llms.TextContent:
+					outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: v.Text}})
+				case llms.ToolCall:
+					if v.FunctionCall != nil {
+						fnCalls = append(fnCalls, responses.ResponseFunctionToolCallParam{
+							Name:      v.FunctionCall.Name,
+							Arguments: v.FunctionCall.Arguments,
+							CallID:    v.ID,
+						})
+					}
+				default:
+				}
+			}
+			if len(outContents) == 0 {
+				outContents = append(outContents, responses.ResponseOutputMessageContentUnionParam{OfOutputText: &responses.ResponseOutputTextParam{Text: ""}})
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfOutputMessage: &responses.ResponseOutputMessageParam{Content: outContents, Status: responses.ResponseOutputMessageStatusCompleted}})
+			for _, fc := range fnCalls {
+				fcCopy := fc
+				inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCall: &fcCopy})
+			}
+
+		case llms.RoleTool:
+			if len(mc.Parts) != 1 {
+				return nil, errors.Errorf("expected exactly one part for role %v, got %v", mc.Role, len(mc.Parts))
+			}
+			tr, ok := mc.Parts[0].(llms.ToolCallResponse)
+			if !ok {
+				return nil, errors.Errorf("expected ToolCallResponse for tool role, got %T", mc.Parts[0])
+			}
+			fco := responses.ResponseInputItemFunctionCallOutputParam{
+				CallID: tr.ToolCallID,
+				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: param.NewOpt(tr.Content)},
+			}
+			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCallOutput: &fco})
+
+		default:
+			return nil, errors.Errorf("role %v not supported", mc.Role)
+		}
+	}
+
+	req := &responses.ResponseNewParams{
+		Model:           values.StringsCoalesce(opts.Model, o.client.Model, openaiclient.DefaultChatModel),
+		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
+		MaxOutputTokens: param.NewOpt(int64(values.NumbersCoalesce(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
+		Metadata:        convertMetadata(opts.Metadata),
+	}
+	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
+
+	effort := opts.ReasoningEffort
+	if strings.HasPrefix(o.client.Model, "gpt-5-pro") {
+		effort = llms.ReasoningEffortHigh
+	}
+
+	if modelSupportsReasoning(o.client.Model) {
+		switch effort {
+		case llms.ReasoningEffortLow:
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+		case llms.ReasoningEffortMedium:
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
+		case llms.ReasoningEffortHigh:
+			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
+		default:
+			if strings.HasPrefix(o.client.Model, "gpt-5.1") {
+				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
+			} else {
+				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
+			}
+		}
+	}
+
+	if opts.ToolChoice != nil {
+		if s, ok := opts.ToolChoice.(string); ok {
+			req.ToolChoice = responses.ResponseNewParamsToolChoiceUnion{OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptions(s))}
+		}
+	}
+
+	for _, tool := range opts.Tools {
+		t, err := responsesToolFromTool(tool)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
+		}
+		req.Tools = append(req.Tools, t)
+	}
+
+	if o.client.ResponseFormat != nil {
+		req.Text = toResponsesText(o.client.ResponseFormat)
+	}
+	if opts.ResponseFormat != nil {
+		req.Text = toResponsesText(opts.ResponseFormat)
+	}
+	return req, nil
 }
 
 // CreateEmbedding creates embeddings for the given input texts.
@@ -405,7 +399,7 @@ func (o *LLM) CreateEmbedding(ctx context.Context, inputTexts []string) ([][]flo
 		return nil, errors.Wrap(err, "failed to create openai embeddings")
 	}
 	if len(embeddings) == 0 {
-		return nil, ErrEmptyResponse
+		return nil, errors.Wrap(ErrEmptyResponse, "empty response from embeddings")
 	}
 	if len(inputTexts) != len(embeddings) {
 		return embeddings, ErrUnexpectedResponseLength

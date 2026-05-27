@@ -81,6 +81,10 @@ const (
 
 	// Prompt Caching
 	CapabilityPromptCaching
+
+	// Asynchronous batch processing via the provider's Batch API.
+	// Providers that advertise this capability also implement [Batcher].
+	CapabilityBatch
 )
 
 var providerCapabilities = map[ProviderType]Capability{
@@ -94,7 +98,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilitySystemPrompt |
 		CapabilityVision |
 		CapabilityWebSearchTool |
-		CapabilityPromptCaching,
+		CapabilityPromptCaching |
+		CapabilityBatch,
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |

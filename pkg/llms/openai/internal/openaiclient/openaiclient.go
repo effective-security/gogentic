@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/schema"
+	openaisdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 )
@@ -56,6 +59,35 @@ type Client struct {
 	supportsResponsesAPI bool
 
 	ResponseFormat *schema.ResponseFormat
+
+	// sdkOnce guards lazy construction of the openai-go SDK client used for
+	// endpoints (Batches, Files) that we do not call via hand-rolled HTTP.
+	sdkOnce sync.Once
+	sdk     *openaisdk.Client
+}
+
+// sdkClient returns a lazily-constructed openai-go SDK client built from the
+// same token / baseURL / organization / Doer used by the rest of this client.
+// It is safe for concurrent use.
+func (c *Client) sdkClient() *openaisdk.Client {
+	c.sdkOnce.Do(func() {
+		opts := make([]option.RequestOption, 0, 4)
+		if c.token != "" {
+			opts = append(opts, option.WithAPIKey(c.token))
+		}
+		if c.baseURL != "" {
+			opts = append(opts, option.WithBaseURL(c.baseURL))
+		}
+		if c.organization != "" {
+			opts = append(opts, option.WithOrganization(c.organization))
+		}
+		if c.httpClient != nil {
+			opts = append(opts, option.WithHTTPClient(c.httpClient))
+		}
+		client := openaisdk.NewClient(opts...)
+		c.sdk = &client
+	})
+	return c.sdk
 }
 
 // Option is an option for the OpenAI client.
