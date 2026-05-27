@@ -97,6 +97,7 @@ func (a *Assistant[O]) WithInputParser(inputParser func(string) (string, error))
 	a.inputParser = inputParser
 }
 
+// GetCallConfig returns a new Config with the options applied.
 func (a *Assistant[O]) GetCallConfig(opts ...Option) *Config {
 	return a.cfg.Apply(opts...)
 }
@@ -328,9 +329,27 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
 func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, []llms.Message, error) {
-	_, chatID, err := chatmodel.GetTenantAndChatID(ctx)
-	if err != nil {
+	chatCtx := chatmodel.GetChatContext(ctx)
+	if chatCtx == nil {
 		return nil, nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
+	}
+	chatID := chatCtx.GetChatID()
+	if chatID == "" {
+		return nil, nil, errors.New("invalid chat ID")
+	}
+	runID := chatCtx.GetRunID()
+	stepID := chatmodel.GetStepID(ctx)
+
+	source := &llms.MessageSource{
+		Name:   a.name,
+		RunID:  runID,
+		StepID: stepID,
+	}
+	appendWithSource := func(list []llms.Message, msg ...llms.Message) []llms.Message {
+		for _, m := range msg {
+			list = append(list, m.WithSource(source))
+		}
+		return list
 	}
 
 	systemPrompt, err := a.GetSystemPrompt(ctx, input.Input, input.PromptInputs)
@@ -338,20 +357,21 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		return nil, nil, errors.WithMessage(err, "failed to format system prompt")
 	}
 
-	messageHistory := []llms.Message{
+	messageHistory := llms.Messages{
 		llms.MessageFromTextParts(llms.RoleSystem, systemPrompt),
 	}
 	for _, example := range cfg.Examples {
-		messageHistory = append(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, example.Prompt))
-		messageHistory = append(messageHistory, llms.MessageFromTextParts(llms.RoleAI, example.Completion))
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, example.Prompt))
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, example.Completion))
 	}
+
 	if cfg.Store != nil {
 		prevMessages := cfg.Store.Messages(ctx)
+		messageHistory = appendWithSource(messageHistory, prevMessages...)
 		logger.ContextKV(ctx, xlog.DEBUG,
 			"assistant", a.name,
 			"chat_id", chatID,
 			"message_history", len(prevMessages))
-		messageHistory = append(messageHistory, prevMessages...)
 	}
 
 	parsedInput := input.Input
@@ -367,20 +387,20 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 
 		role := llms.RoleHuman
 		if cfg.IsGeneric {
-			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", a.name, "question", parsedInput)))
+			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", a.name, "question", parsedInput)))
 		} else {
-			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleHuman, parsedInput))
+			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleHuman, parsedInput))
 		}
 		// else {
 		// 	// TODO: keep as Human?
 		// 	// 	role = llms.ChatMessageTypeGeneric
 		// }
 		userMessage = llms.MessageFromTextParts(role, parsedInput)
-		messageHistory = append(messageHistory, userMessage)
+		messageHistory = appendWithSource(messageHistory, userMessage)
 	}
 
 	if len(input.Messages) > 0 {
-		messageHistory = append(messageHistory, input.Messages...)
+		messageHistory = appendWithSource(messageHistory, input.Messages...)
 	}
 
 	var extraOptions []Option
@@ -520,12 +540,12 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	}
 
 	addResultToMessageHistory := func(result string) {
-		messageHistory = append(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
 
 		if cfg.IsGeneric {
-			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
+			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
 		} else {
-			a.runMessages = append(a.runMessages, llms.MessageFromTextParts(llms.RoleAI, result))
+			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleAI, result))
 		}
 
 		if cfg.Store != nil && !cfg.SkipMessageHistory {
@@ -586,6 +606,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 	var lock sync.Mutex
 
+	chatCtx := chatmodel.GetChatContext(ctx)
+	runID := chatCtx.GetRunID()
+	stepID := chatmodel.GetStepID(ctx)
+
 	// Create a type to hold tool call results
 	type toolCallResult struct {
 		toolCall llms.ToolCall
@@ -624,7 +648,11 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 		}
 
 		toolCalls = append(toolCalls, choiceToolCalls...)
-		assistantResponse := llms.MessageFromToolCalls(llms.RoleAI, choiceToolCalls...)
+		assistantResponse := llms.MessageFromToolCalls(llms.RoleAI, choiceToolCalls...).WithSource(&llms.MessageSource{
+			Name:   a.name,
+			RunID:  runID,
+			StepID: stepID,
+		})
 		messageHistory = append(messageHistory, assistantResponse)
 		if !cfg.SkipMessageHistory && !cfg.SkipToolHistory {
 			lock.Lock()
@@ -777,6 +805,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			ToolCallID: result.toolCall.ID, // Use the ID from the original tool call
 			Name:       result.toolCall.FunctionCall.Name,
 			Content:    content,
+		}).WithSource(&llms.MessageSource{
+			Name:   a.name,
+			RunID:  runID,
+			StepID: stepID,
 		})
 
 		// Log the tool call response for debugging

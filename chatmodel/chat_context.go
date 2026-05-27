@@ -13,7 +13,10 @@ var (
 	ErrInvalidChatContext = errors.New("invalid chat context")
 )
 
-// ChatContext is the context for the chat agent,
+// ChatContext is the context for the LLM flow.
+//
+//	ChatID is the ID of the chat which is persisted across runs.
+//	RunID identifies a single run of the LLM flow, usually it's a random ID.
 type ChatContext interface {
 	// GetTenantID retrieves the tenant ID from the context
 	GetTenantID() string
@@ -27,8 +30,10 @@ type ChatContext interface {
 	GetMetadata(key string) (value any, ok bool)
 	// SetMetadata sets metadata by key
 	SetMetadata(key string, value any)
-	// RunID returns the run ID for the chat
-	RunID() string
+	// GetRunID returns the run ID for the chat
+	GetRunID() string
+	// SetRunID updates the run ID in the context
+	SetRunID(id string)
 	// GetOrgID retrieves the org ID from the context.
 	// This is also used in metrics.
 	// Used by some providers to identify the organization of the tenant,
@@ -59,8 +64,12 @@ func (c *chatContext) GetChatID() string {
 	return c.chatID
 }
 
-func (c *chatContext) RunID() string {
+func (c *chatContext) GetRunID() string {
 	return c.runID
+}
+
+func (c *chatContext) SetRunID(id string) {
+	c.runID = id
 }
 
 // SetChatID updates the chat ID in the context
@@ -103,20 +112,35 @@ func NewChatContext(tenantID, chatID string, appData any) ChatContext {
 type contextKey int
 
 const (
-	keyContext contextKey = iota
+	keyChatContext contextKey = iota
+	keyStepID
 )
 
 // WithChatContext returns a new context with ChatContext value
 func WithChatContext(ctx context.Context, chatCtx ChatContext) context.Context {
-	return context.WithValue(ctx, keyContext, chatCtx)
+	return context.WithValue(ctx, keyChatContext, chatCtx)
+}
+
+// WithStepID returns a new context with Flow Step value.
+// This is used to identify the step of in the multi-step LLM flow.
+func WithStepID(ctx context.Context, stepID string) context.Context {
+	return context.WithValue(ctx, keyStepID, stepID)
 }
 
 // GetChatContext retrieves the ChatContext from the context
 func GetChatContext(ctx context.Context) ChatContext {
-	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
 		return v
 	}
 	return nil
+}
+
+// GetStepID retrieves the Step ID from the context
+func GetStepID(ctx context.Context) string {
+	if v, ok := ctx.Value(keyStepID).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // NewFromContext returns new Background context with ChatContext from incoming context.
@@ -130,7 +154,7 @@ func NewFromContext(ctx context.Context) context.Context {
 }
 
 func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
-	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
 		v.SetChatID(chatID)
 		return ctx, nil
 	}
@@ -140,7 +164,7 @@ func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
 // GetTenantAndChatID retrieves the tenant and chat ID from the provided context.
 // If the context does not contain a ChatContext, it returns error.
 func GetTenantAndChatID(ctx context.Context) (string, string, error) {
-	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
 		return v.GetTenantID(), v.GetChatID(), nil
 	}
 	return "", "", errors.WithStack(ErrInvalidChatContext)
@@ -149,7 +173,7 @@ func GetTenantAndChatID(ctx context.Context) (string, string, error) {
 // GetOrgID retrieves the org ID from the provided context.
 // If the context does not contain a ChatContext, it returns "main".
 func GetOrgID(ctx context.Context) string {
-	if v, ok := ctx.Value(keyContext).(ChatContext); ok {
+	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
 		return v.GetOrgID()
 	}
 	return "main"

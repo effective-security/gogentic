@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -36,6 +37,21 @@ const (
 type Message struct {
 	Role  Role          `json:"role"`
 	Parts []ContentPart `json:"parts"`
+
+	// Source is the source of the message.
+	// It's used to identify the source of the message.
+	Source *MessageSource `json:"source,omitempty"`
+}
+
+type Messages = []Message
+
+type MessageSource struct {
+	// Name is the name of the source of the message.
+	Name string `json:"name"`
+	// RunID is the ID of the run of the message.
+	RunID string `json:"run_id"`
+	// StepID is the ID of the step of the message.
+	StepID string `json:"step_id"`
 }
 
 // TextPart creates TextContent from a given string.
@@ -70,6 +86,7 @@ func ImageURLWithDetailPart(url string, detail string) ImageURLContent {
 // ContentPart is an interface all parts of content have to implement.
 type ContentPart interface {
 	isPart()
+	ContentLength() int
 }
 
 // TextContent is content with some text.
@@ -83,6 +100,10 @@ func (tc TextContent) String() string {
 
 func (TextContent) isPart() {}
 
+func (tc TextContent) ContentLength() int {
+	return len(tc.Text)
+}
+
 // ImageURLContent is content with an URL pointing to an image.
 type ImageURLContent struct {
 	URL    string `json:"url"`
@@ -94,6 +115,10 @@ func (iuc ImageURLContent) String() string {
 }
 
 func (ImageURLContent) isPart() {}
+
+func (iuc ImageURLContent) ContentLength() int {
+	return len(iuc.URL) + len(iuc.Detail)
+}
 
 // BinaryContent is content holding some binary data with a MIME type.
 type BinaryContent struct {
@@ -107,6 +132,10 @@ func (bc BinaryContent) String() string {
 }
 
 func (BinaryContent) isPart() {}
+
+func (bc BinaryContent) ContentLength() int {
+	return len(bc.MIMEType) + len(bc.Data)
+}
 
 // FunctionCall is the name and arguments of a function call.
 type FunctionCall struct {
@@ -146,6 +175,14 @@ func (tc ToolCall) String() string {
 
 func (ToolCall) isPart() {}
 
+func (tc ToolCall) ContentLength() int {
+	cl := len(tc.ID) + len(tc.Type)
+	if tc.FunctionCall != nil {
+		cl += len(tc.FunctionCall.Name) + len(tc.FunctionCall.Arguments)
+	}
+	return cl
+}
+
 // ToolCallResponse is the response returned by a tool call.
 type ToolCallResponse struct {
 	// ToolCallID is the ID of the tool call this response is for.
@@ -161,6 +198,10 @@ func (tc ToolCallResponse) String() string {
 }
 
 func (ToolCallResponse) isPart() {}
+
+func (tc ToolCallResponse) ContentLength() int {
+	return len(tc.ToolCallID) + len(tc.Name) + len(tc.Content)
+}
 
 // ContentResponse is the response returned by a GenerateContent call.
 // It can potentially return multiple content choices.
@@ -245,43 +286,66 @@ func MessageFromToolResponse(role Role, toolResponse ToolCallResponse) Message {
 	})
 }
 
-func (m Message) GetContent() string {
+func (m *MessageSource) String() string {
+	if m == nil {
+		return ""
+	}
+	if m.StepID == "" {
+		return fmt.Sprintf("%s.%s", m.RunID, m.Name)
+	}
+	return fmt.Sprintf("%s.%s.%s", m.RunID, m.StepID, m.Name)
+}
+
+func (m Message) WithSource(src *MessageSource) Message {
+	res := m
+	if res.Source == nil {
+		res.Source = src
+	}
+	return res
+}
+
+func (m *Message) String() string {
 	var buf strings.Builder
+	m.Print(&buf)
+	return buf.String()
+}
+
+// Print is a debugging helper.
+func (m *Message) Print(w io.Writer) {
 	lastNewLine := true
 	for _, p := range m.Parts {
 		if !lastNewLine {
-			buf.WriteString("\n")
+			_, _ = fmt.Fprint(w, "\n")
 		}
 		switch typ := p.(type) {
 		case TextContent:
-			buf.WriteString(typ.Text)
+			_, _ = fmt.Fprint(w, typ.Text)
 			lastNewLine = strings.HasSuffix(typ.Text, "\n")
 		case ImageURLContent:
-			buf.WriteString("URL: ")
-			buf.WriteString(typ.URL)
+			_, _ = fmt.Fprint(w, "URL: ")
+			_, _ = fmt.Fprint(w, typ.URL)
 			lastNewLine = false
 		case BinaryContent:
-			buf.WriteString("Binary: ")
-			buf.WriteString(typ.MIMEType)
-			buf.WriteString("\n")
-			buf.WriteString(base64.StdEncoding.EncodeToString(typ.Data))
+			_, _ = fmt.Fprint(w, "Binary: ")
+			_, _ = fmt.Fprint(w, typ.MIMEType)
+			_, _ = fmt.Fprint(w, "\n")
+			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(typ.Data))
 			lastNewLine = false
 		case ToolCall:
-			buf.WriteString("Tool Call: ")
+			_, _ = fmt.Fprint(w, "Tool Call: ")
 			js, _ := json.Marshal(typ)
-			buf.Write(js)
-			buf.WriteString("\n")
+			_, _ = w.Write(js)
+			_, _ = fmt.Fprint(w, "\n")
 			lastNewLine = true
 		case ToolCallResponse:
-			buf.WriteString("Response: ")
+			_, _ = fmt.Fprint(w, "Response: ")
 			js, _ := json.Marshal(typ)
-			buf.Write(js)
-			buf.WriteString("\n")
+			_, _ = w.Write(js)
+			_, _ = fmt.Fprint(w, "\n")
 			lastNewLine = true
 		}
 	}
 	if !lastNewLine {
-		buf.WriteString("\n")
+		_, _ = fmt.Fprint(w, "\n")
 	}
-	return buf.String()
 }

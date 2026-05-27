@@ -207,7 +207,7 @@ func PrintMessages(w io.Writer, msgs []llms.Message) {
 	for _, mc := range msgs {
 		_, _ = fmt.Fprint(w, getMessageRole(mc))
 		_, _ = fmt.Fprint(w, ": ")
-		_, _ = fmt.Fprint(w, mc.GetContent())
+		mc.Print(w)
 	}
 }
 

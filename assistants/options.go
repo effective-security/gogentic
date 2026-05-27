@@ -122,7 +122,7 @@ func NewConfig(opts ...Option) *Config {
 	return cfg.Apply(opts...)
 }
 
-// Apply applies the options to the Config.
+// Apply applies the options to the new Config.
 func (c *Config) Apply(opts ...Option) *Config {
 	cfg := *c
 	for _, opt := range opts {
