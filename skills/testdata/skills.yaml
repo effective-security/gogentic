@@ -1,0 +1,12 @@
+---
+strict: false
+enable_default_skills: true
+enable_standard_paths: false
+paths:
+  - testdata/skills
+agents:
+  agent-foo:
+    paths:
+      - testdata/skills/.agent-foo
+  agent-bar:
+    disabled: true

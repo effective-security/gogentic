@@ -70,7 +70,7 @@ func TestSchema(t *testing.T) {
 		"content": {
 			"type": "string",
 			"title": "Response Content",
-			"description": "The content returned by agent or tool."
+			"description": "The content returned by assistant or tool."
 		}
 	},
 	"type": "object",

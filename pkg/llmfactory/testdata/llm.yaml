@@ -30,8 +30,8 @@ providers:
     token: env://ANTHROPIC_API_KEY
     default_model: claude-sonnet-4-6
     available_models:
-      - claude-opus-4-6
-      - claude-sonnet-4-6
+      - claude-opus-4-8
+      - claude-sonnet-4-8
     open_ai:
       api_type: ANTHROPIC
 
@@ -70,12 +70,25 @@ providers:
 
 tool_models:
   default:
-    - gpt-5
+    - OPENAI/gpt-5.1
   web_search:
-    - gpt-5
+    - OPENAI/gpt-5.1
+
 assistant_models:
   default:
-    - gpt-5
+    - OPENAI/gpt-5.1
+  azure_tool:
+    - AZURE/gpt-5.1
   orchestrator:
-    - claude-opus-4-6
-    - claude-sonnet-4-6
+    - claude-opus-4-8
+    - claude-sonnet-4-8
+
+skills:
+  enable_default_skills: true
+  enable_standard_paths: true
+  agents:
+    orchestrator:
+      paths:
+        - ~/.agents/skills/.orchestrator
+    remediations:
+      disabled: true

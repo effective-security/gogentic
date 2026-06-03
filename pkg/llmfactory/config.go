@@ -3,6 +3,7 @@ package llmfactory
 import (
 	"slices"
 
+	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/x/configloader"
 )
 
@@ -13,12 +14,16 @@ type Config struct {
 	DefaultProvider string `json:"default_provider" yaml:"default_provider"`
 	// ToolModels specifies the mapping of tools to providers.
 	// key is the tool name, value is the model name.
+	// The model name can be in the format of <provider_name>/<model_name>.
 	// Use `default: <model_name>` as the default model for tools.
 	ToolModels map[string][]string `json:"tool_models" yaml:"tool_models"`
 	// AssistantModels specifies the mapping of assistants to models.
 	// key is the assistant name, value is the model name.
+	// The model name can be in the format of <provider_name>/<model_name>.
 	// Use `default: <model_name>` as the default model for assistants.
 	AssistantModels map[string][]string `json:"assistant_models" yaml:"assistant_models"`
+	// Skills specifies the skills configuration.
+	Skills *skills.Config `json:"skills,omitempty" yaml:"skills,omitempty"`
 }
 
 // ProviderConfig for the OpenAI provider

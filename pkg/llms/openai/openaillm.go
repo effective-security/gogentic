@@ -11,13 +11,10 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/x/values"
-	"github.com/effective-security/xlog"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 )
-
-var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "openai")
 
 type ChatMessage = openaiclient.ChatMessage
 

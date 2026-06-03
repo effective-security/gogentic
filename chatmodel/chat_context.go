@@ -122,7 +122,7 @@ func WithChatContext(ctx context.Context, chatCtx ChatContext) context.Context {
 }
 
 // WithStepID returns a new context with Flow Step value.
-// This is used to identify the step of in the multi-step LLM flow.
+// This is used to identify the step in the multi-step LLM flow.
 func WithStepID(ctx context.Context, stepID string) context.Context {
 	return context.WithValue(ctx, keyStepID, stepID)
 }

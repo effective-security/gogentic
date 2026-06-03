@@ -2,9 +2,6 @@ package skills_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/effective-security/gogentic/skills"
@@ -12,55 +9,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupLoader(t *testing.T) *skills.Loader {
-	t.Helper()
-	dir := t.TempDir()
-	writeSkillFile(t, dir, "vuln-triage", `---
-name: vuln-triage
-description: Use when triaging vulnerabilities.
----
-
+func TestActivateSkillTool_Call_Valid(t *testing.T) {
+	ctx := context.Background()
+	body := `
 ## Steps
 1. Check CVSS score.
 2. Check exploitability.
-`)
-	loader := skills.NewDefaultLoader("", dir)
-	require.NoError(t, loader.Load())
-	return loader
-}
+`
+	skillList := skills.Skills{
+		{
+			Name:     "vuln-triage",
+			Body:     body,
+			Location: "testdata/vuln-triage",
+		},
+	}
 
-func TestActivateSkillTool_Call_Valid(t *testing.T) {
-	loader := setupLoader(t)
-	tool, err := skills.NewActivateSkillTool(loader)
+	tool, err := skills.NewActivateSkillTool(skillList)
 	require.NoError(t, err)
 
-	out, err := tool.Call(context.Background(), `{"name":"vuln-triage"}`)
-	require.NoError(t, err)
-	assert.Contains(t, out, `<skill_content name="vuln-triage"`)
-	assert.Contains(t, out, "Check CVSS score.")
-	assert.Contains(t, out, "</skill_content>")
-}
-
-func TestActivateSkillTool_Call_NotFound(t *testing.T) {
-	loader := setupLoader(t)
-	tool, err := skills.NewActivateSkillTool(loader)
+	out, err := tool.Call(ctx, `{"name":"vuln-triage"}`)
 	require.NoError(t, err)
 
-	out, err := tool.Call(context.Background(), `{"name":"nonexistent"}`)
+	exp := `{"skill":"vuln-triage","instructions":"\n## Steps\n1. Check CVSS score.\n2. Check exploitability.\n","location":"testdata/vuln-triage"}`
+
+	assert.Equal(t, exp, out)
+
+	out, err = tool.Call(ctx, `{"name":"nonexistent"}`)
 	require.NoError(t, err)
-	assert.Contains(t, out, "not found")
-	assert.Contains(t, out, "vuln-triage") // available skills listed
+	exp2 := `{"error":{"code":"skill_not_found","message":"skill \"nonexistent\" not found","available_skills":"vuln-triage"}}`
+	assert.Equal(t, exp2, out)
 }
 
 func TestActivateSkillTool_ParametersEnum(t *testing.T) {
-	dir := t.TempDir()
-	writeSkillFile(t, dir, "skill-one", "---\nname: skill-one\ndescription: One.\n---\nbody")
-	writeSkillFile(t, dir, "skill-two", "---\nname: skill-two\ndescription: Two.\n---\nbody")
+	skillList := skills.Skills{
+		{
+			Name: "skill-one",
+			Body: "---\nname: skill-one\ndescription: One.\n---\nbody",
+		},
+		{
+			Name: "skill-two",
+			Body: "---\nname: skill-two\ndescription: Two.\n---\nbody",
+		},
+	}
 
-	loader := skills.NewDefaultLoader("", dir)
-	require.NoError(t, loader.Load())
-
-	tool, err := skills.NewActivateSkillTool(loader)
+	tool, err := skills.NewActivateSkillTool(skillList)
 	require.NoError(t, err)
 
 	params := tool.Parameters()
@@ -80,35 +72,23 @@ func TestActivateSkillTool_ParametersEnum(t *testing.T) {
 }
 
 func TestActivateSkillTool_ResourceListing(t *testing.T) {
-	dir := t.TempDir()
-
-	// Skill with scripts/ subdirectory
-	skillDir := filepath.Join(dir, "rich-skill")
-	require.NoError(t, os.MkdirAll(filepath.Join(skillDir, "scripts"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: rich-skill
-description: Skill with scripts.
----
-Body here.
-`), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "scripts", "run.sh"), []byte("#!/bin/bash\necho hi"), 0755))
-
-	loader := skills.NewDefaultLoader("", dir)
-	require.NoError(t, loader.Load())
-
-	tool, err := skills.NewActivateSkillTool(loader)
+	cfg := &skills.Config{
+		EnableDefaultSkills: true,
+		EnableStandardPaths: false,
+		Paths:               []string{"./testdata/skills"},
+	}
+	loader, err := skills.NewLoader(cfg, "")
 	require.NoError(t, err)
 
-	out, err := tool.Call(context.Background(), `{"name":"rich-skill"}`)
+	skillList := loader.Skills("agent-foo")
+	assert.Len(t, skillList, 3)
+
+	tool, err := skills.NewActivateSkillTool(skillList)
 	require.NoError(t, err)
-	assert.Contains(t, out, "<skill_resources>")
-	assert.True(t, strings.Contains(out, "run.sh"))
-}
 
-func TestNewActivateSkillTool_NoSkills(t *testing.T) {
-	loader := skills.NewDefaultLoader("", t.TempDir())
-	require.NoError(t, loader.Load())
+	out, err := tool.Call(context.Background(), `{"name":"foo-skill-2"}`)
+	require.NoError(t, err)
+	exp := `{"skill":"foo-skill-2","instructions":"# Header\n\nInstructions","location":"/.agent-foo/foo-skill-2"}`
 
-	_, err := skills.NewActivateSkillTool(loader)
-	assert.Error(t, err)
+	assert.Equal(t, exp, out)
 }

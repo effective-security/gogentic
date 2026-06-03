@@ -13,6 +13,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms/cloudflare"
 	"github.com/effective-security/gogentic/pkg/llms/googleai"
 	"github.com/effective-security/gogentic/pkg/llms/openai"
+	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/xlog"
 )
 
@@ -35,6 +36,10 @@ type Factory interface {
 	ToolModel(toolName string, preferredModels ...string) (llms.Model, error)
 	// AssistantModel returns an assistant model by its name.
 	AssistantModel(assistantName string, preferredModels ...string) (llms.Model, error)
+
+	// Skills returns all loaded skills for the given agent sorted alphabetically by name.
+	// Use tags to filter skills by tags. The Skill must have all the tags provided.
+	Skills(agent string, tags ...string) skills.Skills
 }
 
 // Load returns OpenAI factory
@@ -54,6 +59,7 @@ type factory struct {
 	assistantModels map[string][]string
 	byType          map[llms.ProviderType]llms.Model
 	byName          map[string]llms.Model
+	skillsLoader    skills.Loader
 	lock            sync.Mutex
 
 	options []Option
@@ -86,8 +92,25 @@ func New(cfg *Config, opts ...Option) Factory {
 		}
 	}
 
+	// the first provider is the default one if default_provider is not set
 	if f.defaultProvider == nil && len(f.cfg.Providers) > 0 {
 		f.defaultProvider = f.cfg.Providers[0]
+	}
+
+	if f.cfg.Skills != nil {
+		loader, err := skills.NewLoader(f.cfg.Skills, "")
+		if err != nil {
+			logger.KV(xlog.ERROR,
+				"reason", "skills_loader",
+				"err", err.Error(),
+			)
+		} else {
+			f.skillsLoader = loader
+			logger.KV(xlog.INFO,
+				"status", "skills_loaded",
+				"agents", loader.Agents(),
+			)
+		}
 	}
 
 	return f
@@ -241,6 +264,14 @@ func newCloudflare(cfg *ProviderConfig, preferredModels []string, options ...Opt
 	return cloudflare.New(opts...)
 }
 
+// Skills returns all loaded skills for the given agent sorted alphabetically by name.
+func (f *factory) Skills(agent string, tags ...string) skills.Skills {
+	if f.skillsLoader == nil {
+		return nil
+	}
+	return f.skillsLoader.Skills(agent, tags...)
+}
+
 // Default returns the default OpenAI client
 func (f *factory) DefaultModel() (llms.Model, error) {
 	if len(f.cfg.Providers) == 0 || f.defaultProvider == nil {
@@ -282,14 +313,26 @@ func (f *factory) ModelByName(modelNames ...string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	for _, modelName := range modelNames {
-		if client, ok := f.byName[modelName]; ok {
+	for _, modelNamePath := range modelNames {
+		parts := strings.Split(modelNamePath, "/")
+		var providerName, modelName string
+		if len(parts) == 2 {
+			providerName = parts[0]
+			modelName = parts[1]
+		} else {
+			modelName = parts[0]
+		}
+
+		if client, ok := f.byName[modelNamePath]; ok {
 			return client, nil
 		}
 
 		for _, cfg := range f.cfg.Providers {
+			if providerName != "" && providerName != cfg.Name {
+				continue
+			}
 			if slices.Contains(cfg.AvailableModels, modelName) {
-				model, err := NewLLM(cfg, modelNames, f.options...)
+				model, err := NewLLM(cfg, []string{modelName}, f.options...)
 				if err != nil {
 					logger.KV(xlog.ERROR,
 						"reason", "NewLLM",
@@ -304,9 +347,12 @@ func (f *factory) ModelByName(modelNames ...string) (llms.Model, error) {
 					"status", "created_llm",
 					"type", cfg.OpenAI.APIType,
 					"version", cfg.OpenAI.APIVersion,
-					"name", cfg.Name)
+					"provider", cfg.Name,
+					"model", modelName,
+					"path", modelNamePath,
+				)
 
-				f.byName[modelName] = model
+				f.byName[modelNamePath] = model
 				return model, nil
 			}
 		}
