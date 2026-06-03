@@ -48,7 +48,7 @@ func New(t reflect.Type) (*Schema, error) {
 }
 
 func (s *Schema) String() string {
-	js, _ := json.MarshalIndent(s.Parameters, "", "\t")
+	js, _ := json.MarshalIndent(s.Parameters, "", "  ")
 	return string(js)
 }
 

@@ -16,41 +16,41 @@ func Test_JSON_Encoding(t *testing.T) {
 Respond with JSON in the following JSON schema:
 ` + "```json" + `
 {
-	"properties": {
-		"topic": {
-			"type": "string",
-			"title": "Topic",
-			"description": "Topic of the search",
-			"examples": [
-				"golang"
-			]
-		},
-		"query": {
-			"type": "string",
-			"title": "Query",
-			"description": "Query to search for relevant content",
-			"examples": [
-				"what is golang"
-			]
-		},
-		"type": {
-			"type": "string",
-			"enum": [
-				"web",
-				"image",
-				"video"
-			],
-			"title": "Type",
-			"description": "Type of search",
-			"default": "web"
-		}
-	},
-	"type": "object",
-	"required": [
-		"topic",
-		"query",
-		"type"
-	]
+  "properties": {
+    "topic": {
+      "type": "string",
+      "title": "Topic",
+      "description": "Topic of the search",
+      "examples": [
+        "golang"
+      ]
+    },
+    "query": {
+      "type": "string",
+      "title": "Query",
+      "description": "Query to search for relevant content",
+      "examples": [
+        "what is golang"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "web",
+        "image",
+        "video"
+      ],
+      "title": "Type",
+      "description": "Type of search",
+      "default": "web"
+    }
+  },
+  "type": "object",
+  "required": [
+    "topic",
+    "query",
+    "type"
+  ]
 }
 ` + "```" + `
 Make sure to return an instance of the JSON, not the schema itself.

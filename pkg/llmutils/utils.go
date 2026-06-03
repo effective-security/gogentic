@@ -137,7 +137,7 @@ func AddComment(role, name, typ, content string) string {
 
 func JSONIndent(body string) string {
 	var buf bytes.Buffer
-	_ = json.Indent(&buf, []byte(body), "", "\t")
+	_ = json.Indent(&buf, []byte(body), "", "  ")
 	return buf.String()
 }
 
@@ -147,7 +147,7 @@ func ToJSON(val any) string {
 }
 
 func ToJSONIndent(val any) string {
-	js, _ := json.MarshalIndent(val, "", "\t")
+	js, _ := json.MarshalIndent(val, "", "  ")
 	return string(js)
 }
 
@@ -175,7 +175,7 @@ func Stringify(s any) string {
 	if v, ok := s.(string); ok {
 		return v
 	}
-	js, _ := json.MarshalIndent(s, "", "\t")
+	js, _ := json.MarshalIndent(s, "", "  ")
 	return BackticksJSON(string(js))
 }
 

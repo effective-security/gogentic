@@ -798,10 +798,22 @@ func Test_GetDescriptions(t *testing.T) {
 
 	// Test GetDescriptions
 	desc := assistants.GetDescriptions(mockAssistant1, mockAssistant2)
-	assert.Contains(t, desc, "Assistant1")
-	assert.Contains(t, desc, "Assistant2")
-	assert.Contains(t, desc, "Description 1 with multiple lines")
-	assert.Contains(t, desc, "Description 2")
+	exp := "\n```json" + `
+{
+  "Assistants": [
+    {
+      "Name": "Assistant1",
+      "Description": "Description 1 with multiple lines."
+    },
+    {
+      "Name": "Assistant2",
+      "Description": "Description 2."
+    }
+  ]
+}
+` + "```\n"
+
+	assert.Equal(t, exp, desc)
 }
 
 func Test_GetDescriptionsWithTools(t *testing.T) {
