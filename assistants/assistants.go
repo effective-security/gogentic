@@ -14,7 +14,7 @@ import (
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "assistants")
 
-//go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/effective-security/gogentic/pkg/llms  Model
+//go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/effective-security/gogentic/pkg/llms  Model,Batcher
 //go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
 
 type McpServerRegistrator interface {
