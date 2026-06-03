@@ -22,7 +22,7 @@ require (
 	github.com/effective-security/x v0.16.92
 	github.com/effective-security/xdb v0.24.145
 	github.com/effective-security/xlog v0.11.54
-	github.com/go-playground/validator/v10 v10.30.2
+	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
