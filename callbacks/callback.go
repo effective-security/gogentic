@@ -5,6 +5,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/effective-security/gogentic/assistants"
@@ -166,6 +167,10 @@ func (l *Printer) OnAssistantStart(ctx context.Context, assistant assistants.IAs
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	_, _ = fmt.Fprintf(l.Out, "Assistant Start: %s\n", assistant.Name())
+	skillList := assistant.GetSkills()
+	if len(skillList) > 0 {
+		_, _ = fmt.Fprintf(l.Out, "Skills: %s\n", strings.Join(skillList.Names(), ", "))
+	}
 	_, _ = fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
@@ -174,6 +179,7 @@ func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssi
 	defer l.lock.Unlock()
 	_, _ = fmt.Fprintf(l.Out, "Assistant End: %s\n", assistant.Name())
 	if l.Mode == ModeVerbose {
+		_, _ = fmt.Fprintf(l.Out, "Output:\n")
 		for _, choice := range resp.Choices {
 			if choice.Content != "" {
 				_, _ = fmt.Fprintln(l.Out, choice.Content)

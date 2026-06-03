@@ -44,6 +44,20 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
+	model, err = f.ModelByName("AZURE/gpt-5.1")
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "AZURE", fm.provider)
+
+	model, err = f.ModelByName("OPENAI/gpt-5.1")
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "OPENAI", fm.provider)
+
 	// Test ModelByName with multiple preferred models
 	model, err = f.ModelByName("gpt-5.1-unknown", "gpt-5.1-mini")
 	require.NoError(t, err)
@@ -100,7 +114,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ToolModel with preferred models
@@ -108,7 +122,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ToolModel with non-existent tool (should use default)
@@ -116,7 +130,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test AssistantModel with specific assistant
@@ -124,7 +138,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "claude-opus-4-6", fm.model)
+	assert.Equal(t, "claude-opus-4-8", fm.model)
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	// Test AssistantModel with preferred models
@@ -135,12 +149,34 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
+	// Test AssistantModel with path
+	model, err = f.AssistantModel("azure_tool", "gpt-5.1")
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "OPENAI", fm.provider)
+
+	model, err = f.AssistantModel("azure_tool")
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "AZURE", fm.provider)
+
+	model, err = f.AssistantModel("azure_tool", "AZURE/gpt-5.1")
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "AZURE", fm.provider)
+
 	// Test AssistantModel with non-existent assistant (should use default)
 	model, err = f.AssistantModel("non-existent-assistant")
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test error cases

@@ -9,6 +9,7 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,7 @@ type fakeAssistant struct{ name string }
 func (a *fakeAssistant) Name() string                                          { return a.name }
 func (a *fakeAssistant) Description() string                                   { return "desc" }
 func (a *fakeAssistant) GetTools() []tools.ITool                               { return nil }
+func (a *fakeAssistant) GetSkills() skills.Skills                              { return nil }
 func (a *fakeAssistant) FormatPrompt(map[string]any) (llms.PromptValue, error) { return nil, nil }
 func (a *fakeAssistant) GetPromptInputVariables() []string                     { return nil }
 func (a *fakeAssistant) Call(context.Context, *assistants.CallInput) (*llms.ContentResponse, error) {
@@ -137,11 +139,12 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	require.NotNil(t, stats)
 	outStr := string(output)
 
-	exp := `2024-01-01 12:00:00 run1: *** Run Started: chatid ***
+	exp := `2024-01-01 12:00:00 run1: === Run Started: chatid ===
 2024-01-01 12:00:00 run1: step1 A1 *** Assistant Start ***
-2024-01-01 12:00:00 run1: step1 A1 Input: input
-2024-01-01 12:00:00 run1: step1 A1 Output:
-2024-01-01 12:00:00 run1: Answer 1
+2024-01-01 12:00:00 run1: step1 A1 Input:
+input
+2024-01-01 12:00:00 run1: step1 A1 Assistant Output:
+Answer 1
 2024-01-01 12:00:00 run1: step1 A1 Messages:
 [0] human:
   - very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\n... (105 more)
@@ -166,15 +169,17 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
   * source: run1.step2.A1
 
 2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool Start ***
-2024-01-01 12:00:00 run1: step1 A1 T1 Input: tinput
-2024-01-01 12:00:00 run1: step1 A1 T1 Output: toutput
+2024-01-01 12:00:00 run1: step1 A1 T1 Tool Input:
+tinput
+2024-01-01 12:00:00 run1: step1 A1 T1 Tool Output:
+toutput
 2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool End ***
 2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool Error *** terr
 2024-01-01 12:00:00 run1: step1 A1 *** Tool Not Found *** T2
 2024-01-01 12:00:00 run1: Assistant calls: 1, Failed: 2
 2024-01-01 12:00:00 run1: Tool calls: 1, Failed: 1, Not Found: 1
 2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16, Input Tokens: 0, Output Tokens: 0, Total Tokens: 0
-2024-01-01 12:00:00 run1: *** Run Ended. Duration: 0s ***
+2024-01-01 12:00:00 run1: === Run Ended. Duration: 0s ===
 `
 	assert.Equal(t, exp, outStr)
 
@@ -206,7 +211,7 @@ func Test_run_print_format(t *testing.T) {
 	TimeNowFn = func() time.Time { return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) }
 	defer func() { TimeNowFn = time.Now }()
 
-	r.print("hello", "again")
+	r.printEntry("hello", "again")
 
 	exp := "2024-01-01 12:00:00 run1: hello again\n"
 	assert.Equal(t, exp, r.w.String())

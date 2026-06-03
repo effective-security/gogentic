@@ -17,6 +17,7 @@ import (
 	chatmodel "github.com/effective-security/gogentic/chatmodel"
 	mcp "github.com/effective-security/gogentic/mcp"
 	llms "github.com/effective-security/gogentic/pkg/llms"
+	skills "github.com/effective-security/gogentic/skills"
 	tools "github.com/effective-security/gogentic/tools"
 	jsonschema "github.com/invopop/jsonschema"
 	gomock "go.uber.org/mock/gomock"
@@ -140,6 +141,20 @@ func (m *MockIAssistant) GetPromptInputVariables() []string {
 func (mr *MockIAssistantMockRecorder) GetPromptInputVariables() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPromptInputVariables", reflect.TypeOf((*MockIAssistant)(nil).GetPromptInputVariables))
+}
+
+// GetSkills mocks base method.
+func (m *MockIAssistant) GetSkills() skills.Skills {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkills")
+	ret0, _ := ret[0].(skills.Skills)
+	return ret0
+}
+
+// GetSkills indicates an expected call of GetSkills.
+func (mr *MockIAssistantMockRecorder) GetSkills() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkills", reflect.TypeOf((*MockIAssistant)(nil).GetSkills))
 }
 
 // GetTools mocks base method.
@@ -365,6 +380,20 @@ func (m *MockTypeableAssistant[O]) GetPromptInputVariables() []string {
 func (mr *MockTypeableAssistantMockRecorder[O]) GetPromptInputVariables() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPromptInputVariables", reflect.TypeOf((*MockTypeableAssistant[O])(nil).GetPromptInputVariables))
+}
+
+// GetSkills mocks base method.
+func (m *MockTypeableAssistant[O]) GetSkills() skills.Skills {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkills")
+	ret0, _ := ret[0].(skills.Skills)
+	return ret0
+}
+
+// GetSkills indicates an expected call of GetSkills.
+func (mr *MockTypeableAssistantMockRecorder[O]) GetSkills() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkills", reflect.TypeOf((*MockTypeableAssistant[O])(nil).GetSkills))
 }
 
 // GetTools mocks base method.
@@ -663,6 +692,20 @@ func (m *MockIMCPAssistant) GetPromptInputVariables() []string {
 func (mr *MockIMCPAssistantMockRecorder) GetPromptInputVariables() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPromptInputVariables", reflect.TypeOf((*MockIMCPAssistant)(nil).GetPromptInputVariables))
+}
+
+// GetSkills mocks base method.
+func (m *MockIMCPAssistant) GetSkills() skills.Skills {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkills")
+	ret0, _ := ret[0].(skills.Skills)
+	return ret0
+}
+
+// GetSkills indicates an expected call of GetSkills.
+func (mr *MockIMCPAssistantMockRecorder) GetSkills() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkills", reflect.TypeOf((*MockIMCPAssistant)(nil).GetSkills))
 }
 
 // GetTools mocks base method.

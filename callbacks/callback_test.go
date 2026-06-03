@@ -10,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/prompts"
+	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/values"
 	"github.com/invopop/jsonschema"
@@ -234,6 +235,10 @@ func (f *fakeAssistant) LastRunMessages() []llms.Message {
 
 func (f *fakeAssistant) GetTools() []tools.ITool {
 	return f.tools
+}
+
+func (f *fakeAssistant) GetSkills() skills.Skills {
+	return nil
 }
 
 type fakeTool struct {

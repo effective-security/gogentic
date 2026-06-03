@@ -43,6 +43,10 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	runMessages []llms.Message
 	onPrompt    ProvidePromptInputsFunc
 	inputParser func(string) (string, error)
+
+	onSkills     ProvideSkillsPromptFunc
+	skills       skills.Skills
+	skillsPrompt string
 }
 
 var (
@@ -160,30 +164,30 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 
 // WithSkills integrates Agent Skills support (https://agentskills.io) into the
 // assistant. It injects a compact catalog of all loaded skills into the system
-// prompt via the "skills_catalog" template variable, and registers the
-// activate_skill tool so the model can load full skill instructions on demand.
+// prompt, and registers the activate_skill tool so the model can load full skill instructions on demand.
 //
 // No-op if loader is nil or has no loaded skills.
-func (a *Assistant[O]) WithSkills(loader *skills.Loader) *Assistant[O] {
-	if loader == nil {
-		return a
-	}
-	catalog := loader.Catalog()
-	if catalog == "" {
+func (a *Assistant[O]) WithSkills(skillsList skills.Skills) *Assistant[O] {
+	if len(skillsList) == 0 {
 		return a
 	}
 
-	if a.cfg.PromptInput == nil {
-		a.cfg.PromptInput = make(map[string]any)
-	}
-	a.cfg.PromptInput[skills.CatalogPromptKey] = catalog
+	a.skills = skillsList
 
-	tool, err := skills.NewActivateSkillTool(loader)
+	tool, err := skills.NewActivateSkillTool(skillsList)
 	if err != nil {
 		logger.KV(xlog.WARNING, "reason", "activate_skill_tool", "err", err.Error())
 		return a
 	}
 	return a.WithTools(tool)
+}
+
+func (a *Assistant[O]) GetSkills() skills.Skills {
+	return a.skills
+}
+
+func (a *Assistant[O]) WithSkillsPromptProvider(cb ProvideSkillsPromptFunc) {
+	a.onSkills = cb
 }
 
 func (a *Assistant[O]) LastRunMessages() []llms.Message {
@@ -221,6 +225,25 @@ func (a *Assistant[O]) GetSystemPrompt(ctx context.Context, input string, prompt
 
 	// Convert the prompt value to a string.
 	systemPrompt := strings.TrimRight(promptValue.String(), "\n") // Ensure no trailing newline.
+
+	if len(a.skills) > 0 && a.skillsPrompt == "" {
+		if a.onSkills != nil {
+			a.skillsPrompt, err = a.onSkills(ctx, a.skills)
+			if err != nil {
+				return "", errors.WithMessage(err, "failed to get skills prompt")
+			}
+		} else {
+			a.skillsPrompt, err = DefaultPromptProvider(ctx, a.skills)
+			if err != nil {
+				return "", errors.WithMessage(err, "failed to get skills prompt")
+			}
+		}
+		a.skillsPrompt = strings.Trim(a.skillsPrompt, "\n")
+	}
+
+	if a.skillsPrompt != "" {
+		systemPrompt += "\n\n" + a.skillsPrompt
+	}
 
 	if a.cfg.ResponseFormat == nil {
 		// if provider supports json response, but not json_schema,
@@ -358,7 +381,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	}
 
 	messageHistory := llms.Messages{
-		llms.MessageFromTextParts(llms.RoleSystem, systemPrompt),
+		llms.MessageFromTextParts(llms.RoleSystem, systemPrompt).WithSource(source),
 	}
 	for _, example := range cfg.Examples {
 		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, example.Prompt))

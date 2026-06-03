@@ -3,7 +3,6 @@ package assistants_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
@@ -19,7 +19,84 @@ import (
 	gstore "github.com/effective-security/gogentic/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
+
+func Test_Skills_Prompt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	skilslList := skills.Skills{
+		{
+			Name:        "vulnerability-triage",
+			Description: "Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.",
+			Body: `
+## How to handle this question
+
+Follow these steps in order:
+
+1. **Severity gate** — focus only on findings with CVSS score >= 7 (high or critical).
+2. **Exploit check** — cross-reference each finding against CISA KEV; mark those with a known exploit as "exploit-available".
+3. **Exposure check** — determine whether the affected asset is internet-facing or has public exposure.
+4. **Blast radius** — assess potential lateral movement if the asset were compromised.
+5. **Prioritized list** — rank findings: internet-facing + known exploit > internet-facing > internal + known exploit > internal.
+6. **Output format** — for each finding output: rank, CVE ID, CVSS, exploit-available (yes/no), exposure (internet/internal), brief remediation suggestion.
+`,
+		},
+	}
+
+	sysprompt := prompts.PromptTemplate{
+		Template: `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
+When the user's request matches a skill's description, activate it with the activate_skill tool before answering.`,
+		InputVariables: []string{},
+		TemplateFormat: prompts.TemplateFormatGoTemplate,
+	}
+
+	// Create a mock LLM
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+
+	ag := assistants.NewAssistant[chatmodel.String](
+		mockLLM,
+		sysprompt,
+		assistants.WithMode(encoding.ModePlainText),
+	).WithSkills(skilslList)
+
+	sysPrompt, err := ag.GetSystemPrompt(context.Background(), "", nil)
+	require.NoError(t, err)
+
+	exp := `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
+When the user's request matches a skill's description, activate it with the activate_skill tool before answering.
+
+# SKILLS
+
+The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
+
+Available Skills:
+
+- vulnerability-triage
+  Description: Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.
+
+Decision Process:
+
+1. Determine whether the user's request matches a Skill.
+2. If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
+3. Wait for the Skill instructions.
+4. Follow the Skill instructions when performing the task.
+5. If multiple Skills are relevant, activate them one at a time as needed.
+6. Never invent Skill contents.
+
+A Skill should be activated when:
+- The task falls directly within the Skill's domain.
+- The task requires a specialized workflow.
+- The task requires domain-specific knowledge or reasoning.
+
+A Skill should NOT be activated when:
+- General reasoning is sufficient.
+- The Skill is only tangentially related.
+- The user request is simple and does not benefit from additional instructions.`
+	assert.Equal(t, exp, sysPrompt)
+}
 
 // Test_Real_Skills_ActivatesSkillAndGeneratesPlan exercises the full
 // Agent Skills flow against a real LLM:
@@ -44,11 +121,11 @@ func Test_Real_Skills_ActivatesSkillAndGeneratesPlan(t *testing.T) {
 	require.NoError(t, err)
 
 	// ── Real SKILL.md ──────────────────────────────────────────────────────────
-	skillContent := `---
-name: vulnerability-triage
-description: Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.
----
-
+	skilslList := skills.Skills{
+		{
+			Name:        "vulnerability-triage",
+			Description: "Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.",
+			Body: `
 ## How to handle this question
 
 Follow these steps in order:
@@ -59,25 +136,15 @@ Follow these steps in order:
 4. **Blast radius** — assess potential lateral movement if the asset were compromised.
 5. **Prioritized list** — rank findings: internet-facing + known exploit > internet-facing > internal + known exploit > internal.
 6. **Output format** — for each finding output: rank, CVE ID, CVSS, exploit-available (yes/no), exposure (internet/internal), brief remediation suggestion.
-`
-	skillDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(skillDir+"/vulnerability-triage", 0755))
-	require.NoError(t, os.WriteFile(skillDir+"/vulnerability-triage/SKILL.md", []byte(skillContent), 0644))
-
-	// ── Load skills ────────────────────────────────────────────────────────────
-	loader := skills.NewDefaultLoader("", skillDir)
-	require.NoError(t, loader.Load())
-	require.Len(t, loader.Skills(), 1)
-	t.Logf("Loaded skill: %s — %s", loader.Skills()[0].Name, loader.Skills()[0].Description)
+`,
+		},
+	}
 
 	// ── Build assistant ────────────────────────────────────────────────────────
 	sysprompt := prompts.PromptTemplate{
 		Template: `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
 When the user's request matches a skill's description, activate it with the activate_skill tool before answering.
-{{- if .skills_catalog}}
-
-{{.skills_catalog}}
-{{- end}}`,
+`,
 		InputVariables: []string{},
 		TemplateFormat: prompts.TemplateFormatGoTemplate,
 	}
@@ -91,7 +158,7 @@ When the user's request matches a skill's description, activate it with the acti
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
-	).WithSkills(loader)
+	).WithSkills(skilslList)
 
 	// Print system prompt so you can see the catalog injection
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -151,23 +218,16 @@ func Test_Real_Skills_NoActivationForUnrelatedQuery(t *testing.T) {
 	llmModel, err := f.ModelByType("OPENAI")
 	require.NoError(t, err)
 
-	skillDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(skillDir+"/vulnerability-triage", 0755))
-	require.NoError(t, os.WriteFile(skillDir+"/vulnerability-triage/SKILL.md", []byte(`---
-name: vulnerability-triage
-description: Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.
----
-Step 1: Check CVSS.
-`), 0644))
-
-	loader := skills.NewDefaultLoader("", skillDir)
-	require.NoError(t, loader.Load())
+	skilslList := skills.Skills{
+		{
+			Name:        "vulnerability-triage",
+			Description: "Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.",
+			Body:        `Step 1: Check CVSS.`,
+		},
+	}
 
 	sysprompt := prompts.PromptTemplate{
-		Template: `You are a helpful assistant.
-{{- if .skills_catalog}}
-{{.skills_catalog}}
-{{- end}}`,
+		Template:       `You are a helpful assistant.`,
 		InputVariables: []string{},
 		TemplateFormat: prompts.TemplateFormatGoTemplate,
 	}
@@ -178,7 +238,7 @@ Step 1: Check CVSS.
 		sysprompt,
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithMessageStore(memstore),
-	).WithSkills(loader)
+	).WithSkills(skilslList)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
@@ -203,4 +263,46 @@ Step 1: Check CVSS.
 	assert.False(t, skillActivated, "LLM should NOT activate a security skill for an unrelated question")
 
 	fmt.Printf("Answer: %s\n", output.GetContent())
+}
+
+func Test_DefaultPromptProvider(t *testing.T) {
+	skillsList := skills.Skills{
+		{
+			Name:        "vulnerability-triage",
+			Description: "Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.",
+			Body:        `Step 1: Check CVSS.`,
+		},
+	}
+	prompt, err := assistants.DefaultPromptProvider(context.Background(), skillsList)
+	require.NoError(t, err)
+
+	exp := `# SKILLS
+
+The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
+
+Available Skills:
+
+- vulnerability-triage
+  Description: Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.
+
+Decision Process:
+
+1. Determine whether the user's request matches a Skill.
+2. If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
+3. Wait for the Skill instructions.
+4. Follow the Skill instructions when performing the task.
+5. If multiple Skills are relevant, activate them one at a time as needed.
+6. Never invent Skill contents.
+
+A Skill should be activated when:
+- The task falls directly within the Skill's domain.
+- The task requires a specialized workflow.
+- The task requires domain-specific knowledge or reasoning.
+
+A Skill should NOT be activated when:
+- General reasoning is sufficient.
+- The Skill is only tangentially related.
+- The user request is simple and does not benefit from additional instructions.
+`
+	assert.Equal(t, exp, prompt)
 }

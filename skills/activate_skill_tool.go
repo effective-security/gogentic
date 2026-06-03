@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llmutils"
+	"github.com/effective-security/x/maps"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
@@ -20,50 +19,61 @@ const ActivateSkillToolName = "activate_skill"
 
 // ActivateSkillRequest is the JSON input expected by the tool.
 type ActivateSkillRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" jsonschema:"required,title=Name,description=The name of the skill to activate."`
+}
+
+type ActivateSkillResponse struct {
+	Skill        string `json:"skill,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
+	Location     string `json:"location,omitempty"`
+	//Resources    []string `json:"resources,omitempty"`
+}
+
+type ActivateSkillErrorResponse struct {
+	Error ActivateSkillError `json:"error,omitempty"`
+}
+type ActivateSkillError struct {
+	Code            string `json:"code,omitempty"`
+	Message         string `json:"message,omitempty"`
+	AvailableSkills string `json:"available_skills,omitempty"`
 }
 
 // ActivateSkillTool implements tools.ITool. It loads and returns the full
 // instructions for the named skill (tier-2 progressive disclosure).
 type ActivateSkillTool struct {
-	loader     *Loader
-	funcParams *jsonschema.Schema
+	skillsByName map[string]*Skill
+	funcParams   *jsonschema.Schema
 }
 
-// NewActivateSkillTool creates the tool. The JSON schema for the "name"
-// parameter is built with an enum constraint listing all available skill names,
+// NewActivateSkillTool creates the tool.
+// The JSON schema for the "name" parameter is built with an enum constraint listing all available skill names,
 // so the LLM receives concrete choices rather than a freeform string.
 // Returns an error if loader is nil or has no skills loaded.
-func NewActivateSkillTool(loader *Loader) (*ActivateSkillTool, error) {
-	if loader == nil {
-		return nil, errors.New("loader is required")
-	}
-
-	skills := loader.Skills()
+func NewActivateSkillTool(skills Skills) (*ActivateSkillTool, error) {
 	if len(skills) == 0 {
-		return nil, errors.New("no skills loaded")
-	}
-
-	enum := make([]any, len(skills))
-	for i, s := range skills {
-		enum[i] = s.Name
+		return nil, errors.New("no skills provided")
 	}
 
 	props := orderedmap.New[string, *jsonschema.Schema]()
 	props.Set("name", &jsonschema.Schema{
 		Type:        "string",
 		Description: "Name of the skill to activate",
-		Enum:        enum,
+		Enum:        skills.NamesEnum(),
 	})
 
-	return &ActivateSkillTool{
-		loader: loader,
+	t := &ActivateSkillTool{
+		skillsByName: make(map[string]*Skill),
 		funcParams: &jsonschema.Schema{
 			Type:       "object",
 			Properties: props,
 			Required:   []string{"name"},
 		},
-	}, nil
+	}
+	for _, skill := range skills {
+		t.skillsByName[skill.Name] = skill
+	}
+
+	return t, nil
 }
 
 func (t *ActivateSkillTool) Name() string {
@@ -71,7 +81,7 @@ func (t *ActivateSkillTool) Name() string {
 }
 
 func (t *ActivateSkillTool) Description() string {
-	return "Load the full instructions for an agent skill by name. When the user's request matches a skill's description, activate it before proceeding to load detailed task-specific instructions."
+	return "Load the instructions for a skill by name. When the user's request matches a skill's description, activate it before executing task-specific instructions."
 }
 
 func (t *ActivateSkillTool) Parameters() *jsonschema.Schema {
@@ -86,52 +96,26 @@ func (t *ActivateSkillTool) Call(_ context.Context, input string) (string, error
 		return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 	}
 
-	skill := t.loader.Get(req.Name)
+	skill := t.skillsByName[req.Name]
 	if skill == nil {
-		names := make([]string, 0, len(t.loader.Skills()))
-		for _, s := range t.loader.Skills() {
-			names = append(names, s.Name)
+		available := maps.OrderedKeys(t.skillsByName)
+		err := ActivateSkillError{
+			Code:            "skill_not_found",
+			Message:         fmt.Sprintf("skill %q not found", req.Name),
+			AvailableSkills: strings.Join(available, ", "),
 		}
-		return fmt.Sprintf("skill %q not found; available skills: %s", req.Name, strings.Join(names, ", ")), nil
-	}
-
-	resources := listSkillResources(skill.Dir)
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "<skill_content name=%q dir=%q>\n", skill.Name, skill.Dir)
-	sb.WriteString(skill.Body)
-	if len(resources) > 0 {
-		sb.WriteString("\n\n<skill_resources>\n")
-		for _, r := range resources {
-			fmt.Fprintf(&sb, "  <file>%s</file>\n", r)
+		res := ActivateSkillErrorResponse{
+			Error: err,
 		}
-		sb.WriteString("</skill_resources>")
-	}
-	sb.WriteString("\n</skill_content>")
-
-	return sb.String(), nil
-}
-
-// listSkillResources returns relative paths to all non-SKILL.md files in the
-// skill directory, including files in subdirectories (scripts/, references/, assets/).
-func listSkillResources(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
+		return llmutils.ToJSON(res), nil
 	}
 
-	var files []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			subEntries, _ := os.ReadDir(filepath.Join(dir, entry.Name()))
-			for _, sub := range subEntries {
-				if !sub.IsDir() {
-					files = append(files, filepath.Join(entry.Name(), sub.Name()))
-				}
-			}
-		} else if entry.Name() != "SKILL.md" {
-			files = append(files, entry.Name())
-		}
+	res := ActivateSkillResponse{
+		Skill:        req.Name,
+		Location:     skill.Location,
+		Instructions: skill.Body,
+		//res.Resources = skill.ListResources()
 	}
-	return files
+
+	return llmutils.ToJSON(res), nil
 }
