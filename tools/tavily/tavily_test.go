@@ -54,17 +54,17 @@ func Test_Tool(t *testing.T) {
 
 	params := llmutils.ToJSONIndent(tool.Parameters())
 	expParams := `{
-	"properties": {
-		"Query": {
-			"type": "string",
-			"title": "Search Query",
-			"description": "The query to search web."
-		}
-	},
-	"type": "object",
-	"required": [
-		"Query"
-	]
+  "properties": {
+    "Query": {
+      "type": "string",
+      "title": "Search Query",
+      "description": "The query to search web."
+    }
+  },
+  "type": "object",
+  "required": [
+    "Query"
+  ]
 }`
 
 	assert.Equal(t, expParams, string(params))

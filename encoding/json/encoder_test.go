@@ -27,62 +27,62 @@ func TestJson(t *testing.T) {
 Respond with JSON in the following JSON schema:
 ` + "```json" + `
 {
-	"properties": {
-		"Name": {
-			"type": "string",
-			"description": "person name"
-		},
-		"Age": {
-			"type": "integer",
-			"description": "Age of a person"
-		},
-		"Details": {
-			"properties": {
-				"Location": {
-					"type": "string",
-					"description": "location"
-				},
-				"Gender": {
-					"type": "string",
-					"description": "gender"
-				}
-			},
-			"type": "object",
-			"required": [
-				"Location",
-				"Gender"
-			],
-			"description": "Details of a person"
-		},
-		"DetailList": {
-			"items": {
-				"properties": {
-					"Location": {
-						"type": "string",
-						"description": "location"
-					},
-					"Gender": {
-						"type": "string",
-						"description": "gender"
-					}
-				},
-				"type": "object",
-				"required": [
-					"Location",
-					"Gender"
-				]
-			},
-			"type": "array",
-			"description": "Details list of a person"
-		}
-	},
-	"type": "object",
-	"required": [
-		"Name",
-		"Age",
-		"Details",
-		"DetailList"
-	]
+  "properties": {
+    "Name": {
+      "type": "string",
+      "description": "person name"
+    },
+    "Age": {
+      "type": "integer",
+      "description": "Age of a person"
+    },
+    "Details": {
+      "properties": {
+        "Location": {
+          "type": "string",
+          "description": "location"
+        },
+        "Gender": {
+          "type": "string",
+          "description": "gender"
+        }
+      },
+      "type": "object",
+      "required": [
+        "Location",
+        "Gender"
+      ],
+      "description": "Details of a person"
+    },
+    "DetailList": {
+      "items": {
+        "properties": {
+          "Location": {
+            "type": "string",
+            "description": "location"
+          },
+          "Gender": {
+            "type": "string",
+            "description": "gender"
+          }
+        },
+        "type": "object",
+        "required": [
+          "Location",
+          "Gender"
+        ]
+      },
+      "type": "array",
+      "description": "Details list of a person"
+    }
+  },
+  "type": "object",
+  "required": [
+    "Name",
+    "Age",
+    "Details",
+    "DetailList"
+  ]
 }
 ` + "```" + `
 Make sure to return an instance of the JSON, not the schema itself.

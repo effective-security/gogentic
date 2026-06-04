@@ -115,17 +115,17 @@ AI: This is a test answer 1.
 	assert.Equal(t, "Generic Assistant", tool.Name())
 	assert.Equal(t, ag.Description(), tool.Description())
 	exp = `{
-	"properties": {
-		"input": {
-			"type": "string",
-			"title": "Input",
-			"description": "The message sent by the user to the assistant."
-		}
-	},
-	"type": "object",
-	"required": [
-		"input"
-	]
+  "properties": {
+    "input": {
+      "type": "string",
+      "title": "Input",
+      "description": "The message sent by the user to the assistant."
+    }
+  },
+  "type": "object",
+  "required": [
+    "input"
+  ]
 }`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
 
@@ -164,15 +164,15 @@ func Test_AssistantTool_BuilderMethods(t *testing.T) {
 	assert.NotNil(t, params)
 
 	exp := `{
-	"properties": {
-		"content": {
-			"type": "string"
-		}
-	},
-	"type": "object",
-	"required": [
-		"content"
-	]
+  "properties": {
+    "content": {
+      "type": "string"
+    }
+  },
+  "type": "object",
+  "required": [
+    "content"
+  ]
 }`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(params))
 

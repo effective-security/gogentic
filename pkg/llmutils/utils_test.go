@@ -153,7 +153,10 @@ func Test_EnsureNewline(t *testing.T) {
 
 func Test_JSONIndent(t *testing.T) {
 	input := `{"name":"John","age":30}`
-	expected := "{\n\t\"name\": \"John\",\n\t\"age\": 30\n}"
+	expected := `{
+  "name": "John",
+  "age": 30
+}`
 	assert.Equal(t, expected, llmutils.JSONIndent(input))
 }
 
@@ -173,7 +176,7 @@ func Test_ToJSONIndent(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 	p := Person{Name: "John", Age: 30}
-	expected := "{\n\t\"name\": \"John\",\n\t\"age\": 30\n}"
+	expected := "{\n  \"name\": \"John\",\n  \"age\": 30\n}"
 	assert.Equal(t, expected, llmutils.ToJSONIndent(p))
 }
 
@@ -207,7 +210,7 @@ func Test_Stringify(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 	p := Person{Name: "John", Age: 30}
-	expected := "\n```json\n{\n\t\"name\": \"John\",\n\t\"age\": 30\n}\n```\n"
+	expected := "\n```json\n{\n  \"name\": \"John\",\n  \"age\": 30\n}\n```\n"
 	assert.Equal(t, expected, llmutils.Stringify(p))
 
 	// Test with Stringer interface
@@ -223,7 +226,7 @@ func Test_NewContentResponse(t *testing.T) {
 	resp := llmutils.NewContentResponse(p)
 	assert.NotNil(t, resp)
 	assert.Len(t, resp.Choices, 1)
-	expected := "\n```json\n{\n\t\"name\": \"John\",\n\t\"age\": 30\n}\n```\n"
+	expected := "\n```json\n{\n  \"name\": \"John\",\n  \"age\": 30\n}\n```\n"
 	assert.Equal(t, expected, resp.Choices[0].Content)
 }
 

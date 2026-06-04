@@ -30,32 +30,32 @@ func TestPointerTypeSchemaGeneration(t *testing.T) {
 		assert.NotContains(t, rf.JSONSchema.Schema.Required, "optionalField")
 		assert.Contains(t, rf.JSONSchema.Schema.Required, "requiredField")
 
-		jsonBytes, _ := json.MarshalIndent(rf, "", "\t")
+		jsonBytes, _ := json.MarshalIndent(rf, "", "  ")
 		exp := `{
-	"type": "json_schema",
-	"json_schema": {
-		"name": "TestStructWithString",
-		"strict": true,
-		"schema": {
-			"type": "object",
-			"properties": {
-				"optionalField": {
-					"type": "string",
-					"title": "Optional Field",
-					"description": "An optional string field"
-				},
-				"requiredField": {
-					"type": "string",
-					"title": "Required Field",
-					"description": "A required string field"
-				}
-			},
-			"additionalProperties": false,
-			"required": [
-				"requiredField"
-			]
-		}
-	}
+  "type": "json_schema",
+  "json_schema": {
+    "name": "TestStructWithString",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "optionalField": {
+          "type": "string",
+          "title": "Optional Field",
+          "description": "An optional string field"
+        },
+        "requiredField": {
+          "type": "string",
+          "title": "Required Field",
+          "description": "A required string field"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "requiredField"
+      ]
+    }
+  }
 }`
 		assert.Equal(t, exp, string(jsonBytes))
 		t.Logf("Full schema with string field:\n%s", string(jsonBytes))
@@ -70,7 +70,7 @@ func TestPointerTypeSchemaGeneration(t *testing.T) {
 		assert.NotContains(t, rf.JSONSchema.Schema.Required, "optionalField")
 		assert.Contains(t, rf.JSONSchema.Schema.Required, "requiredField")
 
-		jsonBytes, _ := json.MarshalIndent(rf, "", "\t")
+		jsonBytes, _ := json.MarshalIndent(rf, "", "  ")
 		t.Logf("Full schema with pointer field:\n%s", string(jsonBytes))
 	})
 }
