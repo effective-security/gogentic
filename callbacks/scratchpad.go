@@ -212,6 +212,13 @@ func (l *Scratchpad) printMessages(messages []llms.Message) string {
 				buf.WriteString("  - ")
 				buf.WriteString(typ.String())
 				buf.WriteString("\n")
+				str := typ.Content
+				if l.mode != ModeVerbose {
+					str = stringUpto(str, 160)
+				}
+				buf.WriteString("  ")
+				buf.WriteString(str)
+				buf.WriteString("\n")
 			}
 		}
 
@@ -308,7 +315,7 @@ func (l *Scratchpad) OnToolEnd(ctx context.Context, tool tools.ITool, assistantN
 	stepID := chatmodel.GetStepID(ctx)
 	run.printEntry(stepID, assistantName, tname, "Tool Output:")
 	if l.mode != ModeVerbose {
-		output = stringUpto(output, 80)
+		output = stringUpto(output, 160)
 	}
 	run.printNewLine(output)
 	run.printEntry(stepID, assistantName, tname, "*** Tool End ***")

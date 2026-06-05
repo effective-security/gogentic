@@ -233,6 +233,24 @@ type ContentChoice struct {
 	ReasoningContent string `json:"reasoning_content"`
 }
 
+func (r *ContentResponse) String() string {
+	if r == nil {
+		return ""
+	}
+	if len(r.Choices) == 1 {
+		return r.Choices[0].Content
+	}
+	var b strings.Builder
+	for idx, choice := range r.Choices {
+		if idx > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(strings.TrimSpace(choice.Content))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 // MessageFromParts is a helper function to create a Message with a role and a
 // list of parts.
 func MessageFromParts(role Role, parts ...ContentPart) Message {

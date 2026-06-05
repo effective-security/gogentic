@@ -824,12 +824,13 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 		}
 
 		// Create tool call response using the ID from the original tool call
+		toolName := result.toolCall.GetFunctionCallName()
 		toolCallResponse := llms.MessageFromToolResponse(llms.RoleTool, llms.ToolCallResponse{
 			ToolCallID: result.toolCall.ID, // Use the ID from the original tool call
-			Name:       result.toolCall.FunctionCall.Name,
+			Name:       toolName,
 			Content:    content,
 		}).WithSource(&llms.MessageSource{
-			Name:   a.name,
+			Name:   a.name + "/" + toolName,
 			RunID:  runID,
 			StepID: stepID,
 		})
@@ -839,7 +840,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			"assistant", a.name,
 			"status", "tool_call_response",
 			"tool_call_id", result.toolCall.ID,
-			"tool_name", result.toolCall.FunctionCall.Name,
+			"tool_name", toolName,
 			"content_length", len(content),
 		)
 
