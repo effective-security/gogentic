@@ -28,6 +28,11 @@ func Test_Skills_Prompt(t *testing.T) {
 
 	skilslList := skills.Skills{
 		{
+			Name:        "search-web",
+			Description: "Use ONLY when user asks to search the web for information.",
+			Body:        `Search the web for information.`,
+		},
+		{
 			Name:        "vulnerability-triage",
 			Description: "Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.",
 			Body: `
@@ -68,30 +73,36 @@ When the user's request matches a skill's description, activate it with the acti
 	exp := `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
 When the user's request matches a skill's description, activate it with the activate_skill tool before answering.
 
-# SKILLS
+## SKILLS
 
 The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
 
 Available Skills:
 
-- vulnerability-triage
+- Name: **search-web**
+  Description: Use ONLY when user asks to search the web for information.
+
+- Name: **vulnerability-triage**
   Description: Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.
 
 Decision Process:
 
-1. Determine whether the user's request matches a Skill.
-2. If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
-3. Wait for the Skill instructions.
-4. Follow the Skill instructions when performing the task.
-5. If multiple Skills are relevant, activate them one at a time as needed.
-6. Never invent Skill contents.
+- Determine whether the user's request matches a Skill.
+- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
+- Wait for the tool response and activate the skill.
+- Follow the Skill instructions when performing the task.
+- If multiple Skills are relevant, activate them one at a time as needed.
+- Never invent Skill contents.
+- If the Skill provides OUTPUT FORMAT instructions, follow them and provide the output in the requested format.
 
 A Skill should be activated when:
+
 - The task falls directly within the Skill's domain.
 - The task requires a specialized workflow.
 - The task requires domain-specific knowledge or reasoning.
 
 A Skill should NOT be activated when:
+
 - General reasoning is sufficient.
 - The Skill is only tangentially related.
 - The user request is simple and does not benefit from additional instructions.`
@@ -270,36 +281,47 @@ func Test_DefaultPromptProvider(t *testing.T) {
 		{
 			Name:        "vulnerability-triage",
 			Description: "Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.",
-			Body:        `Step 1: Check CVSS.`,
+			Body:        `Check CVSS.`,
+		},
+		{
+			Name:        "search-web",
+			Description: "Use ONLY when user asks to search the web for information.",
+			Body:        `Search the web for information.`,
 		},
 	}
 	prompt, err := assistants.DefaultPromptProvider(context.Background(), skillsList)
 	require.NoError(t, err)
 
-	exp := `# SKILLS
+	exp := `## SKILLS
 
 The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
 
 Available Skills:
 
-- vulnerability-triage
+- Name: **vulnerability-triage**
   Description: Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.
+
+- Name: **search-web**
+  Description: Use ONLY when user asks to search the web for information.
 
 Decision Process:
 
-1. Determine whether the user's request matches a Skill.
-2. If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
-3. Wait for the Skill instructions.
-4. Follow the Skill instructions when performing the task.
-5. If multiple Skills are relevant, activate them one at a time as needed.
-6. Never invent Skill contents.
+- Determine whether the user's request matches a Skill.
+- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
+- Wait for the tool response and activate the skill.
+- Follow the Skill instructions when performing the task.
+- If multiple Skills are relevant, activate them one at a time as needed.
+- Never invent Skill contents.
+- If the Skill provides OUTPUT FORMAT instructions, follow them and provide the output in the requested format.
 
 A Skill should be activated when:
+
 - The task falls directly within the Skill's domain.
 - The task requires a specialized workflow.
 - The task requires domain-specific knowledge or reasoning.
 
 A Skill should NOT be activated when:
+
 - General reasoning is sufficient.
 - The Skill is only tangentially related.
 - The user request is simple and does not benefit from additional instructions.

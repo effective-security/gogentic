@@ -101,3 +101,26 @@ AAEC
 		})
 	}
 }
+
+func TestContentResponse(t *testing.T) {
+	t.Parallel()
+
+	cr := &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Hello.\nWorld.\n\n\n\n\n\n",
+			},
+			{
+				Content: "How can I help you?\nI'm here to help you.",
+			},
+		},
+	}
+
+	exp := `Hello.
+World.
+
+How can I help you?
+I'm here to help you.
+`
+	assert.Equal(t, exp, cr.String())
+}
