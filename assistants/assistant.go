@@ -186,8 +186,9 @@ func (a *Assistant[O]) GetSkills() skills.Skills {
 	return a.skills
 }
 
-func (a *Assistant[O]) WithSkillsPromptProvider(cb ProvideSkillsPromptFunc) {
+func (a *Assistant[O]) WithSkillsPromptProvider(cb ProvideSkillsPromptFunc) *Assistant[O] {
 	a.onSkills = cb
+	return a
 }
 
 func (a *Assistant[O]) LastRunMessages() []llms.Message {

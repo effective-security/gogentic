@@ -354,3 +354,34 @@ func EnsureEndsWithNewline(s string) string {
 	}
 	return s
 }
+
+type RenderFormat int
+
+const (
+	RenderFormatJSON RenderFormat = iota
+	RenderFormatJSONIndent
+	RenderFormatJSONWithBackticks
+	RenderFormatYAML
+	RenderFormatYAMLWithBackticks
+	RenderFormatMarkdown
+)
+
+func RenderToString(format RenderFormat, val any) string {
+	switch format {
+	case RenderFormatJSON:
+		return ToJSON(val)
+	case RenderFormatJSONIndent:
+		return ToJSONIndent(val)
+	case RenderFormatJSONWithBackticks:
+		return BackticksJSON(ToJSONIndent(val))
+	case RenderFormatYAMLWithBackticks:
+		return BackticksYAM(ToYAML(val))
+	case RenderFormatMarkdown:
+		if m, ok := val.(interface{ ToMarkdown() string }); ok {
+			return m.ToMarkdown()
+		}
+		return ToYAML(val)
+	default:
+		return ToYAML(val)
+	}
+}

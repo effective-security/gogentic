@@ -2,6 +2,8 @@ package assistants
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/mcp"
@@ -105,51 +107,71 @@ type IMCPAssistant interface {
 	CallMCP(context.Context, chatmodel.MCPInputRequest) (*mcp.PromptResponse, error)
 }
 
-func GetDescriptions(list ...IAssistant) string {
-	var d assistantsDescription
+type Description struct {
+	Name        string              `json:"Name" yaml:"Name"`
+	Description string              `json:"Description" yaml:"Description"`
+	Tools       []tools.Description `json:"Tools,omitempty" yaml:"Tools,omitempty"`
+}
+
+type Descriptions []Description
+
+func (d Descriptions) ToMarkdown() string {
+	var ts strings.Builder
+	for _, assis := range d {
+		_, _ = fmt.Fprintf(&ts, "- Name: %s\n", assis.Name)
+		ts.WriteString("  Description: ")
+		ts.WriteString(format.TextOneLine(assis.Description))
+		ts.WriteString("\n")
+		if len(assis.Tools) > 0 {
+			ts.WriteString("  Tools:\n")
+			for _, tool := range assis.Tools {
+				_, _ = fmt.Fprintf(&ts, "    - Name: %s\n", tool.Name)
+				ts.WriteString("      Description: ")
+				ts.WriteString(format.TextOneLine(tool.Description))
+				ts.WriteString("\n")
+			}
+		}
+	}
+	return ts.String()
+}
+
+func (d Descriptions) Render(format llmutils.RenderFormat) string {
+	if format == llmutils.RenderFormatMarkdown {
+		return d.ToMarkdown()
+	}
+	return llmutils.RenderToString(format, d)
+}
+
+func GetDescriptions(list ...IAssistant) Descriptions {
+	var d Descriptions
 	for _, item := range list {
-		ad := assistantDescription{
+		ad := Description{
 			Name:        item.Name(),
 			Description: format.TextOneLine(item.Description()),
 		}
-		d.Assistants = append(d.Assistants, ad)
+		d = append(d, ad)
 	}
 
-	return llmutils.BackticksJSON(llmutils.ToJSONIndent(d))
+	return d
 }
 
-type toolDescription struct {
-	Name        string `json:"Name" yaml:"Name"`
-	Description string `json:"Description" yaml:"Description"`
-}
-
-type assistantDescription struct {
-	Name        string            `json:"Name" yaml:"Name"`
-	Description string            `json:"Description" yaml:"Description"`
-	Tools       []toolDescription `json:"Tools,omitempty" yaml:"Tools,omitempty"`
-}
-
-type assistantsDescription struct {
-	Assistants []assistantDescription `json:"Assistants" yaml:"Assistants"`
-}
-
-func GetDescriptionsWithTools(list ...IAssistant) string {
-	var d assistantsDescription
+func GetDescriptionsWithTools(list ...IAssistant) Descriptions {
+	var d Descriptions
 	for _, item := range list {
-		ad := assistantDescription{
+		ad := Description{
 			Name:        item.Name(),
 			Description: format.TextOneLine(item.Description()),
 		}
 		for _, t := range item.GetTools() {
-			ad.Tools = append(ad.Tools, toolDescription{
+			ad.Tools = append(ad.Tools, tools.Description{
 				Name:        t.Name(),
 				Description: format.TextOneLine(t.Description()),
 			})
 		}
-		d.Assistants = append(d.Assistants, ad)
+		d = append(d, ad)
 	}
 
-	return llmutils.BackticksJSON(llmutils.ToJSONIndent(d))
+	return d
 }
 
 func MapAssistants(list ...IAssistant) map[string]IAssistant {

@@ -9,6 +9,7 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/gogentic/tools"
@@ -63,57 +64,110 @@ func TestDescriptions(t *testing.T) {
 		tools:       []tools.ITool{tool2, tool3},
 	}
 
-	descr := assistants.GetDescriptions(ast1, ast2)
+	descr := assistants.GetDescriptions(ast1, ast2).Render(llmutils.RenderFormatJSONWithBackticks)
 	exp := "\n```json" + `
-{
-  "Assistants": [
-    {
-      "Name": "test-assistant1",
-      "Description": "test assistant1. Line 1."
-    },
-    {
-      "Name": "test-assistant2",
-      "Description": "test assistant2. Line 2."
-    }
-  ]
-}
+[
+  {
+    "Name": "test-assistant1",
+    "Description": "test assistant1. Line 1."
+  },
+  {
+    "Name": "test-assistant2",
+    "Description": "test assistant2. Line 2."
+  }
+]
 ` + "```\n"
 	assert.Equal(t, exp, descr)
 
-	descr = assistants.GetDescriptionsWithTools(ast1, ast2)
+	descr = assistants.GetDescriptions(ast1, ast2).Render(llmutils.RenderFormatMarkdown)
+	exp = `- Name: test-assistant1
+  Description: test assistant1. Line 1.
+- Name: test-assistant2
+  Description: test assistant2. Line 2.
+`
+	assert.Equal(t, exp, descr)
+
+	descr = assistants.GetDescriptions(ast1, ast2).Render(llmutils.RenderFormatJSONIndent)
+	exp = `[
+  {
+    "Name": "test-assistant1",
+    "Description": "test assistant1. Line 1."
+  },
+  {
+    "Name": "test-assistant2",
+    "Description": "test assistant2. Line 2."
+  }
+]`
+	assert.Equal(t, exp, descr)
+
+	descr = assistants.GetDescriptions(ast1, ast2).Render(llmutils.RenderFormatYAMLWithBackticks)
+	exp = "\n```yaml" + `
+- Name: test-assistant1
+  Description: test assistant1. Line 1.
+- Name: test-assistant2
+  Description: test assistant2. Line 2.
+` + "```\n"
+	assert.Equal(t, exp, descr)
+
+	descr = assistants.GetDescriptions(ast1, ast2).Render(llmutils.RenderFormatYAML)
+	exp = `- Name: test-assistant1
+  Description: test assistant1. Line 1.
+- Name: test-assistant2
+  Description: test assistant2. Line 2.
+`
+	assert.Equal(t, exp, descr)
+
+	descr = assistants.GetDescriptionsWithTools(ast1, ast2).Render(llmutils.RenderFormatJSONWithBackticks)
 	exp = "\n```json" + `
-{
-  "Assistants": [
-    {
-      "Name": "test-assistant1",
-      "Description": "test assistant1. Line 1.",
-      "Tools": [
-        {
-          "Name": "test-tool1",
-          "Description": "test tool 1. Line 1."
-        },
-        {
-          "Name": "test-tool2",
-          "Description": "test tool 2. Line 2."
-        }
-      ]
-    },
-    {
-      "Name": "test-assistant2",
-      "Description": "test assistant2. Line 2.",
-      "Tools": [
-        {
-          "Name": "test-tool2",
-          "Description": "test tool 2. Line 2."
-        },
-        {
-          "Name": "test-tool3",
-          "Description": "test tool 3. Line 3."
-        }
-      ]
-    }
-  ]
-}
+[
+  {
+    "Name": "test-assistant1",
+    "Description": "test assistant1. Line 1.",
+    "Tools": [
+      {
+        "Name": "test-tool1",
+        "Description": "test tool 1. Line 1."
+      },
+      {
+        "Name": "test-tool2",
+        "Description": "test tool 2. Line 2."
+      }
+    ]
+  },
+  {
+    "Name": "test-assistant2",
+    "Description": "test assistant2. Line 2.",
+    "Tools": [
+      {
+        "Name": "test-tool2",
+        "Description": "test tool 2. Line 2."
+      },
+      {
+        "Name": "test-tool3",
+        "Description": "test tool 3. Line 3."
+      }
+    ]
+  }
+]
+` + "```\n"
+	assert.Equal(t, exp, descr)
+
+	descr = assistants.GetDescriptionsWithTools(ast1, ast2).Render(llmutils.RenderFormatYAMLWithBackticks)
+	exp = "\n```yaml" + `
+- Name: test-assistant1
+  Description: test assistant1. Line 1.
+  Tools:
+    - Name: test-tool1
+      Description: test tool 1. Line 1.
+    - Name: test-tool2
+      Description: test tool 2. Line 2.
+- Name: test-assistant2
+  Description: test assistant2. Line 2.
+  Tools:
+    - Name: test-tool2
+      Description: test tool 2. Line 2.
+    - Name: test-tool3
+      Description: test tool 3. Line 3.
 ` + "```\n"
 	assert.Equal(t, exp, descr)
 }
