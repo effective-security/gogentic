@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/effective-security/gogentic/mcp"
 	"github.com/effective-security/gogentic/pkg/llmutils"
@@ -55,22 +57,38 @@ type MCPTool[I any] interface {
 	RunMCP(context.Context, *I) (*mcp.ToolResponse, error)
 }
 
-type toolDescription struct {
+type Description struct {
 	Name        string `json:"Name" yaml:"Name"`
 	Description string `json:"Description" yaml:"Description"`
 }
 
-type toolsDescription struct {
-	Tools []toolDescription `json:"Tools" yaml:"Tools"`
+type Descriptions []Description
+
+func (d Descriptions) ToMarkdown() string {
+	var ts strings.Builder
+	for _, tool := range d {
+		_, _ = fmt.Fprintf(&ts, "- Name: %s\n", tool.Name)
+		ts.WriteString("  Description: ")
+		ts.WriteString(format.TextOneLine(tool.Description))
+		ts.WriteString("\n")
+	}
+	return ts.String()
 }
 
-func GetDescriptions(list ...ITool) string {
-	var d toolsDescription
+func (d Descriptions) Render(format llmutils.RenderFormat) string {
+	if format == llmutils.RenderFormatMarkdown {
+		return d.ToMarkdown()
+	}
+	return llmutils.RenderToString(format, d)
+}
+
+func GetDescriptions(list ...ITool) Descriptions {
+	var d Descriptions
 	for _, tool := range list {
-		d.Tools = append(d.Tools, toolDescription{
+		d = append(d, Description{
 			Name:        tool.Name(),
 			Description: format.TextOneLine(tool.Description()),
 		})
 	}
-	return llmutils.BackticksJSON(llmutils.ToJSONIndent(d))
+	return d
 }

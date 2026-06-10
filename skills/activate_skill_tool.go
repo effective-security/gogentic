@@ -81,7 +81,7 @@ func (t *ActivateSkillTool) Name() string {
 }
 
 func (t *ActivateSkillTool) Description() string {
-	return "Load the instructions for a skill by name. When the user's request matches a skill's description, activate it before executing task-specific instructions."
+	return "Load the skill by name when the user's request matches a skill description, then follow the instructions."
 }
 
 func (t *ActivateSkillTool) Parameters() *jsonschema.Schema {

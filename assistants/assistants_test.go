@@ -797,21 +797,12 @@ func Test_GetDescriptions(t *testing.T) {
 	mockAssistant2.EXPECT().Description().Return("Description 2").Times(1)
 
 	// Test GetDescriptions
-	desc := assistants.GetDescriptions(mockAssistant1, mockAssistant2)
-	exp := "\n```json" + `
-{
-  "Assistants": [
-    {
-      "Name": "Assistant1",
-      "Description": "Description 1 with multiple lines."
-    },
-    {
-      "Name": "Assistant2",
-      "Description": "Description 2."
-    }
-  ]
-}
-` + "```\n"
+	desc := assistants.GetDescriptions(mockAssistant1, mockAssistant2).Render(llmutils.RenderFormatMarkdown)
+	exp := `- Name: Assistant1
+  Description: Description 1 with multiple lines.
+- Name: Assistant2
+  Description: Description 2.
+`
 
 	assert.Equal(t, exp, desc)
 }
@@ -836,13 +827,16 @@ func Test_GetDescriptionsWithTools(t *testing.T) {
 	mockAssistant.EXPECT().GetTools().Return([]tools.ITool{mockTool1, mockTool2}).AnyTimes()
 
 	// Test GetDescriptionsWithTools
-	desc := assistants.GetDescriptionsWithTools(mockAssistant)
-	assert.Contains(t, desc, "Assistant1")
-	assert.Contains(t, desc, "Assistant Description")
-	assert.Contains(t, desc, "Tool1")
-	assert.Contains(t, desc, "Tool Description 1 with multiple lines")
-	assert.Contains(t, desc, "Tool2")
-	assert.Contains(t, desc, "Tool Description 2")
+	desc := assistants.GetDescriptionsWithTools(mockAssistant).Render(llmutils.RenderFormatMarkdown)
+	exp := `- Name: Assistant1
+  Description: Assistant Description.
+  Tools:
+    - Name: Tool1
+      Description: Tool Description 1 with multiple lines.
+    - Name: Tool2
+      Description: Tool Description 2.
+`
+	assert.Equal(t, exp, desc)
 }
 
 func Test_MapAssistants(t *testing.T) {

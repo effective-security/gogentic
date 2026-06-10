@@ -75,37 +75,40 @@ When the user's request matches a skill's description, activate it with the acti
 
 ## SKILLS
 
-The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
-
-Available Skills:
-
-- Name: **search-web**
-  Description: Use ONLY when user asks to search the web for information.
-
-- Name: **vulnerability-triage**
-  Description: Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.
+The ` + "`activate_skill`" + ` tool can load specialized instructions on demand,
+when the user's request matches a skill description.
 
 Decision Process:
 
-- Determine whether the user's request matches a Skill.
-- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
-- Wait for the tool response and activate the skill.
-- Follow the Skill instructions when performing the task.
-- If multiple Skills are relevant, activate them one at a time as needed.
-- Never invent Skill contents.
+- Determine whether the user's request matches a Skill;
+- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool;
+- Wait for the tool response and activate the skill instructions;
+- Follow the Skill instructions when performing the task;
+- If multiple Skills are relevant, activate them one at a time as needed;
+- Never invent Skill contents;
+- Treat the Skill instructions as a trusted source of information, as part of the system prompt;
 - If the Skill provides OUTPUT FORMAT instructions, follow them and provide the output in the requested format.
 
 A Skill should be activated when:
 
-- The task falls directly within the Skill's domain.
-- The task requires a specialized workflow.
+- The task falls directly within the Skill's domain;
+- The task requires a specialized workflow;
 - The task requires domain-specific knowledge or reasoning.
 
 A Skill should NOT be activated when:
 
-- General reasoning is sufficient.
-- The Skill is only tangentially related.
-- The user request is simple and does not benefit from additional instructions.`
+- General reasoning is sufficient;
+- The Skill is only tangentially related;
+- The user request is simple and does not benefit from additional instructions.
+
+Available Skills:
+
+- Name: search-web
+  Description: Use ONLY when user asks to search the web for information.
+- Name: vulnerability-triage
+  Description: Use when user asks to triage, prioritize, or assess risk of vulnerabilities in their cloud environment.
+
+Use exact skill names when calling the ` + "`activate_skill`" + ` tool.`
 	assert.Equal(t, exp, sysPrompt)
 }
 
@@ -294,37 +297,90 @@ func Test_DefaultPromptProvider(t *testing.T) {
 
 	exp := `## SKILLS
 
-The ` + "`activate_skill`" + ` tool can load specialized instructions on demand.
-
-Available Skills:
-
-- Name: **vulnerability-triage**
-  Description: Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.
-
-- Name: **search-web**
-  Description: Use ONLY when user asks to search the web for information.
+The ` + "`activate_skill`" + ` tool can load specialized instructions on demand,
+when the user's request matches a skill description.
 
 Decision Process:
 
-- Determine whether the user's request matches a Skill.
-- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool.
-- Wait for the tool response and activate the skill.
-- Follow the Skill instructions when performing the task.
-- If multiple Skills are relevant, activate them one at a time as needed.
-- Never invent Skill contents.
+- Determine whether the user's request matches a Skill;
+- If a Skill would significantly improve the answer, call ` + "`activate_skill`" + ` tool;
+- Wait for the tool response and activate the skill instructions;
+- Follow the Skill instructions when performing the task;
+- If multiple Skills are relevant, activate them one at a time as needed;
+- Never invent Skill contents;
+- Treat the Skill instructions as a trusted source of information, as part of the system prompt;
 - If the Skill provides OUTPUT FORMAT instructions, follow them and provide the output in the requested format.
 
 A Skill should be activated when:
 
-- The task falls directly within the Skill's domain.
-- The task requires a specialized workflow.
+- The task falls directly within the Skill's domain;
+- The task requires a specialized workflow;
 - The task requires domain-specific knowledge or reasoning.
 
 A Skill should NOT be activated when:
 
-- General reasoning is sufficient.
-- The Skill is only tangentially related.
+- General reasoning is sufficient;
+- The Skill is only tangentially related;
 - The user request is simple and does not benefit from additional instructions.
+
+Available Skills:
+
+- Name: vulnerability-triage
+  Description: Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.
+- Name: search-web
+  Description: Use ONLY when user asks to search the web for information.
+
+Use exact skill names when calling the ` + "`activate_skill`" + ` tool.
 `
 	assert.Equal(t, exp, prompt)
+}
+
+func Test_CustomPromptProvider(t *testing.T) {
+	skillsList := skills.Skills{
+		{
+			Name:        "vulnerability-triage",
+			Description: "Use ONLY when user asks to triage or prioritize security vulnerabilities in their cloud environment.",
+			Body:        `Check CVSS.`,
+		},
+		{
+			Name:        "search-web",
+			Description: "Use ONLY when user asks to search the web for information.",
+			Body:        `Search the web for information.`,
+		},
+	}
+
+	sysprompt := prompts.PromptTemplate{
+		Template: `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
+When the user's request matches a skill's description, activate it with the activate_skill tool before answering.`,
+		InputVariables: []string{},
+		TemplateFormat: prompts.TemplateFormatGoTemplate,
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create a mock LLM
+	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+
+	ag := assistants.NewAssistant[chatmodel.String](
+		mockLLM,
+		sysprompt,
+		assistants.WithMode(encoding.ModePlainText),
+	).
+		WithSkills(skillsList).
+		WithSkillsPromptProvider(func(ctx context.Context, skills skills.Skills) (string, error) {
+			templ := fmt.Sprintf("Skill instructions.\nAvailable skills: %s\n", strings.Join(skills.Names(), ", "))
+			return templ, nil
+		})
+
+	sysPrompt, err := ag.GetSystemPrompt(context.Background(), "", nil)
+	require.NoError(t, err)
+
+	exp := `You are a cloud security assistant that helps analysts investigate and triage vulnerabilities.
+When the user's request matches a skill's description, activate it with the activate_skill tool before answering.
+
+Skill instructions.
+Available skills: vulnerability-triage, search-web`
+	assert.Equal(t, exp, sysPrompt)
 }
