@@ -117,7 +117,7 @@ func (m *redisStore) Add(ctx context.Context, msgs ...llms.Message) error {
 	}
 
 	// Update the time
-	return m.UpdateChat(ctx, "", nil)
+	return m.UpdateChat(ctx, "", nil, nil)
 }
 
 func (m *redisStore) Reset(ctx context.Context) error {
@@ -147,7 +147,7 @@ func (m *redisStore) Reset(ctx context.Context) error {
 }
 
 // UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[string]any) error {
+func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error {
 	_, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
@@ -166,12 +166,13 @@ func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[
 		chat.Title = title
 	}
 	if metadata != nil {
-		if chat.Metadata == nil {
-			chat.Metadata = make(map[string]any)
-		}
+		chat.Metadata = make(map[string]any)
 		for k, v := range metadata {
 			chat.Metadata[k] = v
 		}
+	}
+	if tags != nil {
+		chat.Tags = tags
 	}
 	chat.UpdatedAt = time.Now()
 
