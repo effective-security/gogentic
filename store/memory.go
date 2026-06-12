@@ -118,7 +118,7 @@ func (m *inMemory) Reset(ctx context.Context) error {
 }
 
 // UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any) error {
+func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
@@ -142,15 +142,22 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 			ChatID:    chatID,
 			CreatedAt: time.Now(),
 			Title:     values.StringsCoalesce(title, "New Chat"),
-			Metadata:  make(map[string]any),
+			Tags:      tags,
 		}
 		t.chats[chatID] = chat
 	}
 	if title != "" {
 		chat.Title = title
 	}
-	for k, v := range metadata {
-		chat.Metadata[k] = v
+
+	if metadata != nil {
+		chat.Metadata = make(map[string]any)
+		for k, v := range metadata {
+			chat.Metadata[k] = v
+		}
+	}
+	if tags != nil {
+		chat.Tags = tags
 	}
 
 	chat.UpdatedAt = time.Now()

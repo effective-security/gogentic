@@ -65,7 +65,7 @@ func Test_RedisStore(t *testing.T) {
 	expErr := "invalid chat context"
 	assert.EqualError(t, st.Reset(ctx), expErr)
 	assert.EqualError(t, st.Add(ctx, msg1), expErr)
-	err = st.UpdateChat(ctx, "", nil)
+	err = st.UpdateChat(ctx, "", nil, nil)
 	assert.EqualError(t, err, expErr)
 	_, err = st.ListChats(ctx)
 	assert.EqualError(t, err, expErr)
@@ -94,7 +94,7 @@ func Test_RedisStore(t *testing.T) {
 	assert.Equal(t, "New Chat", title)
 
 	// Update chat title and test again
-	require.NoError(t, st.UpdateChat(ctx, "Updated Title", nil))
+	require.NoError(t, st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"}))
 	title, err = st.GetChatTitle(ctx, cID)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Title", title)
@@ -114,6 +114,8 @@ func Test_RedisStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
+	assert.Equal(t, []string{"tag1", "tag2"}, chi.Tags)
+	assert.Equal(t, map[string]any{"key": "value"}, chi.Metadata)
 
 	list, err := st.ListChats(ctx)
 	require.NoError(t, err)
@@ -130,7 +132,7 @@ func Test_RedisStore(t *testing.T) {
 
 	now := time.Now()
 	time.Sleep(2 * time.Millisecond)
-	err = st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"})
+	err = st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
 	require.NoError(t, err)
 	ci, err := st.GetChatInfo(ctx, "")
 	require.NoError(t, err)
@@ -328,7 +330,7 @@ func Test_RedisStore_ConcurrentUpdateChat(t *testing.T) {
 					"update":    j,
 					"timestamp": time.Now().UnixNano(),
 				}
-				err := st.UpdateChat(ctx, fmt.Sprintf("Title from goroutine %d", goroutineID), metadata)
+				err := st.UpdateChat(ctx, fmt.Sprintf("Title from goroutine %d", goroutineID), metadata, nil)
 				if err != nil {
 					errors <- err
 				}

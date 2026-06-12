@@ -57,10 +57,21 @@ type CallInput struct {
 	Options []Option
 	// Messages is additional content to be sent to the LLM.
 	Messages []llms.Message
+	// Args is additional arguments to be passed to the assistant on run.
+	// This can be used by assistants that implement IAssistant and have a custom implementation of Run.
+	Args map[string]string
 
 	// OnProgress is the progress callback, that can be used to report generic progress,
 	// in addition to the callback provided in the Options.
 	OnProgress OnProgressFunc
+}
+
+// GetArg returns the argument with the given key.
+func (c *CallInput) GetArg(key string) string {
+	if c == nil || c.Args == nil || key == "" {
+		return ""
+	}
+	return c.Args[key]
 }
 
 type OnProgressFunc func(ctx context.Context, a IAssistant, title, message string)
