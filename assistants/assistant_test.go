@@ -61,10 +61,6 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 	assert.Len(t, tools, 1)
 	assert.Equal(t, "test_tool", tools[0].Name())
 
-	// Test LastRunMessages
-	messages := assistant.LastRunMessages()
-	assert.Empty(t, messages) // Should be empty by default
-
 	// Test GetPromptInputVariables
 	variables := assistant.GetPromptInputVariables()
 	assert.Empty(t, variables) // Should be empty for our test prompt

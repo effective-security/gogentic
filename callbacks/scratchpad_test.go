@@ -24,7 +24,7 @@ func (a *fakeAssistant) GetTools() []tools.ITool                               {
 func (a *fakeAssistant) GetSkills() skills.Skills                              { return nil }
 func (a *fakeAssistant) FormatPrompt(map[string]any) (llms.PromptValue, error) { return nil, nil }
 func (a *fakeAssistant) GetPromptInputVariables() []string                     { return nil }
-func (a *fakeAssistant) Call(context.Context, *assistants.CallInput) (*llms.ContentResponse, error) {
+func (a *fakeAssistant) Call(context.Context, *assistants.CallInput) (*assistants.Response, error) {
 	return nil, nil
 }
 func (a *fakeAssistant) LastRunMessages() []llms.Message { return nil }
@@ -116,13 +116,16 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 		StepID: "step2",
 	}
 
-	resp := &llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: "Answer 1"}}}
+	resp := &assistants.Response{
+		Choices: []*llms.ContentChoice{{Content: "Answer 1"}},
+		Messages: []llms.Message{
+			{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\nagsjhdfgkajshdfg gajkshdgfkjasdhjfg ahsdfkgasjhdfga akjhsdgfakjhsdgfakj gasjdkhfgakjsdhga aksjdhfgakjdsfg"}}},
+		},
+	}
 
 	// Test various callbacks
 	sp.OnAssistantStart(ctx, ast, "input")
-	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
-		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\nagsjhdfgkajshdfg gajkshdgfkjasdhjfg ahsdfkgasjhdfga akjhsdgfakjhsdgfakj gasjdkhfgakjsdhga aksjdhfgakjdsfg"}}},
-	})
+	sp.OnAssistantEnd(ctx, ast, "input", resp, resp.Messages)
 	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
 		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
@@ -185,11 +188,11 @@ toutput
 
 	ctx = chatmodel.WithStepID(ctx, "step2")
 
+	resp.Messages = append(resp.Messages, llms.Message{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}})
+
 	// test callback methods again: should still work if no run
 	sp.OnAssistantStart(ctx, ast, "input")
-	sp.OnAssistantEnd(ctx, ast, "input", resp, []llms.Message{
-		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
-	})
+	sp.OnAssistantEnd(ctx, ast, "input", resp, resp.Messages)
 	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
 		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
 	})
@@ -201,7 +204,9 @@ toutput
 	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
 	sp.OnToolError(ctx, tool, "A1", "tinput", errors.New("terr2"))
 	sp.OnToolNotFound(ctx, ast, "T3")
-	sp.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, resp)
+	sp.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, &llms.ContentResponse{
+		Choices: resp.Choices,
+	})
 }
 
 func Test_run_print_format(t *testing.T) {

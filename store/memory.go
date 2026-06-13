@@ -151,7 +151,9 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 	}
 
 	if metadata != nil {
-		chat.Metadata = make(map[string]any)
+		if chat.Metadata == nil {
+			chat.Metadata = make(map[string]any)
+		}
 		for k, v := range metadata {
 			chat.Metadata[k] = v
 		}

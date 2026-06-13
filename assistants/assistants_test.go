@@ -184,7 +184,7 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	history := memstore.Messages(ctx)
 	assert.Len(t, history, 2)
-	assert.Len(t, ag.LastRunMessages(), 2)
+	assert.Len(t, apiResp.Messages, 2)
 
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
@@ -197,8 +197,8 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	history = memstore.Messages(ctx)
 	assert.Len(t, history, 6)
-	assert.Len(t, ag.LastRunMessages(), 4)
-	exp := `Human: What is a capital of largest country in Europe?
+	assert.Len(t, apiResp.Messages, 4)
+	expHistory := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
 Human: Search for weather there.
 AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tavily_web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
@@ -209,7 +209,18 @@ AI: The weather in Europe is generally mild.
 	llmutils.PrintMessages(&buf, history)
 	chat := buf.String()
 	require.NoError(t, err)
-	assert.Equal(t, exp, chat)
+	assert.Equal(t, expHistory, chat)
+
+	expMessages := `Human: Search for weather there.
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tavily_web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
+Tool: tavily_web_search: Response: {"type":"tool_response","tool_response":{"tool_call_id":"tool-call-id-1223","name":"tavily_web_search","content":"{\"results\":[{\"title\":\"Weather in Europe\",\"url\":\"https://weather.com/europe\",\"content\":\"\",\"score\":0},{\"title\":\"Weather in France\",\"url\":\"https://weather.com/france\",\"content\":\"\",\"score\":0}],\"answer\":\"The weather in Europe is generally mild.\"}"}}
+AI: The weather in Europe is generally mild.
+`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, apiResp.Messages)
+	chat = buf.String()
+	require.NoError(t, err)
+	assert.Equal(t, expMessages, chat)
 }
 
 func Test_Assistant_Chat(t *testing.T) {
@@ -364,7 +375,7 @@ func Test_Assistant_Chat(t *testing.T) {
 
 	history := memstore.Messages(ctx)
 	assert.Len(t, history, 2)
-	assert.Len(t, ag.LastRunMessages(), 2)
+	assert.Len(t, apiResp.Messages, 2)
 
 	req = &assistants.CallInput{
 		Input: "Search for weather there.",
@@ -376,8 +387,8 @@ func Test_Assistant_Chat(t *testing.T) {
 
 	history = memstore.Messages(ctx)
 	assert.Len(t, history, 6)
-	assert.Len(t, ag.LastRunMessages(), 4)
-	exp := `Human: What is a capital of largest country in Europe?
+	assert.Len(t, apiResp.Messages, 4)
+	expHistory := `Human: What is a capital of largest country in Europe?
 AI: The capital of France is Paris.
 Human: Search for weather there.
 AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tavily_web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
@@ -388,7 +399,18 @@ AI: The weather in Europe is generally mild.
 	llmutils.PrintMessages(&buf, history)
 	chat := buf.String()
 	require.NoError(t, err)
-	assert.Equal(t, exp, chat)
+	assert.Equal(t, expHistory, chat)
+
+	expMessages := `Human: Search for weather there.
+AI: Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"tavily_web_search","arguments":"{\"Query\":\"Search for weather in Europe\"}"},"id":"tool-call-id-1223","type":"function"}}
+Tool: tavily_web_search: Response: {"type":"tool_response","tool_response":{"tool_call_id":"tool-call-id-1223","name":"tavily_web_search","content":"{\"results\":[{\"title\":\"Weather in Europe\",\"url\":\"https://weather.com/europe\",\"content\":\"\",\"score\":0},{\"title\":\"Weather in France\",\"url\":\"https://weather.com/france\",\"content\":\"\",\"score\":0}],\"answer\":\"The weather in Europe is generally mild.\"}"}}
+AI: The weather in Europe is generally mild.
+`
+	buf.Reset()
+	llmutils.PrintMessages(&buf, apiResp.Messages)
+	chat = buf.String()
+	require.NoError(t, err)
+	assert.Equal(t, expMessages, chat)
 }
 
 func Test_Assistant_FailtedParseToolInput(t *testing.T) {
@@ -919,4 +941,27 @@ func Test_Call_WithError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 	assert.Nil(t, apiResp)
+}
+
+func Test_Response_String(t *testing.T) {
+	t.Parallel()
+
+	cr := &assistants.Response{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Hello.\nWorld.\n\n\n\n\n\n",
+			},
+			{
+				Content: "How can I help you?\nI'm here to help you.",
+			},
+		},
+	}
+
+	exp := `Hello.
+World.
+
+How can I help you?
+I'm here to help you.
+`
+	assert.Equal(t, exp, cr.String())
 }

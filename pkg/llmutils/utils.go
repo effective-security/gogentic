@@ -270,10 +270,10 @@ func CountMessagesContentSize(msgs []llms.Message) uint64 {
 	return size
 }
 
-// CountResponseContentSize counts the size of the content in the content response
-func CountResponseContentSize(resp *llms.ContentResponse) uint64 {
+// CountContentSize counts the size of the content
+func CountContentSize(choices []*llms.ContentChoice) uint64 {
 	var size uint64
-	for _, choice := range resp.Choices {
+	for _, choice := range choices {
 		size += uint64(len(choice.Content))
 		size += uint64(len(choice.ReasoningContent))
 		if choice.FuncCall != nil {
@@ -292,8 +292,8 @@ func CountResponseContentSize(resp *llms.ContentResponse) uint64 {
 	return size
 }
 
-func CountTokens(resp *llms.ContentResponse) (in, out, cacheWrite, cacheRead, total int64) {
-	for _, choice := range resp.Choices {
+func CountTokens(choices []*llms.ContentChoice) (in, out, cacheWrite, cacheRead, total int64) {
+	for _, choice := range choices {
 		ma := values.MapAny(choice.GenerationInfo)
 		in += ma.Int64("InputTokens")
 		out += ma.Int64("OutputTokens")

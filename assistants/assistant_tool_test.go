@@ -479,7 +479,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 
 	// Verify that the message history contains the correct tool call responses
 	// The assistant should have added tool call responses with the correct IDs
-	runMessages := ag.LastRunMessages()
+	runMessages := apiResp.Messages
 
 	// Find tool call responses in the message history
 	toolCallCount := 0
@@ -613,7 +613,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	assert.Contains(t, output.Content, "Final response after tool calls")
 
 	// Verify that the message history contains the correct structure
-	runMessages := ag.LastRunMessages()
+	runMessages := apiResp.Messages
 
 	// Find the assistant message with tool calls
 	var assistantMessageWithTools *llms.Message

@@ -86,6 +86,7 @@ func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 	if run == nil {
 		return nil, nil
 	}
+	run.lock.Lock()
 
 	stats := run.stats
 	stats.Duration = TimeNowFn().Sub(run.started).Round(time.Millisecond)
@@ -111,12 +112,14 @@ func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 	))
 
 	run.printEntry(fmt.Sprintf("=== Run Ended. Duration: %s ===", stats.Duration))
+	data := run.w.Bytes()
+	run.lock.Unlock()
 
 	l.lock.Lock()
 	delete(l.runs, run.chatCtx.GetChatID())
 	l.lock.Unlock()
 
-	return &stats, run.w.Bytes()
+	return &stats, data
 }
 
 func (l *Scratchpad) getRun(ctx context.Context) *run {
@@ -136,6 +139,9 @@ func (l *Scratchpad) OnAssistantStart(ctx context.Context, assistant assistants.
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.AssistantCalls, 1)
 	name := assistant.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -148,13 +154,16 @@ func (l *Scratchpad) OnAssistantStart(ctx context.Context, assistant assistants.
 	run.printNewLine(input)
 }
 
-func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.AssistantCallsSucceeded, 1)
-	atomic.AddUint64(&run.stats.LLMBytesIn, llmutils.CountResponseContentSize(resp))
+	atomic.AddUint64(&run.stats.LLMBytesIn, llmutils.CountContentSize(resp.Choices))
 
 	name := assistant.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -167,21 +176,24 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 		}
 	}
 	if l.mode == ModeVerbose {
-		run.printEntry(stepID, name, l.printMessages(messages))
+		run.printEntry(stepID, name, l.printMessages(messageHistory))
 	}
 	run.printEntry(stepID, name, "*** Assistant End ***")
 }
 
-func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
+func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messageHistory llms.Messages) {
 	run := l.getRun(ctx)
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
 	name := assistant.Name()
 	stepID := chatmodel.GetStepID(ctx)
 	run.printEntry(stepID, name, "*** Error ***", err.Error())
-	run.printEntry(stepID, name, l.printMessages(messages))
+	run.printEntry(stepID, name, l.printMessages(messageHistory))
 }
 
 func (l *Scratchpad) printMessages(messages []llms.Message) string {
@@ -249,6 +261,8 @@ func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistan
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
 
 	atomic.AddUint64(&run.stats.LLMBytesOut, llmutils.CountMessagesContentSize(payload))
 	atomic.AddUint32(&run.stats.AssistantLLMCalls, 1)
@@ -268,8 +282,10 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
 
-	tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp)
+	tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp.Choices)
 	atomic.AddUint64(&run.stats.LLMInputTokens, uint64(tokensIn))
 	atomic.AddUint64(&run.stats.LLMOutputTokens, uint64(tokensOut))
 	atomic.AddUint64(&run.stats.LLMCacheWriteTokens, uint64(tokensCacheWrite))
@@ -285,6 +301,9 @@ func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant ass
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
 	name := assistant.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -297,6 +316,9 @@ func (l *Scratchpad) OnToolStart(ctx context.Context, tool tools.ITool, assistan
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.ToolsCalls, 1)
 	tname := tool.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -310,6 +332,9 @@ func (l *Scratchpad) OnToolEnd(ctx context.Context, tool tools.ITool, assistantN
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.ToolsCallsSucceeded, 1)
 	tname := tool.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -326,6 +351,9 @@ func (l *Scratchpad) OnToolError(ctx context.Context, tool tools.ITool, assistan
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.ToolsCallsFailed, 1)
 	tname := tool.Name()
 	stepID := chatmodel.GetStepID(ctx)
@@ -337,6 +365,9 @@ func (l *Scratchpad) OnToolNotFound(ctx context.Context, agent assistants.IAssis
 	if run == nil {
 		return
 	}
+	run.lock.Lock()
+	defer run.lock.Unlock()
+
 	atomic.AddUint32(&run.stats.ToolNotFound, 1)
 	stepID := chatmodel.GetStepID(ctx)
 	run.printEntry(stepID, agent.Name(), "*** Tool Not Found ***", tool)
@@ -354,9 +385,6 @@ type run struct {
 // The entries are written in the following format:
 // [timestamp runID] entry entry\n
 func (r *run) printEntry(entries ...string) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	now := TimeNowFn()
 	ts := now.Format("2006-01-02 15:04:05")
 
@@ -375,9 +403,6 @@ func (r *run) printEntry(entries ...string) {
 }
 
 func (r *run) printNewLine(entries ...string) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	for _, entry := range entries {
 		if entry != "" {
 			_, _ = r.w.WriteString(entry)

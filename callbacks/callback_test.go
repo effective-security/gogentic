@@ -26,13 +26,21 @@ func TestCallback(t *testing.T) {
 	tool := &fakeTool{name: "test-tool"}
 
 	cb.OnAssistantStart(context.Background(), ast, "test input")
-	cb.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{
+	cb.OnAssistantEnd(context.Background(), ast, "test input", &assistants.Response{
 		Choices: []*llms.ContentChoice{
 			{
 				Content: "test output",
 			},
 		},
-	}, []llms.Message{})
+		Messages: []llms.Message{
+			{
+				Role: llms.RoleHuman,
+				Parts: []llms.ContentPart{
+					llms.TextContent{Text: "test input"},
+				},
+			},
+		},
+	}, llms.Messages{})
 	cb.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), []llms.Message{})
 	cb.OnToolStart(context.Background(), tool, "test-assistant", "test input")
 	cb.OnToolEnd(context.Background(), tool, "test-assistant", "test input", "test output")
@@ -188,13 +196,21 @@ func TestFanoutCallback(t *testing.T) {
 	assert.Contains(t, buf2.String(), "Assistant Start: test-assistant")
 
 	// Test OnAssistantEnd
-	fanout.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{
+	fanout.OnAssistantEnd(context.Background(), ast, "test input", &assistants.Response{
 		Choices: []*llms.ContentChoice{
 			{
 				Content: "test output",
 			},
 		},
-	}, []llms.Message{})
+		Messages: []llms.Message{
+			{
+				Role: llms.RoleHuman,
+				Parts: []llms.ContentPart{
+					llms.TextContent{Text: "test input"},
+				},
+			},
+		},
+	}, llms.Messages{})
 	assert.Contains(t, buf1.String(), "Assistant End: test-assistant")
 	assert.Contains(t, buf2.String(), "Assistant End: test-assistant")
 
@@ -248,8 +264,8 @@ func TestNoopCallback(t *testing.T) {
 
 	// Test all methods - they should not panic
 	noop.OnAssistantStart(context.Background(), ast, "test input")
-	noop.OnAssistantEnd(context.Background(), ast, "test input", &llms.ContentResponse{}, []llms.Message{})
-	noop.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), []llms.Message{})
+	noop.OnAssistantEnd(context.Background(), ast, "test input", &assistants.Response{}, llms.Messages{})
+	noop.OnAssistantError(context.Background(), ast, "test input", errors.New("test error"), llms.Messages{})
 	noop.OnAssistantLLMParseError(context.Background(), ast, "test input", "test response", errors.New("parse error"))
 	noop.OnToolStart(context.Background(), tool, "test-assistant", "test input")
 	noop.OnToolEnd(context.Background(), tool, "test-assistant", "test input", "test output")
@@ -279,7 +295,7 @@ func (f *fakeAssistant) GetPromptInputVariables() []string {
 	return []string{}
 }
 
-func (f *fakeAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
+func (f *fakeAssistant) Call(ctx context.Context, input *assistants.CallInput) (*assistants.Response, error) {
 	return nil, nil
 }
 
