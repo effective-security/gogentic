@@ -42,10 +42,15 @@ type IAssistant interface {
 
 	// Call executes the assistant with the given input and prompt inputs.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
-	Call(ctx context.Context, input *CallInput) (*llms.ContentResponse, error)
+	Call(ctx context.Context, input *CallInput) (*Response, error)
+}
 
-	// LastRunMessages returns the messages added to the message history from the last run.
-	LastRunMessages() []llms.Message
+// Response is the response returned by the assistant.
+type Response struct {
+	// Choices is the choices returned by the GenerateContent call.
+	Choices []*llms.ContentChoice
+	// Messages is the messages that are created from the run and added to the Message History Store.
+	Messages []llms.Message
 }
 
 type CallInput struct {
@@ -94,15 +99,15 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	IAssistant
 	// Run executes the assistant with the given input and prompt inputs.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
-	Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error)
+	Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error)
 }
 
 type Callback interface {
 	tools.Callback
 	OnAssistantStart(ctx context.Context, a IAssistant, input string)
-	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message)
-	OnAssistantError(ctx context.Context, a IAssistant, input string, err error, messages []llms.Message)
-	OnAssistantLLMCallStart(ctx context.Context, a IAssistant, llm llms.Model, payload []llms.Message)
+	OnAssistantEnd(ctx context.Context, a IAssistant, input string, resp *Response, messageHistory llms.Messages)
+	OnAssistantError(ctx context.Context, a IAssistant, input string, err error, messageHistory llms.Messages)
+	OnAssistantLLMCallStart(ctx context.Context, a IAssistant, llm llms.Model, payload llms.Messages)
 	OnAssistantLLMCallEnd(ctx context.Context, a IAssistant, llm llms.Model, resp *llms.ContentResponse)
 	OnAssistantLLMParseError(ctx context.Context, a IAssistant, input string, response string, err error)
 	OnToolNotFound(ctx context.Context, a IAssistant, tool string)
@@ -194,4 +199,33 @@ func MapAssistants(list ...IAssistant) map[string]IAssistant {
 		m[a.Name()] = a
 	}
 	return m
+}
+
+func (r *Response) String() string {
+	if r == nil {
+		return ""
+	}
+	if len(r.Choices) == 1 {
+		return r.Choices[0].Content
+	}
+	var b strings.Builder
+	for idx, choice := range r.Choices {
+		if idx > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(strings.TrimSpace(choice.Content))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func NewResponse(val any) *Response {
+	// Create a new ContentResponse with the given idRes1
+	return &Response{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: llmutils.Stringify(val),
+			},
+		},
+	}
 }

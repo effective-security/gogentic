@@ -56,9 +56,9 @@ func (l *Fanout) OnAssistantStart(ctx context.Context, assistant assistants.IAss
 	}
 }
 
-func (l *Fanout) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (l *Fanout) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 	for _, callback := range l.callbacks {
-		callback.OnAssistantEnd(ctx, assistant, input, resp, messages)
+		callback.OnAssistantEnd(ctx, assistant, input, resp, messageHistory)
 	}
 }
 
@@ -123,9 +123,9 @@ var _ assistants.Callback = (*Noop)(nil)
 
 func (l *Noop) OnAssistantStart(ctx context.Context, assistant assistants.IAssistant, input string) {
 }
-func (l *Noop) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (l *Noop) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 }
-func (l *Noop) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
+func (l *Noop) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messageHistory llms.Messages) {
 }
 func (l *Noop) OnAssistantLLMParseError(ctx context.Context, a assistants.IAssistant, input string, response string, err error) {
 }
@@ -174,7 +174,7 @@ func (l *Printer) OnAssistantStart(ctx context.Context, assistant assistants.IAs
 	_, _ = fmt.Fprintf(l.Out, "Input: %s\n", input)
 }
 
-func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (l *Printer) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	_, _ = fmt.Fprintf(l.Out, "Assistant End: %s\n", assistant.Name())
@@ -263,7 +263,7 @@ func (l *PackageLogger) OnAssistantStart(ctx context.Context, assistant assistan
 	)
 }
 
-func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 	l.logger.ContextKV(ctx, xlog.DEBUG,
 		"event", "assistant_end",
 		"assistant", assistant.Name())
@@ -274,7 +274,7 @@ func (l *PackageLogger) OnAssistantEnd(ctx context.Context, assistant assistants
 	}
 }
 
-func (l *PackageLogger) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messages []llms.Message) {
+func (l *PackageLogger) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messageHistory llms.Messages) {
 	level := xlog.ERROR
 	if IsTimeout(err) {
 		level = xlog.WARNING

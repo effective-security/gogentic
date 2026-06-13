@@ -86,10 +86,10 @@ func (m *MockIAssistant) EXPECT() *MockIAssistantMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockIAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
+func (m *MockIAssistant) Call(ctx context.Context, input *assistants.CallInput) (*assistants.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", ctx, input)
-	ret0, _ := ret[0].(*llms.ContentResponse)
+	ret0, _ := ret[0].(*assistants.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -169,20 +169,6 @@ func (m *MockIAssistant) GetTools() []tools.ITool {
 func (mr *MockIAssistantMockRecorder) GetTools() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTools", reflect.TypeOf((*MockIAssistant)(nil).GetTools))
-}
-
-// LastRunMessages mocks base method.
-func (m *MockIAssistant) LastRunMessages() []llms.Message {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastRunMessages")
-	ret0, _ := ret[0].([]llms.Message)
-	return ret0
-}
-
-// LastRunMessages indicates an expected call of LastRunMessages.
-func (mr *MockIAssistantMockRecorder) LastRunMessages() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastRunMessages", reflect.TypeOf((*MockIAssistant)(nil).LastRunMessages))
 }
 
 // Name mocks base method.
@@ -325,10 +311,10 @@ func (m *MockTypeableAssistant[O]) EXPECT() *MockTypeableAssistantMockRecorder[O
 }
 
 // Call mocks base method.
-func (m *MockTypeableAssistant[O]) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
+func (m *MockTypeableAssistant[O]) Call(ctx context.Context, input *assistants.CallInput) (*assistants.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", ctx, input)
-	ret0, _ := ret[0].(*llms.ContentResponse)
+	ret0, _ := ret[0].(*assistants.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -410,20 +396,6 @@ func (mr *MockTypeableAssistantMockRecorder[O]) GetTools() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTools", reflect.TypeOf((*MockTypeableAssistant[O])(nil).GetTools))
 }
 
-// LastRunMessages mocks base method.
-func (m *MockTypeableAssistant[O]) LastRunMessages() []llms.Message {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastRunMessages")
-	ret0, _ := ret[0].([]llms.Message)
-	return ret0
-}
-
-// LastRunMessages indicates an expected call of LastRunMessages.
-func (mr *MockTypeableAssistantMockRecorder[O]) LastRunMessages() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastRunMessages", reflect.TypeOf((*MockTypeableAssistant[O])(nil).LastRunMessages))
-}
-
 // Name mocks base method.
 func (m *MockTypeableAssistant[O]) Name() string {
 	m.ctrl.T.Helper()
@@ -439,10 +411,10 @@ func (mr *MockTypeableAssistantMockRecorder[O]) Name() *gomock.Call {
 }
 
 // Run mocks base method.
-func (m *MockTypeableAssistant[O]) Run(ctx context.Context, input *assistants.CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
+func (m *MockTypeableAssistant[O]) Run(ctx context.Context, input *assistants.CallInput, optionalOutputType *O) (*assistants.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", ctx, input, optionalOutputType)
-	ret0, _ := ret[0].(*llms.ContentResponse)
+	ret0, _ := ret[0].(*assistants.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -478,27 +450,27 @@ func (m *MockCallback) EXPECT() *MockCallbackMockRecorder {
 }
 
 // OnAssistantEnd mocks base method.
-func (m *MockCallback) OnAssistantEnd(ctx context.Context, a assistants.IAssistant, input string, resp *llms.ContentResponse, messages []llms.Message) {
+func (m *MockCallback) OnAssistantEnd(ctx context.Context, a assistants.IAssistant, input string, resp *assistants.Response, messageHistory llms.Messages) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnAssistantEnd", ctx, a, input, resp, messages)
+	m.ctrl.Call(m, "OnAssistantEnd", ctx, a, input, resp, messageHistory)
 }
 
 // OnAssistantEnd indicates an expected call of OnAssistantEnd.
-func (mr *MockCallbackMockRecorder) OnAssistantEnd(ctx, a, input, resp, messages any) *gomock.Call {
+func (mr *MockCallbackMockRecorder) OnAssistantEnd(ctx, a, input, resp, messageHistory any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantEnd", reflect.TypeOf((*MockCallback)(nil).OnAssistantEnd), ctx, a, input, resp, messages)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantEnd", reflect.TypeOf((*MockCallback)(nil).OnAssistantEnd), ctx, a, input, resp, messageHistory)
 }
 
 // OnAssistantError mocks base method.
-func (m *MockCallback) OnAssistantError(ctx context.Context, a assistants.IAssistant, input string, err error, messages []llms.Message) {
+func (m *MockCallback) OnAssistantError(ctx context.Context, a assistants.IAssistant, input string, err error, messageHistory llms.Messages) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnAssistantError", ctx, a, input, err, messages)
+	m.ctrl.Call(m, "OnAssistantError", ctx, a, input, err, messageHistory)
 }
 
 // OnAssistantError indicates an expected call of OnAssistantError.
-func (mr *MockCallbackMockRecorder) OnAssistantError(ctx, a, input, err, messages any) *gomock.Call {
+func (mr *MockCallbackMockRecorder) OnAssistantError(ctx, a, input, err, messageHistory any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantError", reflect.TypeOf((*MockCallback)(nil).OnAssistantError), ctx, a, input, err, messages)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnAssistantError", reflect.TypeOf((*MockCallback)(nil).OnAssistantError), ctx, a, input, err, messageHistory)
 }
 
 // OnAssistantLLMCallEnd mocks base method.
@@ -514,7 +486,7 @@ func (mr *MockCallbackMockRecorder) OnAssistantLLMCallEnd(ctx, a, llm, resp any)
 }
 
 // OnAssistantLLMCallStart mocks base method.
-func (m *MockCallback) OnAssistantLLMCallStart(ctx context.Context, a assistants.IAssistant, llm llms.Model, payload []llms.Message) {
+func (m *MockCallback) OnAssistantLLMCallStart(ctx context.Context, a assistants.IAssistant, llm llms.Model, payload llms.Messages) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "OnAssistantLLMCallStart", ctx, a, llm, payload)
 }
@@ -622,10 +594,10 @@ func (m *MockIMCPAssistant) EXPECT() *MockIMCPAssistantMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockIMCPAssistant) Call(ctx context.Context, input *assistants.CallInput) (*llms.ContentResponse, error) {
+func (m *MockIMCPAssistant) Call(ctx context.Context, input *assistants.CallInput) (*assistants.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", ctx, input)
-	ret0, _ := ret[0].(*llms.ContentResponse)
+	ret0, _ := ret[0].(*assistants.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -720,20 +692,6 @@ func (m *MockIMCPAssistant) GetTools() []tools.ITool {
 func (mr *MockIMCPAssistantMockRecorder) GetTools() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTools", reflect.TypeOf((*MockIMCPAssistant)(nil).GetTools))
-}
-
-// LastRunMessages mocks base method.
-func (m *MockIMCPAssistant) LastRunMessages() []llms.Message {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastRunMessages")
-	ret0, _ := ret[0].([]llms.Message)
-	return ret0
-}
-
-// LastRunMessages indicates an expected call of LastRunMessages.
-func (mr *MockIMCPAssistantMockRecorder) LastRunMessages() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastRunMessages", reflect.TypeOf((*MockIMCPAssistant)(nil).LastRunMessages))
 }
 
 // Name mocks base method.

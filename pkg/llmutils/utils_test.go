@@ -267,14 +267,12 @@ func Test_CountMessagesContentSize(t *testing.T) {
 }
 
 func Test_CountResponseContentSize(t *testing.T) {
-	resp := &llms.ContentResponse{
-		Choices: []*llms.ContentChoice{
-			{
-				Content: "Hello world",
-			},
+	choices := []*llms.ContentChoice{
+		{
+			Content: "Hello world",
 		},
 	}
-	size := llmutils.CountResponseContentSize(resp)
+	size := llmutils.CountContentSize(choices)
 	assert.Greater(t, size, uint64(0))
 }
 

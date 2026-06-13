@@ -40,7 +40,6 @@ type Assistant[O chatmodel.ContentProvider] struct {
 	name        string
 	description string
 	sysprompt   prompts.FormatPrompter
-	runMessages []llms.Message
 	onPrompt    ProvidePromptInputsFunc
 	inputParser func(string) (string, error)
 
@@ -191,10 +190,6 @@ func (a *Assistant[O]) WithSkillsPromptProvider(cb ProvideSkillsPromptFunc) *Ass
 	return a
 }
 
-func (a *Assistant[O]) LastRunMessages() []llms.Message {
-	return a.runMessages
-}
-
 func (a *Assistant[O]) FormatPrompt(promptInputs map[string]any) (llms.PromptValue, error) {
 	return a.sysprompt.FormatPrompt(llmutils.MergeInputs(a.cfg.PromptInput, promptInputs))
 }
@@ -288,18 +283,16 @@ func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequ
 	return mcpres, nil
 }
 
-func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*Response, error) {
 	var output O
 	return a.Run(ctx, input, &output)
 }
 
-func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, error) {
+func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error) {
 	orgID := chatmodel.GetOrgID(ctx)
 	started := time.Now()
 	defer metricskey.PerfAssistantCall.MeasureSince(started, a.Name(), a.LLM.GetName(), orgID)
 
-	// reset the run messages
-	a.runMessages = nil
 	// create a per call config
 	cfg := a.GetCallConfig(input.Options...)
 	if cfg.Model == "" {
@@ -313,17 +306,17 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 	}
 
 	var (
-		resp     *llms.ContentResponse
-		messages []llms.Message
-		err      error
+		resp           *Response
+		messageHistory llms.Messages
+		err            error
 	)
 
 	for range 2 {
-		resp, messages, err = a.run(ctx, orgID, cfg, input, optionalOutputType)
+		resp, messageHistory, err = a.run(ctx, orgID, cfg, input, optionalOutputType)
 		if err != nil {
 			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name(), cfg.Model, orgID)
 			if callback != nil {
-				callback.OnAssistantError(ctx, a, input.Input, err, messages)
+				callback.OnAssistantError(ctx, a, input.Input, err, messageHistory)
 			}
 			// Sometimes the LLM returns Text vs JSON
 			if errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
@@ -346,13 +339,14 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 
 	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name(), cfg.Model, orgID)
 	if callback != nil {
-		callback.OnAssistantEnd(ctx, a, input.Input, resp, messages)
+		callback.OnAssistantEnd(ctx, a, input.Input, resp, messageHistory)
 	}
 	return resp, nil
 }
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
-func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input *CallInput, optionalOutputType *O) (*llms.ContentResponse, []llms.Message, error) {
+// it returns Response with the Run messages and the message history with all messages that are created from the run.
+func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input *CallInput, optionalOutputType *O) (resp *Response, messageHistory llms.Messages, err error) {
 	chatCtx := chatmodel.GetChatContext(ctx)
 	if chatCtx == nil {
 		return nil, nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
@@ -363,9 +357,10 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	}
 	runID := chatCtx.GetRunID()
 	stepID := chatmodel.GetStepID(ctx)
+	assistantName := a.Name()
 
 	source := &llms.MessageSource{
-		Name:   a.name,
+		Name:   assistantName,
 		RunID:  runID,
 		StepID: stepID,
 	}
@@ -381,21 +376,29 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		return nil, nil, errors.WithMessage(err, "failed to format system prompt")
 	}
 
-	messageHistory := llms.Messages{
-		llms.MessageFromTextParts(llms.RoleSystem, systemPrompt).WithSource(source),
-	}
-	for _, example := range cfg.Examples {
-		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, example.Prompt))
-		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, example.Completion))
-	}
+	// `messageHistory` contains ALL the messages including:
+	//   1. the system prompt
+	//   2. the previous messages from the store
+	//   3. examples
+	//   4. user input
+	//   5. additional input messages
+	// Response.Messages are returned to the caller, which are added to the message history Store.
+
+	resp = &Response{}
+	messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleSystem, systemPrompt))
 
 	if cfg.Store != nil {
 		prevMessages := cfg.Store.Messages(ctx)
 		messageHistory = appendWithSource(messageHistory, prevMessages...)
 		logger.ContextKV(ctx, xlog.DEBUG,
-			"assistant", a.name,
+			"assistant", assistantName,
 			"chat_id", chatID,
 			"message_history", len(prevMessages))
+	}
+
+	for _, example := range cfg.Examples {
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, llmutils.AddComment("assistant", "example", "question", example.Prompt)))
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, llmutils.AddComment("assistant", "example", "answer", example.Completion)))
 	}
 
 	parsedInput := input.Input
@@ -411,19 +414,16 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 
 		role := llms.RoleHuman
 		if cfg.IsGeneric {
-			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", a.name, "question", parsedInput)))
-		} else {
-			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleHuman, parsedInput))
+			role = llms.RoleGeneric
+			parsedInput = llmutils.AddComment("assistant", assistantName, "question", parsedInput)
 		}
-		// else {
-		// 	// TODO: keep as Human?
-		// 	// 	role = llms.ChatMessageTypeGeneric
-		// }
 		userMessage = llms.MessageFromTextParts(role, parsedInput)
+		resp.Messages = appendWithSource(resp.Messages, userMessage)
 		messageHistory = appendWithSource(messageHistory, userMessage)
 	}
 
 	if len(input.Messages) > 0 {
+		resp.Messages = appendWithSource(resp.Messages, input.Messages...)
 		messageHistory = appendWithSource(messageHistory, input.Messages...)
 	}
 
@@ -431,17 +431,14 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	if len(a.llmToolDefs) > 0 {
 		prov := a.LLM.GetProviderType()
 		if !prov.Supports(llms.CapabilityFunctionCalling) {
-			return nil, messageHistory, errors.Newf("assistant %s: the LLM does not support function calling", a.name)
+			return nil, messageHistory, errors.Newf("assistant %s: the %s provider does not support function calling", assistantName, string(prov))
 		}
 		extraOptions = append(extraOptions, WithTools(a.llmToolDefs))
 	}
 	callOpts := cfg.GetCallOptions(extraOptions...)
 
-	assistantName := a.Name()
 	modelName := cfg.Model
-
 	var totalToolExecuted int
-	var resp *llms.ContentResponse
 	maxRetries := DefaultMaxRetries
 	retryCount := 0
 	consecutiveNotFoundCount := 0
@@ -464,20 +461,21 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), assistantName, modelName, orgID)
 		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), assistantName, modelName, orgID)
 
-		resp, err = a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
+		llmresp, err := a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
 			return nil, messageHistory, errors.Wrapf(err, "assistant %s: model %s: failed to generate content from LLM", assistantName, modelName)
 		}
 
 		if cfg.CallbackHandler != nil {
-			cfg.CallbackHandler.OnAssistantLLMCallEnd(ctx, a, a.LLM, resp)
+			cfg.CallbackHandler.OnAssistantLLMCallEnd(ctx, a, a.LLM, llmresp)
 		}
+		resp.Choices = llmresp.Choices
 
-		bytesReceived := llmutils.CountResponseContentSize(resp)
+		bytesReceived := llmutils.CountContentSize(resp.Choices)
 		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), assistantName, modelName, orgID)
 		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), assistantName, modelName, orgID)
 
-		tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp)
+		tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp.Choices)
 		metricskey.StatsLLMInputTokens.IncrCounter(float64(tokensIn), assistantName, modelName, orgID)
 		metricskey.StatsLLMOutputTokens.IncrCounter(float64(tokensOut), assistantName, modelName, orgID)
 		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(tokensCacheWrite), assistantName, modelName, orgID)
@@ -567,15 +565,15 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
 
 		if cfg.IsGeneric {
-			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
+			resp.Messages = appendWithSource(resp.Messages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
 		} else {
-			a.runMessages = appendWithSource(a.runMessages, llms.MessageFromTextParts(llms.RoleAI, result))
+			resp.Messages = appendWithSource(resp.Messages, llms.MessageFromTextParts(llms.RoleAI, result))
 		}
 
 		if cfg.Store != nil && !cfg.SkipMessageHistory {
 			// Add all run messages atomically for better performance and order
-			if len(a.runMessages) > 0 {
-				_ = cfg.Store.Add(ctx, a.runMessages...)
+			if len(resp.Messages) > 0 {
+				_ = cfg.Store.Add(ctx, resp.Messages...)
 			}
 
 			logger.ContextKV(ctx, xlog.DEBUG,
@@ -583,7 +581,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 				"model", modelName,
 				"chat_id", chatID,
 				"status", "added_message_history",
-				"message_history", len(a.runMessages),
+				"message_history", len(resp.Messages),
 				"human", slices.StringUpto(parsedInput, 64),
 				"ai", slices.StringUpto(result, 64),
 			)
@@ -593,6 +591,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	if optionalOutputType != nil {
 		finalOutput, err := a.OutputParser.Parse(result)
 		if err != nil {
+			// add unparsed result to the message history
 			addResultToMessageHistory(result)
 
 			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName, cfg.Model, orgID)
@@ -609,22 +608,25 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 				cfg.CallbackHandler.OnAssistantLLMParseError(ctx, a, input.Input, result, err)
 			}
 
-			return nil, messageHistory, err
+			return resp, messageHistory, err
 		}
 		*optionalOutputType = *finalOutput
 
 		if prov, ok := (any)(finalOutput).(chatmodel.ContentProvider); ok {
+			// add parsed result to the message history
 			result = prov.GetContent()
 		}
 	}
+
 	addResultToMessageHistory(result)
 
 	return resp, messageHistory, nil
 }
 
-// executeToolCalls executes the tool calls in the response and returns the
+// executeToolCalls executes the tool calls in the response and returns
+// the number of tool calls executed, the number of tool calls not found,
 // updated message history.
-func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *Config, messageHistory []llms.Message, resp *llms.ContentResponse, options ...Option) (int, int, []llms.Message, error) {
+func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *Config, messageHistory llms.Messages, resp *Response, options ...Option) (int, int, llms.Messages, error) {
 	executedCount := 0
 	notFoundCount := 0
 
@@ -650,7 +652,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 		// Collect all tool calls from this choice
 		for i, toolCall := range choice.ToolCalls {
+			lock.Lock()
 			executedCount++
+			lock.Unlock()
 
 			if toolCall.ID == "" {
 				toolCall.ID = fmt.Sprintf("%s_%d", toolCall.FunctionCall.Name, i)
@@ -680,7 +684,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 		messageHistory = append(messageHistory, assistantResponse)
 		if !cfg.SkipMessageHistory && !cfg.SkipToolHistory {
 			lock.Lock()
-			a.runMessages = append(a.runMessages, assistantResponse)
+			resp.Messages = append(resp.Messages, assistantResponse)
 			lock.Unlock()
 		}
 	}
@@ -706,7 +710,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			// use lowercase for the key
 			tool := a.toolsByName[strings.ToLower(toolName)]
 			if tool == nil {
+				lock.Lock()
 				notFoundCount++
+				lock.Unlock()
 				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName, cfg.Model, orgID)
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolNotFound(ctx, a, toolName)
@@ -850,7 +856,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 		if !cfg.SkipMessageHistory && !cfg.SkipToolHistory {
 			lock.Lock()
-			a.runMessages = append(a.runMessages, toolCallResponse)
+			resp.Messages = append(resp.Messages, toolCallResponse)
 			lock.Unlock()
 		}
 	}
