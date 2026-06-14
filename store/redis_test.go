@@ -60,17 +60,24 @@ func Test_RedisStore(t *testing.T) {
 	tenantID := "tenant1"
 	chatID := "chat1"
 	appData := map[string]string{"key": "value"}
-	msg1 := llms.MessageFromTextParts(llms.RoleHuman, "Hello")
-	msg2 := llms.MessageFromTextParts(llms.RoleAI, "Hi there!")
+	source := &llms.MessageSource{
+		Name:     "test",
+		RunID:    "1234",
+		ActionID: "action1",
+	}
+
+	msg1 := llms.MessageFromTextParts(llms.RoleHuman, "Hello").WithSource(source)
+	msg2 := llms.MessageFromTextParts(llms.RoleAI, "Hi there!").WithSource(source)
 
 	expErr := "invalid chat context"
 	assert.EqualError(t, st.Reset(ctx), expErr)
 	assert.EqualError(t, st.Add(ctx, msg1), expErr)
-	err = st.UpdateChat(ctx, "", nil, nil)
+
+	_, err = st.UpdateChat(ctx, "", nil, nil)
 	assert.EqualError(t, err, expErr)
-	_, err = st.ListChats(ctx)
+	_, err = st.ListChatIDs(ctx)
 	assert.EqualError(t, err, expErr)
-	_, err = st.GetChatInfo(ctx, "")
+	_, err = st.GetChatInfo(ctx, "", false)
 	assert.EqualError(t, err, expErr)
 	assert.Empty(t, st.Messages(ctx))
 
@@ -82,34 +89,32 @@ func Test_RedisStore(t *testing.T) {
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
 
-	title, err := st.GetChatTitle(ctx, cID)
-	require.NoError(t, err)
-	assert.Empty(t, title)
-
 	require.NoError(t, st.Add(ctx, msg1))
 	require.NoError(t, st.Add(ctx, msg2))
 
 	// Test GetChatTitle for existing chat
-	title, err = st.GetChatTitle(ctx, cID)
+	chi, err := st.GetChatInfo(ctx, cID, true)
 	require.NoError(t, err)
-	assert.Equal(t, "New Chat", title)
+	assert.Equal(t, "New Chat", chi.Title)
+	assert.Empty(t, chi.Tags)
+	assert.Equal(t, 2, len(chi.Messages))
+	assert.Equal(t, source, chi.Messages[0].Source)
+	assert.Equal(t, source, chi.Messages[1].Source)
 
 	// Update chat title and test again
-	require.NoError(t, st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"}))
-	require.NoError(t, st.UpdateChat(ctx, "", map[string]any{"key2": "value2"}, []string{"tag3", "tag4"}))
-	title, err = st.GetChatTitle(ctx, cID)
+	chi2, err := st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"})
 	require.NoError(t, err)
-	assert.Equal(t, "Updated Title", title)
+	assert.Equal(t, "Updated Title", chi2.Title)
+	assert.Equal(t, []string{"tag1", "tag2"}, chi2.Tags)
+	chi3, err := st.UpdateChat(ctx, "", map[string]any{"key2": "value2"}, []string{"tag3", "tag4"})
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Title", chi3.Title)
+	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi3.Tags)
+	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi3.Metadata))
 
-	chi, err := st.GetChatInfo(ctx, cID)
+	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
-	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
-
-	// Test GetChatTitle for non-existing chat
-	title, err = st.GetChatTitle(ctx, "nonexistent")
-	require.NoError(t, err)
-	assert.Equal(t, "", title)
+	assert.Equal(t, chi3, chi)
 
 	// Retrieve messages from the store
 	messages := st.Messages(ctx)
@@ -117,14 +122,14 @@ func Test_RedisStore(t *testing.T) {
 	assert.Equal(t, msg1, messages[0])
 	assert.Equal(t, msg2, messages[1])
 
-	chi, err = st.GetChatInfo(ctx, cID)
+	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
 	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
 	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
 
-	list, err := st.ListChats(ctx)
+	list, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(list))
 
@@ -139,9 +144,7 @@ func Test_RedisStore(t *testing.T) {
 
 	now := time.Now()
 	time.Sleep(2 * time.Millisecond)
-	err = st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
-	require.NoError(t, err)
-	ci, err := st.GetChatInfo(ctx, "")
+	ci, err := st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
@@ -152,17 +155,17 @@ func Test_RedisStore(t *testing.T) {
 
 	time.Sleep(2 * time.Millisecond)
 	require.NoError(t, st.Add(ctx, msg1))
-	ci2, err := st.GetChatInfo(ctx, "")
+	ci2, err := st.GetChatInfo(ctx, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, chatCtx.GetTenantID(), ci2.TenantID)
 	assert.Equal(t, chatCtx.GetChatID(), ci2.ChatID)
 	assert.True(t, ci2.UpdatedAt.After(updatedAt))
 
-	chats, err := st.ListChats(ctx)
+	chats, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(chats))
 	for _, chat := range chats {
-		ci, err := st.GetChatInfo(ctx, chat)
+		ci, err := st.GetChatInfo(ctx, chat, false)
 		require.NoError(t, err)
 		assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
 	}
@@ -227,12 +230,12 @@ func Test_RedisStoreManager(t *testing.T) {
 	_ = st.Add(ctx, msg1)
 	_ = st.Add(ctx, msg2)
 
-	chats, err := st.ListChats(ctx)
+	chats, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(chats))
 	assert.Equal(t, chatID, chats[0])
 
-	chi, err := st.GetChatInfo(ctx, cID)
+	chi, err := st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
@@ -240,12 +243,12 @@ func Test_RedisStoreManager(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	err = st.Add(ctx, msg1)
 	require.NoError(t, err)
-	chi, err = st.GetChatInfo(ctx, cID)
+	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
 
-	chats, err = st.ListChats(ctx)
+	chats, err = st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(chats))
 	assert.Equal(t, chatID, chats[0])
@@ -257,7 +260,7 @@ func Test_RedisStoreManager(t *testing.T) {
 	assert.Equal(t, 1, len(tenants))
 	assert.Equal(t, tenantID, tenants[0])
 
-	chats, err = st.ListChats(ctx)
+	chats, err = st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(chats))
 
@@ -271,7 +274,7 @@ func Test_RedisStoreManager(t *testing.T) {
 	assert.Equal(t, 1, len(tenants))
 	assert.Equal(t, tenantID, tenants[0])
 
-	chats, err = st.ListChats(ctx)
+	chats, err = st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(chats))
 
@@ -280,7 +283,7 @@ func Test_RedisStoreManager(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), deleted)
 
-	chats, err = st.ListChats(ctx)
+	chats, err = st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(chats))
 }
@@ -337,7 +340,7 @@ func Test_RedisStore_ConcurrentUpdateChat(t *testing.T) {
 					"update":    j,
 					"timestamp": time.Now().UnixNano(),
 				}
-				err := st.UpdateChat(ctx, fmt.Sprintf("Title from goroutine %d", goroutineID), metadata, nil)
+				_, err := st.UpdateChat(ctx, fmt.Sprintf("Title from goroutine %d", goroutineID), metadata, nil)
 				if err != nil {
 					errors <- err
 				}
@@ -354,7 +357,7 @@ func Test_RedisStore_ConcurrentUpdateChat(t *testing.T) {
 	}
 
 	// Verify that the chat was updated (should have the last update's metadata)
-	chatInfo, err := st.GetChatInfo(ctx, chatID)
+	chatInfo, err := st.GetChatInfo(ctx, chatID, false)
 	require.NoError(t, err)
 	require.NotNil(t, chatInfo)
 	require.NotEmpty(t, chatInfo.Title)
@@ -407,7 +410,7 @@ func Test_RedisStore_ConcurrentChatCreation(t *testing.T) {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
-			chatInfo, err := st.GetChatInfo(ctx, chatID)
+			chatInfo, err := st.GetChatInfo(ctx, chatID, false)
 			if err != nil {
 				errors <- err
 				return

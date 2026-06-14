@@ -1,6 +1,8 @@
 package llms_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -37,8 +39,33 @@ func TestTextParts(t *testing.T) {
 	}
 }
 
+func Test_Message_JSON(t *testing.T) {
+	t.Parallel()
+	source := &llms.MessageSource{
+		Name:     "test",
+		RunID:    "1234",
+		ActionID: "action1",
+	}
+	m1 := llms.MessageFromTextParts(llms.RoleHuman, "a").WithSource(source)
+	js := llmutils.ToJSON(m1)
+	exp := `{"role":"human","text":"a","source":{"name":"test","run_id":"1234","action_id":"action1"}}`
+	assert.Equal(t, exp, js)
+
+	m2 := llms.Message{}
+	err := json.Unmarshal([]byte(js), &m2)
+	assert.NoError(t, err)
+	assert.Equal(t, m1, m2)
+}
+
 func Test_MessageContent_JSON(t *testing.T) {
 	t.Parallel()
+
+	source := &llms.MessageSource{
+		Name:     "test",
+		RunID:    "1234",
+		ActionID: "action1",
+	}
+
 	tests := []struct {
 		name    string
 		msg     llms.Message
@@ -47,8 +74,8 @@ func Test_MessageContent_JSON(t *testing.T) {
 	}{
 		{
 			"text",
-			llms.MessageFromTextParts(llms.RoleHuman, "a", "b", "c"),
-			`{"role":"human","parts":[{"text":"a","type":"text"},{"text":"b","type":"text"},{"text":"c","type":"text"}]}`,
+			llms.MessageFromTextParts(llms.RoleHuman, "a", "b", "c").WithSource(source),
+			`{"role":"human","parts":[{"text":"a","type":"text"},{"text":"b","type":"text"},{"text":"c","type":"text"}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`a
 b
 c
@@ -56,37 +83,37 @@ c
 		},
 		{
 			"binary",
-			llms.MessageFromParts(llms.RoleHuman, llms.BinaryPart("image/png", []byte{0x00, 0x01, 0x02})),
-			`{"role":"human","parts":[{"type":"binary","binary":{"data":"AAEC","mime_type":"image/png"}}]}`,
+			llms.MessageFromParts(llms.RoleHuman, llms.BinaryPart("image/png", []byte{0x00, 0x01, 0x02})).WithSource(source),
+			`{"role":"human","parts":[{"type":"binary","binary":{"data":"AAEC","mime_type":"image/png"}}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`Binary: image/png
 AAEC
 `,
 		},
 		{
 			"image",
-			llms.MessageFromParts(llms.RoleHuman, llms.ImageURLPart("https://example.com/image.png")),
-			`{"role":"human","parts":[{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}]}`,
+			llms.MessageFromParts(llms.RoleHuman, llms.ImageURLPart("https://example.com/image.png")).WithSource(source),
+			`{"role":"human","parts":[{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`URL: https://example.com/image.png
 `,
 		},
 		{
 			"image_with_detail",
-			llms.MessageFromParts(llms.RoleHuman, llms.ImageURLWithDetailPart("https://example.com/image.png", "low")),
-			`{"role":"human","parts":[{"type":"image_url","image_url":{"url":"https://example.com/image.png","detail":"low"}}]}`,
+			llms.MessageFromParts(llms.RoleHuman, llms.ImageURLWithDetailPart("https://example.com/image.png", "low")).WithSource(source),
+			`{"role":"human","parts":[{"type":"image_url","image_url":{"url":"https://example.com/image.png","detail":"low"}}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`URL: https://example.com/image.png
 `,
 		},
 		{
 			"tool_call",
-			llms.MessageFromParts(llms.RoleAI, llms.ToolCall{ID: "123", Type: "function", FunctionCall: &llms.FunctionCall{Name: "add", Arguments: `{"a":1,"b":2}`}}),
-			`{"role":"ai","parts":[{"type":"tool_call","tool_call":{"function":{"name":"add","arguments":"{\"a\":1,\"b\":2}"},"id":"123","type":"function"}}]}`,
+			llms.MessageFromParts(llms.RoleAI, llms.ToolCall{ID: "123", Type: "function", FunctionCall: &llms.FunctionCall{Name: "add", Arguments: `{"a":1,"b":2}`}}).WithSource(source),
+			`{"role":"ai","parts":[{"type":"tool_call","tool_call":{"function":{"name":"add","arguments":"{\"a\":1,\"b\":2}"},"id":"123","type":"function"}}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`Tool Call: {"type":"tool_call","tool_call":{"function":{"name":"add","arguments":"{\"a\":1,\"b\":2}"},"id":"123","type":"function"}}
 `,
 		},
 		{
 			"tool_response",
-			llms.MessageFromParts(llms.RoleAI, llms.ToolCallResponse{ToolCallID: "123", Name: "add", Content: "42"}),
-			`{"role":"ai","parts":[{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"add","content":"42"}}]}`,
+			llms.MessageFromParts(llms.RoleAI, llms.ToolCallResponse{ToolCallID: "123", Name: "add", Content: "42"}).WithSource(source),
+			`{"role":"ai","parts":[{"type":"tool_response","tool_response":{"tool_call_id":"123","name":"add","content":"42"}}],"source":{"name":"test","run_id":"1234","action_id":"action1"}}`,
 			`Response: {"type":"tool_response","tool_response":{"tool_call_id":"123","name":"add","content":"42"}}
 `,
 		},
@@ -96,7 +123,11 @@ AAEC
 			t.Parallel()
 			js := llmutils.ToJSON(tt.msg)
 			assert.Equal(t, tt.js, js)
-			content := tt.msg.String()
+
+			var buf strings.Builder
+			tt.msg.Print(&buf)
+			content := buf.String()
+
 			assert.Equal(t, tt.content, content)
 		})
 	}

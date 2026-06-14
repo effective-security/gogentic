@@ -53,16 +53,16 @@ func (m *redisStore) getRedisChatListKey(tenantID string) string {
 }
 
 func (m *redisStore) Messages(ctx context.Context) []llms.Message {
-	return m.messages(ctx)
-}
-
-func (m *redisStore) messages(ctx context.Context) []llms.Message {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		logger.ContextKV(ctx, xlog.ERROR, "reason", "GetTenantAndChatID", "err", err.Error())
 		return nil
 	}
 
+	return m.messages(ctx, tenantID, chatID)
+}
+
+func (m *redisStore) messages(ctx context.Context, tenantID, chatID string) []llms.Message {
 	key := m.getRedisMessagesKey(tenantID, chatID)
 	// Get all messages in the list
 	data, err := m.client.LRange(ctx, key, 0, -1).Result()
@@ -118,7 +118,8 @@ func (m *redisStore) Add(ctx context.Context, msgs ...llms.Message) error {
 	}
 
 	// Update the time
-	return m.UpdateChat(ctx, "", nil, nil)
+	_, err = m.UpdateChat(ctx, "", nil, nil)
+	return err
 }
 
 func (m *redisStore) Reset(ctx context.Context) error {
@@ -148,10 +149,13 @@ func (m *redisStore) Reset(ctx context.Context) error {
 }
 
 // UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error {
+// If title is empty, it will not be updated.
+// If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
+// If tags are empty, it will not be updated, otherwise merged with the existing tags.
+func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) (*ChatInfo, error) {
 	_, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Use local mutex to prevent race conditions within this instance
@@ -160,7 +164,7 @@ func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[
 
 	chat, err := m.getChatInfo(ctx, chatID)
 	if err != nil {
-		return errors.Wrap(err, "failed to get chat info")
+		return nil, errors.Wrap(err, "failed to get chat info")
 	}
 
 	if title != "" {
@@ -174,12 +178,16 @@ func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[
 			chat.Metadata[k] = v
 		}
 	}
-	if tags != nil {
+	if len(tags) > 0 {
 		chat.Tags = slices.UniqueStrings(append(chat.Tags, tags...))
 	}
-	chat.UpdatedAt = time.Now()
+	chat.UpdatedAt = time.Now().UTC()
 
-	return m.updateChat(ctx, chat, false)
+	if err := m.updateChat(ctx, chat, false); err != nil {
+		return nil, errors.Wrap(err, "failed to update chat info")
+	}
+
+	return chat.Clone(), nil
 }
 
 func (m *redisStore) updateChat(ctx context.Context, chat *ChatInfo, isNew bool) error {
@@ -198,13 +206,13 @@ func (m *redisStore) updateChat(ctx context.Context, chat *ChatInfo, isNew bool)
 	}
 	_, err = pipe.Exec(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to store chat info in Redis")
+		return errors.Wrap(err, "failed to store chat info")
 	}
 
 	return nil
 }
 
-func (m *redisStore) ListChats(ctx context.Context) ([]string, error) {
+func (m *redisStore) ListChatIDs(ctx context.Context) ([]string, error) {
 	tenantID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
@@ -222,7 +230,7 @@ func (m *redisStore) ListChats(ctx context.Context) ([]string, error) {
 	return chatIDs, nil
 }
 
-func (m *redisStore) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error) {
+func (m *redisStore) GetChatInfo(ctx context.Context, id string, withMessages bool) (*ChatInfo, error) {
 	// Use read lock for getting existing chat info
 	m.mu.RLock()
 	info, err := m.getChatInfo(ctx, id)
@@ -232,8 +240,11 @@ func (m *redisStore) GetChatInfo(ctx context.Context, id string) (*ChatInfo, err
 		return nil, err
 	}
 
-	info.Messages = m.Messages(ctx)
-	return info, nil
+	res := info.Clone()
+	if withMessages {
+		res.Messages = m.messages(ctx, info.TenantID, info.ChatID)
+	}
+	return res, nil
 }
 
 // returns the chat information for a tenant and chat ID from context,
@@ -255,15 +266,16 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 			return nil, errors.Wrap(err, "failed to get chat info from Redis")
 		}
 
+		now := time.Now().UTC()
 		// Chat doesn't exist, create it
 		// Note: This method is called from UpdateChat which already holds the lock
 		// so we don't need additional locking here
 		chat = &ChatInfo{
 			TenantID:  tenantID,
-			ChatID:    chatID,
+			ChatID:    id,
 			Title:     "New Chat",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: now,
+			UpdatedAt: now,
 			Metadata:  make(map[string]any),
 		}
 
@@ -280,34 +292,6 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 	}
 
 	return chat, nil
-}
-
-// GetChatTitle returns the title for a tenant and chat ID from context.
-// If the chat does not exist or not persisted, it returns an empty string.
-func (m *redisStore) GetChatTitle(ctx context.Context, id string) (string, error) {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
-	if err != nil {
-		return "", err
-	}
-	if id == "" {
-		id = chatID
-	}
-
-	chatKey := m.getRedisChatInfoKey(tenantID, id)
-	data, err := m.client.Get(ctx, chatKey).Result()
-	if err != nil {
-		if err != redis.Nil && !errors.Is(err, redis.Nil) {
-			return "", errors.Wrap(err, "failed to get chat info from Redis")
-		}
-		return "", nil
-	}
-
-	var chat ChatInfo
-	err = json.Unmarshal([]byte(data), &chat)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to unmarshal chat info")
-	}
-	return chat.Title, nil
 }
 
 func NewRedisStoreManager(client *redis.Client, prefix string) MessageStoreManager {

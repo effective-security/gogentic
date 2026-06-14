@@ -32,18 +32,19 @@ func (t *tenant) add(chatID string, msgs ...llms.Message) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	now := time.Now().UTC()
 	chat, ok := t.chats[chatID]
 	if !ok {
 		chat = &ChatInfo{
 			TenantID:  t.id,
 			ChatID:    chatID,
 			Title:     "New Chat",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		t.chats[chatID] = chat
 	}
-	chat.UpdatedAt = time.Now()
+	chat.UpdatedAt = now
 	chat.Messages = append(chat.Messages, msgs...)
 }
 
@@ -119,10 +120,13 @@ func (m *inMemory) Reset(ctx context.Context) error {
 }
 
 // UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
-func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error {
+// If title is empty, it will not be updated.
+// If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
+// If tags are empty, it will not be updated, otherwise merged with the existing tags.
+func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) (*ChatInfo, error) {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	m.mu.Lock()
@@ -131,17 +135,19 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 	t, ok := m.tenants[tenantID]
 	if !ok {
 		t = &tenant{
+			id:    tenantID,
 			chats: make(map[string]*ChatInfo),
 		}
 		m.tenants[tenantID] = t
 	}
 
+	now := time.Now().UTC()
 	chat, ok := t.chats[chatID]
 	if !ok {
 		chat = &ChatInfo{
 			TenantID:  tenantID,
 			ChatID:    chatID,
-			CreatedAt: time.Now(),
+			CreatedAt: now,
 			Title:     values.StringsCoalesce(title, "New Chat"),
 			Tags:      tags,
 		}
@@ -159,15 +165,16 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 			chat.Metadata[k] = v
 		}
 	}
-	if tags != nil {
+	if len(tags) > 0 {
 		chat.Tags = slices.UniqueStrings(append(chat.Tags, tags...))
 	}
 
-	chat.UpdatedAt = time.Now()
-	return nil
+	chat.UpdatedAt = now
+
+	return chat.Clone(), nil
 }
 
-func (m *inMemory) ListChats(ctx context.Context) ([]string, error) {
+func (m *inMemory) ListChatIDs(ctx context.Context) ([]string, error) {
 	tenantID, _, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
@@ -187,7 +194,7 @@ func (m *inMemory) ListChats(ctx context.Context) ([]string, error) {
 	return chatIDs, nil
 }
 
-func (m *inMemory) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error) {
+func (m *inMemory) GetChatInfo(ctx context.Context, id string, withMessages bool) (*ChatInfo, error) {
 	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
@@ -207,32 +214,12 @@ func (m *inMemory) GetChatInfo(ctx context.Context, id string) (*ChatInfo, error
 	if !ok {
 		return nil, errors.New("chat not found")
 	}
-	return chat, nil
-}
 
-// GetChatTitle returns the title for a tenant and chat ID from context.
-// If the chat does not exist or not persisted, it returns an empty string.
-func (m *inMemory) GetChatTitle(ctx context.Context, id string) (string, error) {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
-	if err != nil {
-		return "", err
+	res := chat.Clone()
+	if withMessages {
+		res.Messages = chat.Messages
 	}
-	if id == "" {
-		id = chatID
-	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	t, ok := m.tenants[tenantID]
-	if !ok {
-		return "", nil
-	}
-	chat, ok := t.chats[id]
-	if !ok {
-		return "", nil
-	}
-	return chat.Title, nil
+	return res, nil
 }
 
 func NewMemoryStoreManager(store MessageStore) MessageStoreManager {
@@ -263,7 +250,7 @@ func (m *inMemory) Cleanup(ctx context.Context, tenantID string, olderThan time.
 	}
 
 	deleted := uint32(0)
-	cutoff := time.Now().Add(-olderThan)
+	cutoff := time.Now().UTC().Add(-olderThan)
 	for chatID, chat := range t.chats {
 		if chat.UpdatedAt.Before(cutoff) {
 			delete(t.chats, chatID)

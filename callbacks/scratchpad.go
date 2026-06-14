@@ -144,13 +144,13 @@ func (l *Scratchpad) OnAssistantStart(ctx context.Context, assistant assistants.
 
 	atomic.AddUint32(&run.stats.AssistantCalls, 1)
 	name := assistant.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, name, "*** Assistant Start ***")
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, name, "*** Assistant Start ***")
 	skillList := assistant.GetSkills()
 	if len(skillList) > 0 {
-		run.printEntry(stepID, name, "Skills:", strings.Join(skillList.Names(), ", "))
+		run.printEntry(actionID, name, "Skills:", strings.Join(skillList.Names(), ", "))
 	}
-	run.printEntry(stepID, name, "Input:")
+	run.printEntry(actionID, name, "Input:")
 	run.printNewLine(input)
 }
 
@@ -166,9 +166,9 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 	atomic.AddUint64(&run.stats.LLMBytesIn, llmutils.CountContentSize(resp.Choices))
 
 	name := assistant.Name()
-	stepID := chatmodel.GetStepID(ctx)
+	actionID := chatmodel.GetActionID(ctx)
 	if l.mode == ModeVerbose {
-		run.printEntry(stepID, name, "Assistant Output:")
+		run.printEntry(actionID, name, "Assistant Output:")
 		for _, choice := range resp.Choices {
 			if choice.Content != "" {
 				run.printNewLine(choice.Content)
@@ -176,9 +176,9 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 		}
 	}
 	if l.mode == ModeVerbose {
-		run.printEntry(stepID, name, l.printMessages(messageHistory))
+		run.printEntry(actionID, name, l.printMessages(messageHistory))
 	}
-	run.printEntry(stepID, name, "*** Assistant End ***")
+	run.printEntry(actionID, name, "*** Assistant End ***")
 }
 
 func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.IAssistant, input string, err error, messageHistory llms.Messages) {
@@ -191,9 +191,9 @@ func (l *Scratchpad) OnAssistantError(ctx context.Context, assistant assistants.
 
 	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
 	name := assistant.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, name, "*** Error ***", err.Error())
-	run.printEntry(stepID, name, l.printMessages(messageHistory))
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, name, "*** Error ***", err.Error())
+	run.printEntry(actionID, name, l.printMessages(messageHistory))
 }
 
 func (l *Scratchpad) printMessages(messages []llms.Message) string {
@@ -270,10 +270,10 @@ func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistan
 	atomic.AddUint32(&run.stats.TotalMessages, count)
 
 	name := agent.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, name, "*** LLM Call ***", fmt.Sprintf("%s model, %d messages", llm.GetName(), count))
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, name, "*** LLM Call ***", fmt.Sprintf("%s model, %d messages", llm.GetName(), count))
 	if l.mode == ModeVerbose {
-		run.printEntry(stepID, name, l.printMessages(payload))
+		run.printEntry(actionID, name, l.printMessages(payload))
 	}
 }
 
@@ -292,8 +292,8 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 	atomic.AddUint64(&run.stats.LLMCacheReadTokens, uint64(tokensCacheRead))
 	atomic.AddUint64(&run.stats.LLMTotalTokens, uint64(tokensTotal))
 
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens", llm.GetName(), tokensIn, tokensOut, tokensTotal))
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens", llm.GetName(), tokensIn, tokensOut, tokensTotal))
 }
 
 func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant assistants.IAssistant, input string, response string, err error) {
@@ -306,9 +306,9 @@ func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant ass
 
 	atomic.AddUint32(&run.stats.AssistantCallsFailed, 1)
 	name := assistant.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, name, "*** LLM Parse Error ***", err.Error())
-	run.printEntry(stepID, name, " Response:", response)
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, name, "*** LLM Parse Error ***", err.Error())
+	run.printEntry(actionID, name, " Response:", response)
 }
 
 func (l *Scratchpad) OnToolStart(ctx context.Context, tool tools.ITool, assistantName, input string) {
@@ -321,9 +321,9 @@ func (l *Scratchpad) OnToolStart(ctx context.Context, tool tools.ITool, assistan
 
 	atomic.AddUint32(&run.stats.ToolsCalls, 1)
 	tname := tool.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, assistantName, tname, "*** Tool Start ***")
-	run.printEntry(stepID, assistantName, tname, "Tool Input:")
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, assistantName, tname, "*** Tool Start ***")
+	run.printEntry(actionID, assistantName, tname, "Tool Input:")
 	run.printNewLine(input)
 }
 
@@ -337,13 +337,13 @@ func (l *Scratchpad) OnToolEnd(ctx context.Context, tool tools.ITool, assistantN
 
 	atomic.AddUint32(&run.stats.ToolsCallsSucceeded, 1)
 	tname := tool.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, assistantName, tname, "Tool Output:")
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, assistantName, tname, "Tool Output:")
 	if l.mode != ModeVerbose {
 		output = stringUpto(output, 160)
 	}
 	run.printNewLine(output)
-	run.printEntry(stepID, assistantName, tname, "*** Tool End ***")
+	run.printEntry(actionID, assistantName, tname, "*** Tool End ***")
 }
 
 func (l *Scratchpad) OnToolError(ctx context.Context, tool tools.ITool, assistantName, input string, err error) {
@@ -356,8 +356,8 @@ func (l *Scratchpad) OnToolError(ctx context.Context, tool tools.ITool, assistan
 
 	atomic.AddUint32(&run.stats.ToolsCallsFailed, 1)
 	tname := tool.Name()
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, assistantName, tname, "*** Tool Error ***", err.Error())
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, assistantName, tname, "*** Tool Error ***", err.Error())
 }
 
 func (l *Scratchpad) OnToolNotFound(ctx context.Context, agent assistants.IAssistant, tool string) {
@@ -369,8 +369,8 @@ func (l *Scratchpad) OnToolNotFound(ctx context.Context, agent assistants.IAssis
 	defer run.lock.Unlock()
 
 	atomic.AddUint32(&run.stats.ToolNotFound, 1)
-	stepID := chatmodel.GetStepID(ctx)
-	run.printEntry(stepID, agent.Name(), "*** Tool Not Found ***", tool)
+	actionID := chatmodel.GetActionID(ctx)
+	run.printEntry(actionID, agent.Name(), "*** Tool Not Found ***", tool)
 }
 
 type run struct {

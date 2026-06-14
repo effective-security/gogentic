@@ -11,7 +11,15 @@ import (
 
 type unknownContent struct{}
 
+func (unknownContent) String() string {
+	return "unknown content"
+}
+
 func (unknownContent) isPart() {}
+
+func (unknownContent) ContentType() ContentPartType {
+	return ContentTypeText
+}
 
 func (unknownContent) ContentLength() int {
 	return 0

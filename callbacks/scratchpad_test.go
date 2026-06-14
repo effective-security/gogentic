@@ -53,7 +53,7 @@ func newTestChatContext() (context.Context, chatmodel.ChatContext) {
 	chatCtx := chatmodel.NewChatContext(tenantID, chatID, nil)
 	chatCtx.SetRunID("run1")
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
-	ctx = chatmodel.WithStepID(ctx, "step1")
+	ctx = chatmodel.WithActionID(ctx, "step1")
 	return ctx, chatCtx
 }
 
@@ -111,9 +111,9 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	tool := &fakeTool{name: "T1"}
 
 	src := &llms.MessageSource{
-		Name:   "A1",
-		RunID:  "run1",
-		StepID: "step2",
+		Name:     "A1",
+		RunID:    "run1",
+		ActionID: "step2",
 	}
 
 	resp := &assistants.Response{
@@ -186,7 +186,7 @@ toutput
 `
 	assert.Equal(t, exp, outStr)
 
-	ctx = chatmodel.WithStepID(ctx, "step2")
+	ctx = chatmodel.WithActionID(ctx, "step2")
 
 	resp.Messages = append(resp.Messages, llms.Message{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}})
 

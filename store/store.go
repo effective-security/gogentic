@@ -37,16 +37,11 @@ type MessageStore interface {
 	// If title is empty, it will not be updated.
 	// If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
 	// If tags are empty, it will not be updated, otherwise merged with the existing tags.
-	UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error
-	// ListChats returns a list of chat IDs for a tenant and chat ID from context.
-	// If tags are provided, it returns a list of chat IDs that have all the tags.
-	ListChats(ctx context.Context) ([]string, error)
+	UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) (*ChatInfo, error)
+	// ListChatIDs returns a list of chat IDs for a tenant and chat ID from context.
+	ListChatIDs(ctx context.Context) ([]string, error)
 	// GetChatInfo returns the chat information for a tenant and chat ID from context.
-	GetChatInfo(ctx context.Context, id string) (*ChatInfo, error)
-
-	// GetChatTitle returns the title for a tenant and chat ID from context.
-	// If the chat does not exist or not persisted, it returns an empty string.
-	GetChatTitle(ctx context.Context, id string) (string, error)
+	GetChatInfo(ctx context.Context, id string, withMessages bool) (*ChatInfo, error)
 }
 
 type MessageStoreManager interface {
@@ -66,4 +61,25 @@ func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore,
 		}
 	}
 	return s, nil
+}
+
+func (c *ChatInfo) Clone() *ChatInfo {
+	clone := &ChatInfo{
+		TenantID:  c.TenantID,
+		ChatID:    c.ChatID,
+		Title:     c.Title,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+	}
+
+	if c.Metadata != nil {
+		clone.Metadata = make(map[string]any)
+		for k, v := range c.Metadata {
+			clone.Metadata[k] = v
+		}
+	}
+	if len(c.Tags) > 0 {
+		clone.Tags = append([]string{}, c.Tags...)
+	}
+	return clone
 }
