@@ -12,6 +12,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/porto/xhttp/httperror"
+	"github.com/effective-security/x/slices"
 	"github.com/effective-security/xlog"
 	"github.com/redis/go-redis/v9"
 )
@@ -174,7 +175,7 @@ func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[
 		}
 	}
 	if tags != nil {
-		chat.Tags = tags
+		chat.Tags = slices.UniqueStrings(append(chat.Tags, tags...))
 	}
 	chat.UpdatedAt = time.Now()
 

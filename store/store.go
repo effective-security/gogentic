@@ -35,8 +35,8 @@ type MessageStore interface {
 
 	// UpdateChat creates or updates a chat with the title, and metadata for a tenant and chat ID from context.
 	// If title is empty, it will not be updated.
-	// If metadata is nil, it will not be updated.
-	// If tags are empty, it will not be updated.
+	// If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
+	// If tags are empty, it will not be updated, otherwise merged with the existing tags.
 	UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) error
 	// ListChats returns a list of chat IDs for a tenant and chat ID from context.
 	// If tags are provided, it returns a list of chat IDs that have all the tags.

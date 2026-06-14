@@ -8,6 +8,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/store"
+	"github.com/effective-security/x/maps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +70,7 @@ func Test_MemoryStore(t *testing.T) {
 
 	// Update chat title and test again
 	require.NoError(t, st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"}))
+	require.NoError(t, st.UpdateChat(ctx, "", map[string]any{"key2": "value2"}, []string{"tag3", "tag4"}))
 	title, err = st.GetChatTitle(ctx, cID)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Title", title)
@@ -77,8 +79,8 @@ func Test_MemoryStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
-	assert.Equal(t, []string{"tag1", "tag2"}, chi.Tags)
-	assert.Equal(t, map[string]any{"key": "value"}, chi.Metadata)
+	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
+	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
 
 	// Test GetChatTitle for non-existing chat
 	title, err = st.GetChatTitle(ctx, "nonexistent")

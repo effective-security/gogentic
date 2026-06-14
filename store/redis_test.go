@@ -10,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/store"
+	"github.com/effective-security/x/maps"
 	"github.com/moby/moby/api/types/container"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -95,9 +96,15 @@ func Test_RedisStore(t *testing.T) {
 
 	// Update chat title and test again
 	require.NoError(t, st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"}))
+	require.NoError(t, st.UpdateChat(ctx, "", map[string]any{"key2": "value2"}, []string{"tag3", "tag4"}))
 	title, err = st.GetChatTitle(ctx, cID)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Title", title)
+
+	chi, err := st.GetChatInfo(ctx, cID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
+	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
 
 	// Test GetChatTitle for non-existing chat
 	title, err = st.GetChatTitle(ctx, "nonexistent")
@@ -110,12 +117,12 @@ func Test_RedisStore(t *testing.T) {
 	assert.Equal(t, msg1, messages[0])
 	assert.Equal(t, msg2, messages[1])
 
-	chi, err := st.GetChatInfo(ctx, cID)
+	chi, err = st.GetChatInfo(ctx, cID)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
-	assert.Equal(t, []string{"tag1", "tag2"}, chi.Tags)
-	assert.Equal(t, map[string]any{"key": "value"}, chi.Metadata)
+	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
+	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
 
 	list, err := st.ListChats(ctx)
 	require.NoError(t, err)
