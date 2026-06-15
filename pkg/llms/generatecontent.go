@@ -29,6 +29,16 @@ const (
 	RoleTool Role = "tool"
 )
 
+type ContentPartType string
+
+const (
+	ContentTypeText         ContentPartType = "text"
+	ContentTypeImageURL     ContentPartType = "image_url"
+	ContentTypeBinary       ContentPartType = "binary"
+	ContentTypeToolCall     ContentPartType = "tool_call"
+	ContentTypeToolResponse ContentPartType = "tool_response"
+)
+
 // Message is the message sent to a LLM. It has a role and a
 // sequence of parts. For example, it can represent one message in a chat
 // session sent by the user, in which case Role will be
@@ -49,9 +59,9 @@ type MessageSource struct {
 	// Name is the name of the source of the message.
 	Name string `json:"name"`
 	// RunID is the ID of the run of the message.
-	RunID string `json:"run_id"`
-	// StepID is the ID of the step of the message.
-	StepID string `json:"step_id"`
+	RunID string `json:"run_id,omitempty"`
+	// ActionID is the ID of the action of the message.
+	ActionID string `json:"action_id,omitempty"`
 }
 
 // TextPart creates TextContent from a given string.
@@ -86,6 +96,8 @@ func ImageURLWithDetailPart(url string, detail string) ImageURLContent {
 // ContentPart is an interface all parts of content have to implement.
 type ContentPart interface {
 	isPart()
+	String() string
+	ContentType() ContentPartType
 	ContentLength() int
 }
 
@@ -96,6 +108,10 @@ type TextContent struct {
 
 func (tc TextContent) String() string {
 	return tc.Text
+}
+
+func (tc TextContent) ContentType() ContentPartType {
+	return ContentTypeText
 }
 
 func (TextContent) isPart() {}
@@ -114,6 +130,10 @@ func (iuc ImageURLContent) String() string {
 	return iuc.URL
 }
 
+func (iuc ImageURLContent) ContentType() ContentPartType {
+	return ContentTypeImageURL
+}
+
 func (ImageURLContent) isPart() {}
 
 func (iuc ImageURLContent) ContentLength() int {
@@ -129,6 +149,10 @@ type BinaryContent struct {
 func (bc BinaryContent) String() string {
 	base64Encoded := base64.StdEncoding.EncodeToString(bc.Data)
 	return "data:" + bc.MIMEType + ";base64," + base64Encoded
+}
+
+func (bc BinaryContent) ContentType() ContentPartType {
+	return ContentTypeBinary
 }
 
 func (BinaryContent) isPart() {}
@@ -173,6 +197,10 @@ func (tc ToolCall) String() string {
 	return fmt.Sprintf("ToolCall: %s (%s), input: %s", tc.ID, tc.FunctionCall.Name, tc.FunctionCall.Arguments)
 }
 
+func (tc ToolCall) ContentType() ContentPartType {
+	return ContentTypeToolCall
+}
+
 func (ToolCall) isPart() {}
 
 func (tc ToolCall) ContentLength() int {
@@ -195,6 +223,10 @@ type ToolCallResponse struct {
 
 func (tc ToolCallResponse) String() string {
 	return fmt.Sprintf("ToolCallResponse: %s (%s), response size: %d", tc.ToolCallID, tc.Name, len(tc.Content))
+}
+
+func (tc ToolCallResponse) ContentType() ContentPartType {
+	return ContentTypeToolResponse
 }
 
 func (ToolCallResponse) isPart() {}
@@ -308,10 +340,10 @@ func (m *MessageSource) String() string {
 	if m == nil {
 		return ""
 	}
-	if m.StepID == "" {
+	if m.ActionID == "" {
 		return fmt.Sprintf("%s.%s", m.RunID, m.Name)
 	}
-	return fmt.Sprintf("%s.%s.%s", m.RunID, m.StepID, m.Name)
+	return fmt.Sprintf("%s.%s.%s", m.RunID, m.ActionID, m.Name)
 }
 
 func (m Message) WithSource(src *MessageSource) Message {
@@ -320,12 +352,6 @@ func (m Message) WithSource(src *MessageSource) Message {
 		res.Source = src
 	}
 	return res
-}
-
-func (m *Message) String() string {
-	var buf strings.Builder
-	m.Print(&buf)
-	return buf.String()
 }
 
 // Print is a debugging helper.

@@ -356,13 +356,13 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		return nil, nil, errors.New("invalid chat ID")
 	}
 	runID := chatCtx.GetRunID()
-	stepID := chatmodel.GetStepID(ctx)
+	actionID := chatmodel.GetActionID(ctx)
 	assistantName := a.Name()
 
 	source := &llms.MessageSource{
-		Name:   assistantName,
-		RunID:  runID,
-		StepID: stepID,
+		Name:     assistantName,
+		RunID:    runID,
+		ActionID: actionID,
 	}
 	appendWithSource := func(list []llms.Message, msg ...llms.Message) []llms.Message {
 		for _, m := range msg {
@@ -634,7 +634,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 	chatCtx := chatmodel.GetChatContext(ctx)
 	runID := chatCtx.GetRunID()
-	stepID := chatmodel.GetStepID(ctx)
+	actionID := chatmodel.GetActionID(ctx)
 
 	// Create a type to hold tool call results
 	type toolCallResult struct {
@@ -677,9 +677,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 		toolCalls = append(toolCalls, choiceToolCalls...)
 		assistantResponse := llms.MessageFromToolCalls(llms.RoleAI, choiceToolCalls...).WithSource(&llms.MessageSource{
-			Name:   a.name,
-			RunID:  runID,
-			StepID: stepID,
+			Name:     a.name,
+			RunID:    runID,
+			ActionID: actionID,
 		})
 		messageHistory = append(messageHistory, assistantResponse)
 		if !cfg.SkipMessageHistory && !cfg.SkipToolHistory {
@@ -837,9 +837,9 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			Name:       toolName,
 			Content:    content,
 		}).WithSource(&llms.MessageSource{
-			Name:   a.name + "/" + toolName,
-			RunID:  runID,
-			StepID: stepID,
+			Name:     a.name + "/" + toolName,
+			RunID:    runID,
+			ActionID: actionID,
 		})
 
 		// Log the tool call response for debugging
@@ -855,9 +855,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 		messageHistory = append(messageHistory, toolCallResponse)
 
 		if !cfg.SkipMessageHistory && !cfg.SkipToolHistory {
-			lock.Lock()
 			resp.Messages = append(resp.Messages, toolCallResponse)
-			lock.Unlock()
 		}
 	}
 

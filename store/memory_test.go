@@ -8,6 +8,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/store"
+	"github.com/effective-security/x/maps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,11 +28,11 @@ func Test_MemoryStore(t *testing.T) {
 	expErr := "invalid chat context"
 	assert.EqualError(t, st.Reset(ctx), expErr)
 	assert.EqualError(t, st.Add(ctx, msg1), expErr)
-	err := st.UpdateChat(ctx, "", nil, nil)
+	_, err := st.UpdateChat(ctx, "", nil, nil)
 	assert.EqualError(t, err, expErr)
-	_, err = st.ListChats(ctx)
+	_, err = st.ListChatIDs(ctx)
 	assert.EqualError(t, err, expErr)
-	_, err = st.GetChatInfo(ctx, "")
+	_, err = st.GetChatInfo(ctx, "", false)
 	assert.EqualError(t, err, expErr)
 	assert.Empty(t, st.Messages(ctx))
 
@@ -43,11 +44,6 @@ func Test_MemoryStore(t *testing.T) {
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
 
-	// Test GetChatTitle for existing chat
-	title, err := st.GetChatTitle(ctx, cID)
-	require.NoError(t, err)
-	assert.Empty(t, title)
-
 	require.NoError(t, st.Add(ctx, msg1))
 	require.NoError(t, st.Add(ctx, msg2))
 
@@ -57,35 +53,29 @@ func Test_MemoryStore(t *testing.T) {
 	assert.Equal(t, msg1, messages[0])
 	assert.Equal(t, msg2, messages[1])
 
-	chi, err := st.GetChatInfo(ctx, cID)
+	chi, err := st.GetChatInfo(ctx, cID, true)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, chi.TenantID)
 	assert.Equal(t, chatID, chi.ChatID)
-
-	// Test GetChatTitle for existing chat
-	title, err = st.GetChatTitle(ctx, cID)
-	require.NoError(t, err)
-	assert.Equal(t, "New Chat", title)
+	assert.Equal(t, "New Chat", chi.Title)
+	assert.Empty(t, chi.Tags)
+	assert.Equal(t, 2, len(chi.Messages))
 
 	// Update chat title and test again
-	require.NoError(t, st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"}))
-	title, err = st.GetChatTitle(ctx, cID)
+	chi2, err := st.UpdateChat(ctx, "Updated Title", map[string]any{"key": "value"}, []string{"tag1", "tag2"})
 	require.NoError(t, err)
-	assert.Equal(t, "Updated Title", title)
-
-	chi, err = st.GetChatInfo(ctx, cID)
+	assert.Equal(t, []string{"tag1", "tag2"}, chi2.Tags)
+	assert.Equal(t, "Updated Title", chi2.Title)
+	chi3, err := st.UpdateChat(ctx, "", map[string]any{"key2": "value2"}, []string{"tag3", "tag4"})
 	require.NoError(t, err)
-	assert.Equal(t, tenantID, chi.TenantID)
-	assert.Equal(t, chatID, chi.ChatID)
-	assert.Equal(t, []string{"tag1", "tag2"}, chi.Tags)
-	assert.Equal(t, map[string]any{"key": "value"}, chi.Metadata)
+	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi3.Tags)
+	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi3.Metadata))
 
-	// Test GetChatTitle for non-existing chat
-	title, err = st.GetChatTitle(ctx, "nonexistent")
+	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
-	assert.Equal(t, "", title)
+	assert.Equal(t, chi3, chi)
 
-	list, err := st.ListChats(ctx)
+	list, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(list))
 
@@ -100,9 +90,7 @@ func Test_MemoryStore(t *testing.T) {
 
 	now := time.Now()
 	time.Sleep(2 * time.Millisecond)
-	err = st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
-	require.NoError(t, err)
-	ci, err := st.GetChatInfo(ctx, "")
+	ci, err := st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
@@ -113,17 +101,17 @@ func Test_MemoryStore(t *testing.T) {
 
 	time.Sleep(2 * time.Millisecond)
 	require.NoError(t, st.Add(ctx, msg1))
-	ci2, err := st.GetChatInfo(ctx, "")
+	ci2, err := st.GetChatInfo(ctx, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, chatCtx.GetTenantID(), ci2.TenantID)
 	assert.Equal(t, chatCtx.GetChatID(), ci2.ChatID)
 	assert.True(t, ci2.UpdatedAt.After(updatedAt))
 
-	chats, err := st.ListChats(ctx)
+	chats, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(chats))
 	for _, chat := range chats {
-		ci, err := st.GetChatInfo(ctx, chat)
+		ci, err := st.GetChatInfo(ctx, chat, false)
 		require.NoError(t, err)
 		assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
 	}
@@ -181,7 +169,7 @@ func Test_MemoryStoreManager(t *testing.T) {
 	assert.Equal(t, 1, len(tenants))
 	assert.Equal(t, tenantID, tenants[0])
 
-	chats, err := st.ListChats(ctx)
+	chats, err := st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(chats))
 
@@ -194,7 +182,7 @@ func Test_MemoryStoreManager(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(tenants))
 
-	chats, err = st.ListChats(ctx)
+	chats, err = st.ListChatIDs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(chats))
 }

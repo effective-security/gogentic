@@ -11,8 +11,9 @@ import (
 
 // MessageContentJSON represents the JSON structure for MessageContent
 type MessageContentJSON struct {
-	Role Role   `json:"role"`
-	Text string `json:"text,omitempty"`
+	Role   Role           `json:"role"`
+	Text   string         `json:"text,omitempty"`
+	Source *MessageSource `json:"source,omitempty"`
 }
 
 // ContentPartJSON represents the JSON structure for content parts
@@ -83,15 +84,17 @@ type ToolResponseContentJSON struct {
 
 // MessageContentWithPartsJSON represents the JSON structure for MessageContent with parts
 type MessageContentWithPartsJSON struct {
-	Role  Role          `json:"role"`
-	Parts []ContentPart `json:"parts"`
+	Role   Role           `json:"role"`
+	Parts  []ContentPart  `json:"parts"`
+	Source *MessageSource `json:"source,omitempty"`
 }
 
 // ToMessageContentWithPartsJSON converts MessageContent to MessageContentWithPartsJSON
 func (mc *Message) ToMessageContentWithPartsJSON() *MessageContentWithPartsJSON {
 	return &MessageContentWithPartsJSON{
-		Role:  mc.Role,
-		Parts: mc.Parts,
+		Role:   mc.Role,
+		Parts:  mc.Parts,
+		Source: mc.Source,
 	}
 }
 
@@ -110,8 +113,9 @@ func (mc Message) MarshalJSON() ([]byte, error) {
 	if len(mc.Parts) == 1 {
 		if tp, hasSingleTextPart := mc.Parts[0].(TextContent); hasSingleTextPart {
 			return json.Marshal(MessageContentJSON{
-				Role: mc.Role,
-				Text: tp.Text,
+				Role:   mc.Role,
+				Text:   tp.Text,
+				Source: mc.Source,
 			})
 		}
 	}
@@ -128,6 +132,7 @@ func (mc *Message) UnmarshalJSON(data []byte) error {
 	}
 
 	mc.Role = msgJSON.Role
+	mc.Source = msgJSON.Source
 
 	// Handle special case: single text field
 	if msgJSON.Text != "" {

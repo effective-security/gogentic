@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,5 +30,7 @@ func TestStringPromptValueMessages(t *testing.T) {
 	spv = StringPromptValue("test")
 	msgs = spv.Messages()
 	require.Len(t, msgs, 1)
-	assert.Equal(t, "test\n", msgs[0].String())
+	var buf strings.Builder
+	msgs[0].Print(&buf)
+	assert.Equal(t, "test\n", buf.String())
 }

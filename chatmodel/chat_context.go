@@ -113,7 +113,7 @@ type contextKey int
 
 const (
 	keyChatContext contextKey = iota
-	keyStepID
+	keyActionID
 )
 
 // WithChatContext returns a new context with ChatContext value
@@ -121,10 +121,10 @@ func WithChatContext(ctx context.Context, chatCtx ChatContext) context.Context {
 	return context.WithValue(ctx, keyChatContext, chatCtx)
 }
 
-// WithStepID returns a new context with Flow Step value.
-// This is used to identify the step in the multi-step LLM flow.
-func WithStepID(ctx context.Context, stepID string) context.Context {
-	return context.WithValue(ctx, keyStepID, stepID)
+// WithActionID returns a new context with Action ID value.
+// This is used to identify the action in the multi-step LLM flow.
+func WithActionID(ctx context.Context, actionID string) context.Context {
+	return context.WithValue(ctx, keyActionID, actionID)
 }
 
 // GetChatContext retrieves the ChatContext from the context
@@ -135,9 +135,9 @@ func GetChatContext(ctx context.Context) ChatContext {
 	return nil
 }
 
-// GetStepID retrieves the Step ID from the context
-func GetStepID(ctx context.Context) string {
-	if v, ok := ctx.Value(keyStepID).(string); ok {
+// GetActionID retrieves the Action ID from the context
+func GetActionID(ctx context.Context) string {
+	if v, ok := ctx.Value(keyActionID).(string); ok {
 		return v
 	}
 	return ""
