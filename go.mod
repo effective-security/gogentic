@@ -30,7 +30,7 @@ require (
 	github.com/nikolalohinski/gonja v1.5.3
 	github.com/openai/openai-go/v3 v3.39.0
 	github.com/pb33f/ordered-map/v2 v2.3.1
-	github.com/redis/go-redis/v9 v9.20.1
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
