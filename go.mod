@@ -15,7 +15,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.15.0
 	github.com/bububa/ljson v1.0.2
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/cockroachdb/errors v1.13.0
+	github.com/cockroachdb/errors v1.14.0
 	github.com/diverged/tavily-go v1.0.0
 	github.com/effective-security/metrics v0.8.138
 	github.com/effective-security/porto v0.37.399
