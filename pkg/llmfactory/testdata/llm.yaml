@@ -28,10 +28,12 @@ providers:
 
   - name: ANTHROPIC
     token: env://ANTHROPIC_API_KEY
-    default_model: claude-sonnet-4-6
+    default_model: claude-sonnet-4-8
     available_models:
       - claude-opus-4-8
       - claude-sonnet-4-8
+      - claude-opus-4-6
+      - claude-sonnet-4-6
     open_ai:
       api_type: ANTHROPIC
 
