@@ -92,7 +92,7 @@ func Test_Factory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "claude-sonnet-4-6", fm.model)
+	assert.Equal(t, "claude-sonnet-4-8", fm.model)
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	model, err = f.ModelByType("BEDROCK")

@@ -386,8 +386,10 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 			// })
 		case anthropic.WebFetchToolResultBlock:
 			// TODO: option to add WebSearchToolResultBlock to the response
+		case anthropic.CodeExecutionToolResultBlock:
+			// TODO: option to add CodeExecutionToolResultBlock to the response
 		default:
-			return nil, errors.WithMessagef(ErrUnsupportedContentType, "response content type: %T", content)
+			return nil, errors.Wrapf(ErrUnsupportedContentType, "response content type: %T", content)
 		}
 	}
 
