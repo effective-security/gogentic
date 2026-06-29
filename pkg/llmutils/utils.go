@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/effective-security/gogentic/pkg/llms"
-	"github.com/effective-security/x/values"
 	"gopkg.in/yaml.v3"
 )
 
@@ -268,40 +267,6 @@ func CountMessagesContentSize(msgs []llms.Message) uint64 {
 		}
 	}
 	return size
-}
-
-// CountContentSize counts the size of the content
-func CountContentSize(choices []*llms.ContentChoice) uint64 {
-	var size uint64
-	for _, choice := range choices {
-		size += uint64(len(choice.Content))
-		size += uint64(len(choice.ReasoningContent))
-		if choice.FuncCall != nil {
-			size += uint64(len(choice.FuncCall.Name))
-			size += uint64(len(choice.FuncCall.Arguments))
-		}
-		for _, toolCall := range choice.ToolCalls {
-			size += uint64(len(toolCall.ID))
-			size += uint64(len(toolCall.Type))
-			if toolCall.FunctionCall != nil {
-				size += uint64(len(toolCall.FunctionCall.Name))
-				size += uint64(len(toolCall.FunctionCall.Arguments))
-			}
-		}
-	}
-	return size
-}
-
-func CountTokens(choices []*llms.ContentChoice) (in, out, cacheWrite, cacheRead, total int64) {
-	for _, choice := range choices {
-		ma := values.MapAny(choice.GenerationInfo)
-		in += ma.Int64("InputTokens")
-		out += ma.Int64("OutputTokens")
-		cacheWrite += ma.Int64("CacheWriteTokens")
-		cacheRead += ma.Int64("CacheReadTokens")
-		total += ma.Int64("TotalTokens")
-	}
-	return
 }
 
 func FindLastUserQuestion(messages []llms.Message) string {

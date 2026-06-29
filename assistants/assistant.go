@@ -461,6 +461,9 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), assistantName, modelName, orgID)
 		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), assistantName, modelName, orgID)
 
+		resp.Usage.BytesOut += bytesSent
+		resp.Usage.LlmCallCount++
+
 		llmresp, err := a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
 			return nil, messageHistory, errors.Wrapf(err, "assistant %s: model %s: failed to generate content from LLM", assistantName, modelName)
@@ -471,16 +474,18 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		}
 		resp.Choices = llmresp.Choices
 
-		bytesReceived := llmutils.CountContentSize(resp.Choices)
+		bytesReceived := llmresp.ContentSize()
+		resp.Usage.BytesIn += bytesReceived
 		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), assistantName, modelName, orgID)
 		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), assistantName, modelName, orgID)
 
-		tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp.Choices)
-		metricskey.StatsLLMInputTokens.IncrCounter(float64(tokensIn), assistantName, modelName, orgID)
-		metricskey.StatsLLMOutputTokens.IncrCounter(float64(tokensOut), assistantName, modelName, orgID)
-		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(tokensCacheWrite), assistantName, modelName, orgID)
-		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(tokensCacheRead), assistantName, modelName, orgID)
-		metricskey.StatsLLMTotalTokens.IncrCounter(float64(tokensTotal), assistantName, modelName, orgID)
+		stats := llmresp.Usage()
+		metricskey.StatsLLMInputTokens.IncrCounter(float64(stats.InputTokens), assistantName, modelName, orgID)
+		metricskey.StatsLLMOutputTokens.IncrCounter(float64(stats.OutputTokens), assistantName, modelName, orgID)
+		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(stats.CacheWriteTokens), assistantName, modelName, orgID)
+		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(stats.CacheReadTokens), assistantName, modelName, orgID)
+		metricskey.StatsLLMTotalTokens.IncrCounter(float64(stats.TotalTokens), assistantName, modelName, orgID)
+		resp.Usage.Usage.Add(stats)
 
 		// Check for empty response and retry if needed
 		if len(resp.Choices) == 0 {
@@ -742,8 +747,23 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 
 			var res string
 			var err error
+			var stats *llms.UsageStats
 			if assistant, ok := tool.(IAssistantTool); ok {
-				res, err = assistant.CallAssistant(ctx, toolArgs, options...)
+				// Propagate the callback handler to the nested assistant so the
+				// whole run tree reports to the same handler (e.g. Scratchpad).
+				// Usage is aggregated into resp.Usage below for the returned
+				// Response, while the handler accumulates usage at the LLM-call
+				// boundary, so there is no double counting.
+				subOptions := options
+				if cfg.CallbackHandler != nil {
+					subOptions = append([]Option{WithCallback(cfg.CallbackHandler)}, options...)
+				}
+				res, stats, err = assistant.CallAssistant(ctx, toolArgs, subOptions...)
+				if stats != nil {
+					lock.Lock()
+					resp.Usage.Add(stats)
+					lock.Unlock()
+				}
 			} else {
 				res, err = tool.Call(ctx, toolArgs)
 			}

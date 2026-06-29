@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/mcp"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/gogentic/tools"
@@ -17,7 +18,7 @@ import (
 type TypeableAssistantTool[I any, O any] interface {
 	IAssistantTool
 	tools.IMCPTool
-	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
+	CallAssistant(ctx context.Context, input string, options ...Option) (string, *llms.UsageStats, error)
 }
 
 type AssistantTool[I chatmodel.ContentProvider, O chatmodel.ContentProvider] struct {
@@ -66,24 +67,25 @@ func (t *AssistantTool[I, O]) Parameters() *jsonschema.Schema {
 }
 
 func (t *AssistantTool[I, O]) Call(ctx context.Context, input string) (string, error) {
-	return t.CallAssistant(ctx, input)
+	res, _, err := t.CallAssistant(ctx, input)
+	return res, err
 }
 
-func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, options ...Option) (string, error) {
+func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, options ...Option) (string, *llms.UsageStats, error) {
 	var tin I
 	if parser, ok := (any)(&tin).(chatmodel.InputParser); ok {
 		if err := parser.ParseInput(input); err != nil {
-			return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
+			return "", nil, errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 		}
 	} else {
 		// Validate the input against the function parameters
 		if err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), &tin); err != nil {
-			return "", errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
+			return "", nil, errors.WithStack(chatmodel.ErrFailedUnmarshalInput)
 		}
 	}
 
 	var res O
-	_, err := t.assistant.Run(ctx, &CallInput{
+	resp, err := t.assistant.Run(ctx, &CallInput{
 		Input:   tin.GetContent(),
 		Options: options,
 	}, &res)
@@ -91,11 +93,19 @@ func (t *AssistantTool[I, O]) CallAssistant(ctx context.Context, input string, o
 		if val, ok := (any)(&res).(chatmodel.IBaseResult); ok {
 			val.SetClarification(llmutils.AddComment("tool", t.Name(), "error", err.Error()))
 		} else {
-			return "", err
+			return "", nil, err
 		}
 	}
 
-	return chatmodel.Stringify(res), nil
+	// resp is nil when Run returns an error, even if we recover the error
+	// into the result above as a clarification.
+	var usage *llms.UsageStats
+	if resp != nil {
+		u := resp.Usage
+		usage = &u
+	}
+
+	return chatmodel.Stringify(res), usage, nil
 }
 
 func (t *AssistantTool[I, O]) RegisterMCP(registrator tools.McpServerRegistrator) error {

@@ -36,8 +36,8 @@ func TestIntegrationPromptCaching(t *testing.T) {
 		},
 	}
 
-	var inputTokens []int64
-	var cacheReads []int64
+	var inputTokens []uint64
+	var cacheReads []uint64
 
 	for i := 0; i < 3; i++ {
 		resp, err := llm.GenerateContent(context.Background(), content,
@@ -48,27 +48,18 @@ func TestIntegrationPromptCaching(t *testing.T) {
 		require.NotEmpty(t, resp.Choices)
 
 		choice := resp.Choices[0]
-		inputTokens = append(inputTokens, requireGenerationInfoInt64(t, choice.GenerationInfo, "InputTokens"))
-		cacheReads = append(cacheReads, requireGenerationInfoInt64(t, choice.GenerationInfo, "CacheReadTokens"))
+		inputTokens = append(inputTokens, choice.Usage.InputTokens)
+		cacheReads = append(cacheReads, choice.Usage.CacheReadTokens)
 
 		if i >= 1 && cacheReads[i] > 0 {
 			break
 		}
 	}
 
-	assert.Greater(t, inputTokens[0], int64(1024),
+	assert.Greater(t, inputTokens[0], uint64(1024),
 		"expected prompt to exceed OpenAI caching threshold, input tokens=%d", inputTokens[0])
 
 	require.GreaterOrEqual(t, len(cacheReads), 2)
-	assert.Greater(t, slices.Max(cacheReads[1:]), int64(0),
+	assert.Greater(t, slices.Max(cacheReads[1:]), uint64(0),
 		"expected a cache read hit on a repeated identical request, cacheReads=%v inputTokens=%v", cacheReads, inputTokens)
-}
-
-func requireGenerationInfoInt64(t *testing.T, info map[string]any, key string) int64 {
-	t.Helper()
-
-	require.Contains(t, info, key)
-	value, ok := info[key].(int64)
-	require.True(t, ok, "generation info %q must be int64, got %T", key, info[key])
-	return value
 }

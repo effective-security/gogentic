@@ -235,6 +235,51 @@ func (tc ToolCallResponse) ContentLength() int {
 	return len(tc.ToolCallID) + len(tc.Name) + len(tc.Content)
 }
 
+type Usage struct {
+	InputTokens      uint64
+	OutputTokens     uint64
+	CacheWriteTokens uint64
+	CacheReadTokens  uint64
+	ReasoningTokens  uint64
+	TotalTokens      uint64
+}
+
+func (r *Usage) Add(other *Usage) {
+	if r != nil && other != nil {
+		r.InputTokens += other.InputTokens
+		r.OutputTokens += other.OutputTokens
+		r.CacheWriteTokens += other.CacheWriteTokens
+		r.CacheReadTokens += other.CacheReadTokens
+		r.ReasoningTokens += other.ReasoningTokens
+		r.TotalTokens += other.TotalTokens
+	}
+}
+
+type UsageStats struct {
+	Usage
+
+	// BytesOut is the number of bytes sent to the LLM.
+	BytesOut uint64
+	// BytesIn is the number of bytes received from the LLM.
+	BytesIn uint64
+	// LlmCallCount is the number of GenerateContent calls made.
+	LlmCallCount uint32
+}
+
+func (r *UsageStats) Add(other *UsageStats) {
+	if r != nil && other != nil {
+		r.InputTokens += other.InputTokens
+		r.OutputTokens += other.OutputTokens
+		r.CacheWriteTokens += other.CacheWriteTokens
+		r.CacheReadTokens += other.CacheReadTokens
+		r.ReasoningTokens += other.ReasoningTokens
+		r.TotalTokens += other.TotalTokens
+		r.LlmCallCount += other.LlmCallCount
+		r.BytesOut += other.BytesOut
+		r.BytesIn += other.BytesIn
+	}
+}
+
 // ContentResponse is the response returned by a GenerateContent call.
 // It can potentially return multiple content choices.
 type ContentResponse struct {
@@ -253,6 +298,9 @@ type ContentChoice struct {
 	// GenerationInfo is arbitrary information the model adds to the response.
 	GenerationInfo map[string]any `json:"generation_info"`
 
+	// Usage is the usage of the content choice.
+	Usage Usage `json:"usage"`
+
 	// FuncCall is non-nil when the model asks to invoke a function/tool.
 	// If a model invokes more than one function/tool, this field will only
 	// contain the first one.
@@ -263,6 +311,52 @@ type ContentChoice struct {
 
 	// This field is only used with the deepseek-reasoner model and represents the reasoning contents of the assistant message before the final answer.
 	ReasoningContent string `json:"reasoning_content"`
+}
+
+func (r *ContentResponse) Usage() *Usage {
+	res := &Usage{}
+	if r == nil {
+		return res
+	}
+	for _, choice := range r.Choices {
+		if choice != nil {
+			res.Add(&choice.Usage)
+		}
+	}
+	return res
+}
+
+func (r *ContentChoice) ContentSize() uint64 {
+	if r == nil {
+		return 0
+	}
+	var size uint64
+	size += uint64(len(r.Content))
+	size += uint64(len(r.ReasoningContent))
+	if r.FuncCall != nil {
+		size += uint64(len(r.FuncCall.Name))
+		size += uint64(len(r.FuncCall.Arguments))
+	}
+	for _, toolCall := range r.ToolCalls {
+		size += uint64(len(toolCall.ID))
+		size += uint64(len(toolCall.Type))
+		if toolCall.FunctionCall != nil {
+			size += uint64(len(toolCall.FunctionCall.Name))
+			size += uint64(len(toolCall.FunctionCall.Arguments))
+		}
+	}
+	return size
+}
+
+func (r *ContentResponse) ContentSize() uint64 {
+	if r == nil {
+		return 0
+	}
+	var size uint64
+	for _, choice := range r.Choices {
+		size += choice.ContentSize()
+	}
+	return size
 }
 
 func (r *ContentResponse) String() string {

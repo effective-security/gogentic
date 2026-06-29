@@ -315,11 +315,11 @@ func contentResponseFromChat(r *openaiclient.ChatCompletionResponse) *llms.Conte
 		choices[i] = &llms.ContentChoice{
 			Content:    c.Message.Content,
 			StopReason: fmt.Sprint(c.FinishReason),
-			GenerationInfo: map[string]any{
-				"OutputTokens":    r.Usage.CompletionTokens,
-				"InputTokens":     r.Usage.PromptTokens,
-				"TotalTokens":     r.Usage.TotalTokens,
-				"ReasoningTokens": r.Usage.CompletionTokensDetails.ReasoningTokens,
+			Usage: llms.Usage{
+				OutputTokens:    uint64(r.Usage.CompletionTokens),
+				InputTokens:     uint64(r.Usage.PromptTokens),
+				TotalTokens:     uint64(r.Usage.TotalTokens),
+				ReasoningTokens: uint64(r.Usage.CompletionTokensDetails.ReasoningTokens),
 			},
 		}
 		for _, tool := range c.Message.ToolCalls {
@@ -342,12 +342,12 @@ func contentResponseFromChat(r *openaiclient.ChatCompletionResponse) *llms.Conte
 func contentResponseFromResponses(r *responses.Response) *llms.ContentResponse {
 	choice := &llms.ContentChoice{
 		Content: r.OutputText(),
-		GenerationInfo: map[string]any{
-			"OutputTokens":    r.Usage.OutputTokens,
-			"InputTokens":     r.Usage.InputTokens,
-			"CacheReadTokens": r.Usage.InputTokensDetails.CachedTokens,
-			"TotalTokens":     r.Usage.TotalTokens,
-			"ReasoningTokens": r.Usage.OutputTokensDetails.ReasoningTokens,
+		Usage: llms.Usage{
+			OutputTokens:    uint64(r.Usage.OutputTokens),
+			InputTokens:     uint64(r.Usage.InputTokens),
+			CacheReadTokens: uint64(r.Usage.InputTokensDetails.CachedTokens),
+			TotalTokens:     uint64(r.Usage.TotalTokens),
+			ReasoningTokens: uint64(r.Usage.OutputTokensDetails.ReasoningTokens),
 		},
 	}
 	for _, item := range r.Output {

@@ -70,10 +70,10 @@ func TestScratchpad_StartRun_EndRun(t *testing.T) {
 	r.stats.ToolsCalls = 3
 	r.stats.ToolsCallsFailed = 2
 	r.stats.ToolNotFound = 1
-	r.stats.AssistantLLMCalls = 1
+	r.stats.Usage.LlmCallCount = 1
 	r.stats.TotalMessages = 4
-	r.stats.LLMBytesOut = 10
-	r.stats.LLMBytesIn = 11
+	r.stats.Usage.BytesOut = 10
+	r.stats.Usage.BytesIn = 11
 
 	// EndRun should print stats and cleanup
 	stats, buf := sp.EndRun(ctx)
@@ -121,13 +121,34 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 		Messages: []llms.Message{
 			{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\nagsjhdfgkajshdfg gajkshdgfkjasdhjfg ahsdfkgasjhdfga akjhsdgfakjhsdgfakj gasjdkhfgakjsdhga aksjdhfgakjdsfg"}}},
 		},
+		Usage: llms.UsageStats{
+			Usage: llms.Usage{
+				InputTokens:  10,
+				OutputTokens: 11,
+				TotalTokens:  21,
+			},
+			BytesOut:     12,
+			BytesIn:      13,
+			LlmCallCount: 2,
+		},
 	}
 
 	// Test various callbacks
 	sp.OnAssistantStart(ctx, ast, "input")
-	sp.OnAssistantEnd(ctx, ast, "input", resp, resp.Messages)
 	sp.OnAssistantLLMCallStart(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, []llms.Message{
 		{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "foo"}}},
+	})
+	sp.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: "gpt-4o", provider: llms.ProviderOpenAI}, &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Answer 1",
+				Usage: llms.Usage{
+					InputTokens:  10,
+					OutputTokens: 11,
+					TotalTokens:  21,
+				},
+			},
+		},
 	})
 	sp.OnAssistantLLMParseError(ctx, ast, "input", "output", errors.New("parseerr"))
 	sp.OnAssistantError(ctx, ast, "input", errors.New("fail"), []llms.Message{
@@ -137,6 +158,8 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 	sp.OnToolEnd(ctx, tool, "A1", "tinput", "toutput")
 	sp.OnToolError(ctx, tool, "A1", "tinput", errors.New("terr"))
 	sp.OnToolNotFound(ctx, ast, "T2")
+	sp.OnAssistantEnd(ctx, ast, "input", resp, resp.Messages)
+
 	// EndRun shows these calls
 	stats, output := sp.EndRun(ctx)
 	require.NotNil(t, stats)
@@ -146,15 +169,6 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 2024-01-01 12:00:00 run1: step1 A1 *** Assistant Start ***
 2024-01-01 12:00:00 run1: step1 A1 Input:
 input
-2024-01-01 12:00:00 run1: step1 A1 Assistant Output:
-Answer 1
-2024-01-01 12:00:00 run1: step1 A1 Messages:
-[0] human:
-  - very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\n... (105 more)
-  * 1 texts, 0 tool calls, 0 tool responses, content length: 184
-  * source: run1.step2.A1
-
-2024-01-01 12:00:00 run1: step1 A1 *** Assistant End ***
 2024-01-01 12:00:00 run1: step1 A1 *** LLM Call *** gpt-4o model, 1 messages
 2024-01-01 12:00:00 run1: step1 A1 Messages:
 [0] human:
@@ -162,6 +176,7 @@ Answer 1
   * 1 texts, 0 tool calls, 0 tool responses, content length: 3
   * source: run1.step2.A1
 
+2024-01-01 12:00:00 run1: step1 A1 *** LLM Call End *** gpt-4o model, 10 input tokens, 11 output tokens, 21 total tokens
 2024-01-01 12:00:00 run1: step1 A1 *** LLM Parse Error *** parseerr
 2024-01-01 12:00:00 run1: step1 A1  Response: output
 2024-01-01 12:00:00 run1: step1 A1 *** Error *** fail
@@ -179,9 +194,18 @@ toutput
 2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool End ***
 2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool Error *** terr
 2024-01-01 12:00:00 run1: step1 A1 *** Tool Not Found *** T2
+2024-01-01 12:00:00 run1: step1 A1 Assistant Output:
+Answer 1
+2024-01-01 12:00:00 run1: step1 A1 Messages:
+[0] human:
+  - very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\n... (105 more)
+  * 1 texts, 0 tool calls, 0 tool responses, content length: 184
+  * source: run1.step2.A1
+
+2024-01-01 12:00:00 run1: step1 A1 *** Assistant End ***
 2024-01-01 12:00:00 run1: Assistant calls: 1, Failed: 2
 2024-01-01 12:00:00 run1: Tool calls: 1, Failed: 1, Not Found: 1
-2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16, Input Tokens: 0, Output Tokens: 0, Total Tokens: 0
+2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16, Input Tokens: 10, Output Tokens: 11, Total Tokens: 21
 2024-01-01 12:00:00 run1: === Run Ended. Duration: 0s ===
 `
 	assert.Equal(t, exp, outStr)

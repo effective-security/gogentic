@@ -123,11 +123,13 @@ func createAi21Completion(ctx context.Context, client *bedrockruntime.Client, mo
 		choices[i] = &llms.ContentChoice{
 			Content:    completion.Data.Text,
 			StopReason: completion.FinishReason.Reason,
+			Usage: llms.Usage{
+				InputTokens:  uint64(len(output.Prompt.Tokens)),
+				OutputTokens: uint64(len(completion.Data.Tokens)),
+				TotalTokens:  uint64(len(output.Prompt.Tokens) + len(completion.Data.Tokens)),
+			},
 			GenerationInfo: map[string]any{
-				"ID":           output.ID,
-				"InputTokens":  len(output.Prompt.Tokens),
-				"OutputTokens": len(completion.Data.Tokens),
-				"TotalTokens":  len(output.Prompt.Tokens) + len(completion.Data.Tokens),
+				"ID": output.ID,
 			},
 		}
 	}

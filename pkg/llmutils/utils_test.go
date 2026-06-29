@@ -266,16 +266,6 @@ func Test_CountMessagesContentSize(t *testing.T) {
 	assert.Greater(t, size, uint64(0))
 }
 
-func Test_CountResponseContentSize(t *testing.T) {
-	choices := []*llms.ContentChoice{
-		{
-			Content: "Hello world",
-		},
-	}
-	size := llmutils.CountContentSize(choices)
-	assert.Greater(t, size, uint64(0))
-}
-
 func TestPrintMessageContents(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {

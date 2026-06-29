@@ -27,17 +27,10 @@ type RunStats struct {
 
 	Duration                time.Duration
 	TotalMessages           uint32
-	LLMBytesOut             uint64
-	LLMBytesIn              uint64
-	LLMInputTokens          uint64
-	LLMOutputTokens         uint64
-	LLMCacheWriteTokens     uint64
-	LLMCacheReadTokens      uint64
-	LLMTotalTokens          uint64
+	Usage                   llms.UsageStats
 	AssistantCalls          uint32
 	AssistantCallsSucceeded uint32
 	AssistantCallsFailed    uint32
-	AssistantLLMCalls       uint32
 	ToolsCalls              uint32
 	ToolsCallsSucceeded     uint32
 	ToolsCallsFailed        uint32
@@ -101,14 +94,14 @@ func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 		stats.ToolNotFound,
 	))
 	run.printEntry(fmt.Sprintf("LLM calls: %d, Messages: %d, Bytes Out: %d, Bytes In: %d, Bytes Total: %d, Input Tokens: %d, Output Tokens: %d, Total Tokens: %d",
-		stats.AssistantLLMCalls,
+		stats.Usage.LlmCallCount,
 		stats.TotalMessages,
-		stats.LLMBytesOut,
-		stats.LLMBytesIn,
-		stats.LLMBytesOut+stats.LLMBytesIn,
-		stats.LLMInputTokens,
-		stats.LLMOutputTokens,
-		stats.LLMTotalTokens,
+		stats.Usage.BytesOut,
+		stats.Usage.BytesIn,
+		stats.Usage.BytesOut+stats.Usage.BytesIn,
+		stats.Usage.InputTokens,
+		stats.Usage.OutputTokens,
+		stats.Usage.TotalTokens,
 	))
 
 	run.printEntry(fmt.Sprintf("=== Run Ended. Duration: %s ===", stats.Duration))
@@ -163,7 +156,12 @@ func (l *Scratchpad) OnAssistantEnd(ctx context.Context, assistant assistants.IA
 	defer run.lock.Unlock()
 
 	atomic.AddUint32(&run.stats.AssistantCallsSucceeded, 1)
-	atomic.AddUint64(&run.stats.LLMBytesIn, llmutils.CountContentSize(resp.Choices))
+	// NOTE: usage is intentionally NOT accumulated here. resp.Usage is the
+	// aggregated subtree total (it already includes nested assistants/tools
+	// invoked via tool.CallAssistant), so adding it per assistant would double
+	// count when the callback is propagated to nested assistants. Usage is
+	// accumulated at the LLM-call boundary instead (OnAssistantLLMCallStart and
+	// OnAssistantLLMCallEnd), where each call is counted exactly once.
 
 	name := assistant.Name()
 	actionID := chatmodel.GetActionID(ctx)
@@ -264,10 +262,14 @@ func (l *Scratchpad) OnAssistantLLMCallStart(ctx context.Context, agent assistan
 	run.lock.Lock()
 	defer run.lock.Unlock()
 
-	atomic.AddUint64(&run.stats.LLMBytesOut, llmutils.CountMessagesContentSize(payload))
-	atomic.AddUint32(&run.stats.AssistantLLMCalls, 1)
 	count := uint32(len(payload))
 	atomic.AddUint32(&run.stats.TotalMessages, count)
+
+	// Accumulate at the LLM-call boundary so each call is counted exactly once,
+	// regardless of nesting depth or whether the callback is propagated to
+	// nested assistants. This mirrors the accounting done in Assistant.run.
+	run.stats.Usage.LlmCallCount++
+	run.stats.Usage.BytesOut += llmutils.CountMessagesContentSize(payload)
 
 	name := agent.Name()
 	actionID := chatmodel.GetActionID(ctx)
@@ -285,15 +287,16 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 	run.lock.Lock()
 	defer run.lock.Unlock()
 
-	tokensIn, tokensOut, tokensCacheWrite, tokensCacheRead, tokensTotal := llmutils.CountTokens(resp.Choices)
-	atomic.AddUint64(&run.stats.LLMInputTokens, uint64(tokensIn))
-	atomic.AddUint64(&run.stats.LLMOutputTokens, uint64(tokensOut))
-	atomic.AddUint64(&run.stats.LLMCacheWriteTokens, uint64(tokensCacheWrite))
-	atomic.AddUint64(&run.stats.LLMCacheReadTokens, uint64(tokensCacheRead))
-	atomic.AddUint64(&run.stats.LLMTotalTokens, uint64(tokensTotal))
+	stats := resp.Usage()
+	// Accumulate token usage and received bytes once per LLM call. stats only
+	// carries token fields (no BytesIn/LlmCallCount), so we add BytesIn here and
+	// the call count is incremented in OnAssistantLLMCallStart.
+	run.stats.Usage.Usage.Add(stats)
+	run.stats.Usage.BytesIn += resp.ContentSize()
 
 	actionID := chatmodel.GetActionID(ctx)
-	run.printEntry(actionID, agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens", llm.GetName(), tokensIn, tokensOut, tokensTotal))
+	run.printEntry(actionID, agent.Name(), "*** LLM Call End ***", fmt.Sprintf("%s model, %d input tokens, %d output tokens, %d total tokens",
+		llm.GetName(), stats.InputTokens, stats.OutputTokens, stats.TotalTokens))
 }
 
 func (l *Scratchpad) OnAssistantLLMParseError(ctx context.Context, assistant assistants.IAssistant, input string, response string, err error) {

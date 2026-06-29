@@ -88,9 +88,10 @@ func createMetaCompletion(ctx context.Context,
 			{
 				Content:    output.Generation,
 				StopReason: output.StopReason,
-				GenerationInfo: map[string]any{
-					"input_tokens":  output.PromptTokenCount,
-					"output_tokens": output.GenerationTokenCount,
+				Usage: llms.Usage{
+					InputTokens:  uint64(output.PromptTokenCount),
+					OutputTokens: uint64(output.GenerationTokenCount),
+					TotalTokens:  uint64(output.PromptTokenCount + output.GenerationTokenCount),
 				},
 			},
 		},

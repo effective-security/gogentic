@@ -273,10 +273,10 @@ func createAnthropicCompletion(ctx context.Context,
 		choices = append(choices, &llms.ContentChoice{
 			Content:    textContent,
 			StopReason: output.StopReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":  output.Usage.InputTokens,
-				"OutputTokens": output.Usage.OutputTokens,
-				"TotalTokens":  output.Usage.InputTokens + output.Usage.OutputTokens,
+			Usage: llms.Usage{
+				InputTokens:  uint64(output.Usage.InputTokens),
+				OutputTokens: uint64(output.Usage.OutputTokens),
+				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
 			},
 		})
 	}
@@ -285,10 +285,10 @@ func createAnthropicCompletion(ctx context.Context,
 		choices = append(choices, &llms.ContentChoice{
 			ToolCalls:  toolCalls,
 			StopReason: output.StopReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":  output.Usage.InputTokens,
-				"OutputTokens": output.Usage.OutputTokens,
-				"TotalTokens":  output.Usage.InputTokens + output.Usage.OutputTokens,
+			Usage: llms.Usage{
+				InputTokens:  uint64(output.Usage.InputTokens),
+				OutputTokens: uint64(output.Usage.OutputTokens),
+				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
 			},
 		})
 	}
@@ -298,10 +298,10 @@ func createAnthropicCompletion(ctx context.Context,
 		choices = append(choices, &llms.ContentChoice{
 			Content:    output.Content[0].Text,
 			StopReason: output.StopReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":  output.Usage.InputTokens,
-				"OutputTokens": output.Usage.OutputTokens,
-				"TotalTokens":  output.Usage.InputTokens + output.Usage.OutputTokens,
+			Usage: llms.Usage{
+				InputTokens:  uint64(output.Usage.InputTokens),
+				OutputTokens: uint64(output.Usage.OutputTokens),
+				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
 			},
 		})
 	}
@@ -372,7 +372,7 @@ func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntim
 
 			switch resp.Type {
 			case "message_start":
-				contentchoices[0].GenerationInfo["InputTokens"] = resp.Message.Usage.InputTokens
+				contentchoices[0].Usage.InputTokens = uint64(resp.Message.Usage.InputTokens)
 			case "content_block_delta":
 				if err = options.StreamingFunc(ctx, []byte(resp.Delta.Text)); err != nil {
 					return nil, err
@@ -380,7 +380,7 @@ func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntim
 				contentchoices[0].Content += resp.Delta.Text
 			case "message_delta":
 				contentchoices[0].StopReason = resp.Delta.StopReason
-				contentchoices[0].GenerationInfo["OutputTokens"] = resp.Usage.OutputTokens
+				contentchoices[0].Usage.OutputTokens = uint64(resp.Usage.OutputTokens)
 			}
 		}
 	}
