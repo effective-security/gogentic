@@ -324,14 +324,6 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	// ToolUseBlocks in the same response turn. Splitting them into separate choices breaks
 	// callers that expect tool calls in Choices[0], so we accumulate all blocks here and
 	// produce exactly one merged choice per API response.
-	generationInfo := map[string]any{
-		"InputTokens":      result.Usage.InputTokens,
-		"OutputTokens":     result.Usage.OutputTokens,
-		"CacheWriteTokens": result.Usage.CacheCreationInputTokens,
-		"CacheReadTokens":  result.Usage.CacheReadInputTokens,
-		"TotalTokens":      result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens,
-		"ID":               result.ID,
-	}
 
 	var textParts []string
 	var toolCalls []llms.ToolCall
@@ -394,10 +386,19 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	}
 
 	choice := &llms.ContentChoice{
-		Content:        strings.Join(textParts, ""),
-		ToolCalls:      toolCalls,
-		StopReason:     string(result.StopReason),
-		GenerationInfo: generationInfo,
+		Content:    strings.Join(textParts, ""),
+		ToolCalls:  toolCalls,
+		StopReason: string(result.StopReason),
+		Usage: llms.Usage{
+			InputTokens:      uint64(result.Usage.InputTokens),
+			OutputTokens:     uint64(result.Usage.OutputTokens),
+			CacheWriteTokens: uint64(result.Usage.CacheCreationInputTokens),
+			CacheReadTokens:  uint64(result.Usage.CacheReadInputTokens),
+			TotalTokens:      uint64(result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens),
+		},
+		GenerationInfo: map[string]any{
+			"ID": result.ID,
+		},
 	}
 
 	resp := &llms.ContentResponse{
@@ -483,12 +484,12 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 		Content:    content.String(),
 		ToolCalls:  toolCalls,
 		StopReason: stopReason,
-		GenerationInfo: map[string]any{
-			"InputTokens":      inputTokens,
-			"OutputTokens":     outputTokens,
-			"CacheWriteTokens": cacheWriteTokens,
-			"CacheReadTokens":  cacheReadTokens,
-			"TotalTokens":      inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens,
+		Usage: llms.Usage{
+			InputTokens:      uint64(inputTokens),
+			OutputTokens:     uint64(outputTokens),
+			CacheWriteTokens: uint64(cacheWriteTokens),
+			CacheReadTokens:  uint64(cacheReadTokens),
+			TotalTokens:      uint64(inputTokens + outputTokens + cacheWriteTokens + cacheReadTokens),
 		},
 	}
 

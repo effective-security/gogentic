@@ -129,7 +129,7 @@ AI: This is a test answer 1.
 }`
 	assert.Equal(t, exp, llmutils.ToJSONIndent(tool.Parameters()))
 
-	_, err = tool.CallAssistant(ctx, "plain string", assistants.WithMessageStore(memstore))
+	_, _, err = tool.CallAssistant(ctx, "plain string", assistants.WithMessageStore(memstore))
 	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput))
 	assert.EqualError(t, err, "failed to unmarshal input: check the schema and try again")
 
@@ -137,7 +137,7 @@ AI: This is a test answer 1.
 		Input: "What is a capital of largest country in Europe?",
 	})
 
-	tres, err := tool.CallAssistant(ctx, input, assistants.WithMessageStore(memstore))
+	tres, _, err := tool.CallAssistant(ctx, input, assistants.WithMessageStore(memstore))
 	require.NoError(t, err)
 	assert.Equal(t, "This is a test answer 2.", tres)
 }
@@ -242,12 +242,13 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	// Test successful call
-	result, err := tool.CallAssistant(ctx, `{"content":"test input"}`)
+	result, usage, err := tool.CallAssistant(ctx, `{"content":"test input"}`)
 	require.NoError(t, err)
 	assert.Equal(t, "Test response", result)
+	assert.NotNil(t, usage)
 
 	// Test error case
-	_, err = tool.CallAssistant(ctx, `{"content":"test input"}`)
+	_, _, err = tool.CallAssistant(ctx, `{"content":"test input"}`)
 	assert.Error(t, err)
 }
 
@@ -659,4 +660,134 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 2, toolResponseCount, "Should have exactly 2 tool responses")
+}
+
+func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	// Inner assistant, wrapped by an AssistantTool and called via tool.CallAssistant
+	// from the outer assistant's executeToolCalls. It performs a single LLM call.
+	innerLLM := mockllms.NewMockModel(ctrl)
+	innerLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	innerLLM.EXPECT().GetName().Return("inner-model").AnyTimes()
+	innerLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		&llms.ContentResponse{
+			Choices: []*llms.ContentChoice{
+				{
+					Content: `{"Content":"inner result"}`,
+					Usage: llms.Usage{
+						InputTokens:  40,
+						OutputTokens: 5,
+						TotalTokens:  45,
+					},
+				},
+			},
+		}, nil,
+	).Times(1)
+
+	innerAssistant := assistants.NewAssistant[chatmodel.OutputResult](innerLLM, systemPrompt).
+		WithName("inner_assistant").
+		WithDescription("Inner assistant that performs a sub task.")
+
+	innerTool, err := assistants.NewAssistantTool[chatmodel.InputRequest](innerAssistant)
+	require.NoError(t, err)
+
+	// Outer assistant: first LLM call requests the inner_assistant tool,
+	// second LLM call returns the final answer.
+	outerLLM := mockllms.NewMockModel(ctrl)
+	outerLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	outerLLM.EXPECT().GetName().Return("outer-model").AnyTimes()
+	outerLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
+			// First call (system + human messages): request the inner assistant tool.
+			if len(messages) == 2 {
+				return &llms.ContentResponse{
+					Choices: []*llms.ContentChoice{
+						{
+							ToolCalls: []llms.ToolCall{
+								{
+									ID:   "call_inner_1",
+									Type: "function",
+									FunctionCall: &llms.FunctionCall{
+										Name:      "inner_assistant",
+										Arguments: `{"input":"sub task for inner"}`,
+									},
+								},
+							},
+							Usage: llms.Usage{
+								InputTokens:  100,
+								OutputTokens: 10,
+								TotalTokens:  110,
+							},
+						},
+					},
+				}, nil
+			}
+
+			// Subsequent call: return the final answer.
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content: `{"Content":"final answer"}`,
+						Usage: llms.Usage{
+							InputTokens:  200,
+							OutputTokens: 20,
+							TotalTokens:  220,
+						},
+					},
+				},
+			}, nil
+		}).Times(2)
+
+	sp := callbacks.NewScratchpad(callbacks.ModeVerbose)
+
+	// The scratchpad callback is attached to the outer assistant only, but the
+	// framework propagates it to the nested assistant invoked via the tool. The
+	// scratchpad accumulates usage at the LLM-call boundary, so even though the
+	// nested usage is also aggregated into the outer Response.Usage, it is not
+	// double counted.
+	outer := assistants.NewAssistant[chatmodel.OutputResult](outerLLM, systemPrompt,
+		assistants.WithCallback(sp)).
+		WithTools(innerTool)
+
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	sp.StartRun(ctx)
+
+	var output chatmodel.OutputResult
+	apiResp, err := outer.Run(ctx, &assistants.CallInput{
+		Input: "Delegate to the inner assistant",
+	}, &output)
+	require.NoError(t, err)
+	require.NotNil(t, apiResp)
+	assert.Equal(t, "final answer", output.Content)
+
+	stats, _ := sp.EndRun(ctx)
+	require.NotNil(t, stats)
+
+	// The outer response usage aggregates the nested assistant usage that was
+	// returned from tool.CallAssistant: 2 outer LLM calls + 1 inner LLM call.
+	assert.Equal(t, 3, int(apiResp.Usage.LlmCallCount))
+	assert.Equal(t, 100+40+200, int(apiResp.Usage.InputTokens))
+	assert.Equal(t, 10+5+20, int(apiResp.Usage.OutputTokens))
+	assert.Equal(t, 110+45+220, int(apiResp.Usage.TotalTokens))
+
+	// The scratchpad accumulates usage at the LLM-call boundary across the whole
+	// run tree, so it must match the aggregated top-level Response.Usage exactly,
+	// without double counting the nested assistant.
+	assert.Equal(t, apiResp.Usage, stats.Usage)
+
+	// The inner-assistant tool was called exactly once and succeeded.
+	assert.Equal(t, 1, int(stats.ToolsCalls))
+	assert.Equal(t, 1, int(stats.ToolsCallsSucceeded))
+	assert.Equal(t, 0, int(stats.ToolsCallsFailed))
+
+	// Both the outer and the propagated inner assistant report to the scratchpad.
+	assert.Equal(t, 2, int(stats.AssistantCalls))
+	assert.Equal(t, 2, int(stats.AssistantCallsSucceeded))
+	assert.Equal(t, 0, int(stats.AssistantCallsFailed))
 }

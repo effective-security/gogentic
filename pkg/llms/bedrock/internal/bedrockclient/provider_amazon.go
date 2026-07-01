@@ -151,10 +151,10 @@ func createAmazonCompletion(ctx context.Context,
 		contentChoices[i] = &llms.ContentChoice{
 			Content:    result.OutputText,
 			StopReason: result.CompletionReason,
-			GenerationInfo: map[string]any{
-				"InputTokens":  output.InputTextTokenCount,
-				"OutputTokens": result.TokenCount,
-				"TotalTokens":  output.InputTextTokenCount + result.TokenCount,
+			Usage: llms.Usage{
+				InputTokens:  uint64(output.InputTextTokenCount),
+				OutputTokens: uint64(result.TokenCount),
+				TotalTokens:  uint64(output.InputTextTokenCount + result.TokenCount),
 			},
 		}
 	}

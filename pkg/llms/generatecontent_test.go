@@ -155,3 +155,54 @@ I'm here to help you.
 `
 	assert.Equal(t, exp, cr.String())
 }
+
+func TestContentResponseUsageStats(t *testing.T) {
+	t.Parallel()
+	cr := &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Hello.\nWorld.\n\n\n\n\n\n",
+				Usage: llms.Usage{
+					InputTokens:      10,
+					OutputTokens:     20,
+					CacheWriteTokens: 30,
+					CacheReadTokens:  40,
+					ReasoningTokens:  50,
+					TotalTokens:      60,
+				},
+			},
+			{
+				Content: "Hello.\nWorld.\n\n\n\n\n\n",
+				Usage: llms.Usage{
+					InputTokens:      11,
+					OutputTokens:     21,
+					CacheWriteTokens: 31,
+					CacheReadTokens:  41,
+					TotalTokens:      61,
+				},
+			},
+		},
+	}
+	st := cr.Usage()
+	assert.Equal(t, uint64(21), st.InputTokens)
+	assert.Equal(t, uint64(41), st.OutputTokens)
+	assert.Equal(t, uint64(61), st.CacheWriteTokens)
+	assert.Equal(t, uint64(81), st.CacheReadTokens)
+	assert.Equal(t, uint64(50), st.ReasoningTokens)
+	assert.Equal(t, uint64(121), st.TotalTokens)
+}
+
+func TestContentResponseContentSize(t *testing.T) {
+	t.Parallel()
+	cr := &llms.ContentResponse{Choices: []*llms.ContentChoice{{
+		Content:          "Hello",
+		ReasoningContent: "R",
+		FuncCall:         &llms.FunctionCall{Name: "fn", Arguments: "{}"},
+		ToolCalls: []llms.ToolCall{{
+			ID:           "1",
+			Type:         "function",
+			FunctionCall: &llms.FunctionCall{Name: "t", Arguments: "a"},
+		}},
+	}}}
+	assert.Equal(t, uint64(21), cr.ContentSize())
+}

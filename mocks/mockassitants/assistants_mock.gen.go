@@ -225,7 +225,7 @@ func (mr *MockIAssistantToolMockRecorder) Call(arg0, arg1 any) *gomock.Call {
 }
 
 // CallAssistant mocks base method.
-func (m *MockIAssistantTool) CallAssistant(ctx context.Context, input string, options ...assistants.Option) (string, error) {
+func (m *MockIAssistantTool) CallAssistant(ctx context.Context, input string, options ...assistants.Option) (string, *llms.UsageStats, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, input}
 	for _, a := range options {
@@ -233,8 +233,9 @@ func (m *MockIAssistantTool) CallAssistant(ctx context.Context, input string, op
 	}
 	ret := m.ctrl.Call(m, "CallAssistant", varargs...)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*llms.UsageStats)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // CallAssistant indicates an expected call of CallAssistant.

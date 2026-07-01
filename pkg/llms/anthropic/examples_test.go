@@ -243,12 +243,15 @@ func Example_advancedConfiguration() {
 	fmt.Printf("Generated story:\n%s\n", resp.Choices[0].Content)
 
 	// Access generation metadata
-	info := resp.Choices[0].GenerationInfo
-	if inputTokens, ok := info["InputTokens"]; ok {
-		fmt.Printf("Input tokens used: %v\n", inputTokens)
+	info := resp.Choices[0].Usage
+	if info.InputTokens > 0 {
+		fmt.Printf("Input tokens used: %v\n", info.InputTokens)
 	}
-	if outputTokens, ok := info["OutputTokens"]; ok {
-		fmt.Printf("Output tokens used: %v\n", outputTokens)
+	if info.OutputTokens > 0 {
+		fmt.Printf("Output tokens used: %v\n", info.OutputTokens)
+	}
+	if info.TotalTokens > 0 {
+		fmt.Printf("Total tokens used: %v\n", info.TotalTokens)
 	}
 }
 

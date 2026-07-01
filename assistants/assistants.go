@@ -51,6 +51,8 @@ type Response struct {
 	Choices []*llms.ContentChoice
 	// Messages is the messages that are created from the run and added to the Message History Store.
 	Messages []llms.Message
+	// Usage is the usage stats for the response.
+	Usage llms.UsageStats
 }
 
 type CallInput struct {
@@ -86,7 +88,7 @@ type IAssistantTool interface {
 	tools.ITool
 	// CallAssistant allows the tool to call the assistant with the given input and options.
 	// If the assistant fails to parse the input, it should return ErrFailedUnmarshalInput error.
-	CallAssistant(ctx context.Context, input string, options ...Option) (string, error)
+	CallAssistant(ctx context.Context, input string, options ...Option) (string, *llms.UsageStats, error)
 }
 
 // ProvidePromptInputsFunc is a function that provides prompt inputs for the assistant.

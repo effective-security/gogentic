@@ -84,11 +84,11 @@ func (o *LLM) generateContentFromChat(ctx context.Context, messages []llms.Messa
 		choices[i] = &llms.ContentChoice{
 			Content:    c.Message.Content,
 			StopReason: fmt.Sprint(c.FinishReason),
-			GenerationInfo: map[string]any{
-				"OutputTokens":    result.Usage.CompletionTokens,
-				"InputTokens":     result.Usage.PromptTokens,
-				"TotalTokens":     result.Usage.TotalTokens,
-				"ReasoningTokens": result.Usage.CompletionTokensDetails.ReasoningTokens,
+			Usage: llms.Usage{
+				OutputTokens:    uint64(result.Usage.CompletionTokens),
+				InputTokens:     uint64(result.Usage.PromptTokens),
+				TotalTokens:     uint64(result.Usage.TotalTokens),
+				ReasoningTokens: uint64(result.Usage.CompletionTokensDetails.ReasoningTokens),
 			},
 		}
 
@@ -214,12 +214,12 @@ func (o *LLM) generateContentFromResponses(ctx context.Context, messages []llms.
 	choice := &llms.ContentChoice{
 		Content:    result.OutputText(),
 		StopReason: "",
-		GenerationInfo: map[string]any{
-			"OutputTokens":    result.Usage.OutputTokens,
-			"InputTokens":     result.Usage.InputTokens,
-			"CacheReadTokens": result.Usage.InputTokensDetails.CachedTokens,
-			"TotalTokens":     result.Usage.TotalTokens,
-			"ReasoningTokens": result.Usage.OutputTokensDetails.ReasoningTokens,
+		Usage: llms.Usage{
+			OutputTokens:    uint64(result.Usage.OutputTokens),
+			InputTokens:     uint64(result.Usage.InputTokens),
+			CacheReadTokens: uint64(result.Usage.InputTokensDetails.CachedTokens),
+			TotalTokens:     uint64(result.Usage.TotalTokens),
+			ReasoningTokens: uint64(result.Usage.OutputTokensDetails.ReasoningTokens),
 		},
 		//ReasoningContent: // TODO,
 	}

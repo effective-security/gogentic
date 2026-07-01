@@ -161,24 +161,24 @@ func convertCandidates(candidates []*genai.Candidate, usage *genai.GenerateConte
 			}
 		}
 
-		metadata := make(map[string]any)
-		metadata[CITATIONS] = candidate.CitationMetadata
-		metadata[SAFETY] = candidate.SafetyRatings
-
-		if usage != nil {
-			metadata["InputTokens"] = usage.PromptTokenCount
-			metadata["CacheReadTokens"] = usage.CachedContentTokenCount
-			metadata["OutputTokens"] = usage.CandidatesTokenCount + usage.ToolUsePromptTokenCount + usage.ThoughtsTokenCount
-			metadata["TotalTokens"] = usage.TotalTokenCount
+		cc := &llms.ContentChoice{
+			Content:    buf.String(),
+			StopReason: string(candidate.FinishReason),
+			ToolCalls:  toolCalls,
+			GenerationInfo: map[string]any{
+				CITATIONS: candidate.CitationMetadata,
+				SAFETY:    candidate.SafetyRatings,
+			},
 		}
 
-		contentResponse.Choices = append(contentResponse.Choices,
-			&llms.ContentChoice{
-				Content:        buf.String(),
-				StopReason:     string(candidate.FinishReason),
-				GenerationInfo: metadata,
-				ToolCalls:      toolCalls,
-			})
+		if usage != nil {
+			cc.Usage.InputTokens = uint64(usage.PromptTokenCount)
+			cc.Usage.CacheReadTokens = uint64(usage.CachedContentTokenCount)
+			cc.Usage.OutputTokens = uint64(usage.CandidatesTokenCount + usage.ToolUsePromptTokenCount + usage.ThoughtsTokenCount)
+			cc.Usage.TotalTokens = uint64(usage.TotalTokenCount)
+		}
+
+		contentResponse.Choices = append(contentResponse.Choices, cc)
 	}
 	return &contentResponse, nil
 }

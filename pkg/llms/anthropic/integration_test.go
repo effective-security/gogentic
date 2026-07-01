@@ -51,11 +51,9 @@ func TestIntegrationTextGeneration(t *testing.T) {
 	assert.NotEmpty(t, choice.GenerationInfo)
 
 	// Verify token usage information
-	info := choice.GenerationInfo
-	assert.Contains(t, info, "InputTokens")
-	assert.Contains(t, info, "OutputTokens")
-	assert.Greater(t, info["InputTokens"], int64(0))
-	assert.Greater(t, info["OutputTokens"], int64(0))
+	assert.Greater(t, choice.Usage.InputTokens, 0)
+	assert.Greater(t, choice.Usage.OutputTokens, 0)
+	assert.Greater(t, choice.Usage.TotalTokens, 0)
 }
 
 // TestIntegrationLegacyModels verifies that models older than 4.6 work without the effort
