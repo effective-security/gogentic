@@ -18,9 +18,11 @@ var (
 //	ChatID is the ID of the chat which is persisted across runs.
 //	RunID identifies a single run of the LLM flow, usually it's a random ID.
 type ChatContext interface {
-	// GetTenantID retrieves the tenant ID from the context
-	GetTenantID() string
-	// GetChatID retrieves the chat ID from the context
+	// GetUserID retrieves the user ID from the context.
+	// User ID is used to store message history for the user.
+	GetUserID() string
+	// GetChatID retrieves the chat ID from the context.
+	// Chat ID is used to store message history for the chat.
 	GetChatID() string
 	// SetChatID updates the chat ID in the context
 	SetChatID(id string)
@@ -35,17 +37,16 @@ type ChatContext interface {
 	// SetRunID updates the run ID in the context
 	SetRunID(id string)
 	// GetOrgID retrieves the org ID from the context.
-	// This is also used in metrics.
-	// Used by some providers to identify the organization of the tenant,
-	// for example, "main" for the default organization.
+	// This is also used in metrics and message history storage.
+	// Used by some providers to identify the organization for multi-tenant use cases.
 	GetOrgID() string
-	// SetOrgID updates the org ID in the context
+	// SetOrgID updates the org ID in the context for multi-tenant use cases.
 	SetOrgID(id string)
 }
 
 type chatContext struct {
 	orgID    string
-	tenantID string
+	userID   string
 	chatID   string
 	runID    string
 	metadata sync.Map
@@ -56,8 +57,8 @@ func (c *chatContext) GetOrgID() string {
 	return c.orgID
 }
 
-func (c *chatContext) GetTenantID() string {
-	return c.tenantID
+func (c *chatContext) GetUserID() string {
+	return c.userID
 }
 
 func (c *chatContext) GetChatID() string {
@@ -92,16 +93,15 @@ func (c *chatContext) SetMetadata(key string, value any) {
 	c.metadata.Store(key, value)
 }
 
-func NewChatContext(tenantID, chatID string, appData any) ChatContext {
-	if tenantID == "" {
-		tenantID = NewChatID()
+func NewChatContext(userID, chatID string, appData any) ChatContext {
+	if userID == "" {
+		panic("userID is required")
 	}
 	if chatID == "" {
 		chatID = NewChatID()
 	}
 	return &chatContext{
-		orgID:    "main",
-		tenantID: tenantID,
+		userID:   userID,
 		chatID:   chatID,
 		runID:    NewChatID(),
 		appData:  appData,
@@ -159,24 +159,6 @@ func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
 		return ctx, nil
 	}
 	return nil, errors.WithStack(ErrInvalidChatContext)
-}
-
-// GetTenantAndChatID retrieves the tenant and chat ID from the provided context.
-// If the context does not contain a ChatContext, it returns error.
-func GetTenantAndChatID(ctx context.Context) (string, string, error) {
-	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
-		return v.GetTenantID(), v.GetChatID(), nil
-	}
-	return "", "", errors.WithStack(ErrInvalidChatContext)
-}
-
-// GetOrgID retrieves the org ID from the provided context.
-// If the context does not contain a ChatContext, it returns "main".
-func GetOrgID(ctx context.Context) string {
-	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
-		return v.GetOrgID()
-	}
-	return "main"
 }
 
 // NewChatID generates a new chat ID using the flake ID generator.

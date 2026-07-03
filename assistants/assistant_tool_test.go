@@ -13,6 +13,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockassitants"
+	"github.com/effective-security/gogentic/mocks/mockllmfactory"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -59,6 +60,7 @@ func Test_AssistantTool(t *testing.T) {
 
 	calls := 0
 	// Create a mock LLM
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -79,11 +81,12 @@ func Test_AssistantTool(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModePlainText),
+		assistants.WithModel(mockLLM),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...)
+	ag := assistants.NewAssistant[chatmodel.String](mockFactory, systemPrompt, acfg...)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
@@ -147,9 +150,12 @@ func Test_AssistantTool_BuilderMethods(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
-	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").Times(1)
+	assistant := assistants.NewAssistant[testOutput](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	// Test WithName and WithDescription
 	tool, err := assistants.NewAssistantTool[testInput](assistant)
@@ -183,6 +189,8 @@ func Test_AssistantTool_Call(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -196,7 +204,7 @@ func Test_AssistantTool_Call(t *testing.T) {
 		}, nil,
 	).AnyTimes()
 
-	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[testOutput](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 	tool, err := assistants.NewAssistantTool[testInput](assistant)
 	require.NoError(t, err)
 
@@ -214,6 +222,8 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -233,7 +243,7 @@ func Test_AssistantTool_CallAssistant(t *testing.T) {
 		nil, errors.New("test error"),
 	).Times(1)
 
-	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[testOutput](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 	tool, err := assistants.NewAssistantTool[testInput](assistant)
 	require.NoError(t, err)
 
@@ -257,6 +267,8 @@ func Test_AssistantTool_MCPMethods(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -270,7 +282,7 @@ func Test_AssistantTool_MCPMethods(t *testing.T) {
 		}, nil,
 	).AnyTimes()
 
-	assistant := assistants.NewAssistant[testOutput](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[testOutput](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 	tool, err := assistants.NewAssistantTool[testInput](assistant)
 	require.NoError(t, err)
 
@@ -376,6 +388,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 
 	// Create mock tools
 	mockTool1 := mocktools.NewMockTool[tavily.SearchRequest, tavily.SearchResult](ctrl)
@@ -456,7 +469,7 @@ func Test_Assistant_ToolCallIDMapping(t *testing.T) {
 		}).Times(2)
 
 	// Create assistant with both tools
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM)).
 		WithTools(mockTool1, mockTool2)
 
 	// Create chat context
@@ -546,6 +559,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 	}).AnyTimes()
 
 	// Create a mock LLM that returns multiple tool calls in a single choice
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -591,7 +605,7 @@ func Test_Assistant_ToolCallMessageStructure(t *testing.T) {
 		}).Times(2)
 
 	// Create assistant with both tools
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM)).
 		WithTools(mockTool1, mockTool2)
 
 	// Create chat context
@@ -668,6 +682,8 @@ func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
 
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
+
 	// Inner assistant, wrapped by an AssistantTool and called via tool.CallAssistant
 	// from the outer assistant's executeToolCalls. It performs a single LLM call.
 	innerLLM := mockllms.NewMockModel(ctrl)
@@ -688,7 +704,7 @@ func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
 		}, nil,
 	).Times(1)
 
-	innerAssistant := assistants.NewAssistant[chatmodel.OutputResult](innerLLM, systemPrompt).
+	innerAssistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(innerLLM)).
 		WithName("inner_assistant").
 		WithDescription("Inner assistant that performs a sub task.")
 
@@ -749,7 +765,8 @@ func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
 	// scratchpad accumulates usage at the LLM-call boundary, so even though the
 	// nested usage is also aggregated into the outer Response.Usage, it is not
 	// double counted.
-	outer := assistants.NewAssistant[chatmodel.OutputResult](outerLLM, systemPrompt,
+	outer := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt,
+		assistants.WithModel(outerLLM),
 		assistants.WithCallback(sp)).
 		WithTools(innerTool)
 

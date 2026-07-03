@@ -49,7 +49,7 @@ func Test_Real_Assistant(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
@@ -59,10 +59,11 @@ func Test_Real_Assistant(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithModel(llmModel),
 		assistants.WithMessageStore(memstore),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.OutputResult](llmModel, systemPrompt, acfg...)
+	ag := assistants.NewAssistant[chatmodel.OutputResult](f, systemPrompt, acfg...)
 
 	apikey := os.Getenv("TAVILY_API_KEY")
 	if apikey != "" {
@@ -115,7 +116,7 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("GOOGLEAI")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderGoogleAI})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -125,16 +126,15 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithModel(llmModel),
 		assistants.WithMessageStore(memstore),
 		assistants.WithMode(encoding.ModeJSON),
-		assistants.WithTools([]llms.Tool{
-			{
-				Type: "google_search",
-			},
+		assistants.WithTools(llms.Tool{
+			Type: "google_search",
 		}),
 	}
 
-	ag := assistants.NewAssistant[CVEResult](llmModel, systemPrompt, acfg...)
+	ag := assistants.NewAssistant[CVEResult](f, systemPrompt, acfg...)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
@@ -159,8 +159,8 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	//llmModel, err := f.ModelByName("gemini-2.5-pro")
-	llmModel, err := f.ModelByType("AZURE")
+	//llmModel, err := f.GetModel(llmfactory.GetModelOptions{PreferredModels: []string{"gemini-2.5-pro"}})
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -169,34 +169,33 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
+		assistants.WithModel(llmModel),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		assistants.WithMessageStore(memstore),
 		assistants.WithMode(encoding.ModeJSON),
-		assistants.WithTools([]llms.Tool{
-			{
-				Type: "web_search",
-				WebSearchOptions: &llms.WebSearchOptions{
-					AllowedDomains: []string{
-						"cvedetails.com",
-						"cve.org",
-						"nvd.nist.gov",
-						"cisa.gov",
-						"first.org",
-						"api.first.org",
-						"epss.empiricalsecurity.com",
-						"cve2epss.com",
-						"vulners.com",
-						"projectdiscovery.io",
-						"redhat.com",
-						"en.wikipedia.org",
-					},
-					MaxUses: 5,
+		assistants.WithTools(llms.Tool{
+			Type: "web_search",
+			WebSearchOptions: &llms.WebSearchOptions{
+				AllowedDomains: []string{
+					"cvedetails.com",
+					"cve.org",
+					"nvd.nist.gov",
+					"cisa.gov",
+					"first.org",
+					"api.first.org",
+					"epss.empiricalsecurity.com",
+					"cve2epss.com",
+					"vulners.com",
+					"projectdiscovery.io",
+					"redhat.com",
+					"en.wikipedia.org",
 				},
+				MaxUses: 5,
 			},
 		}),
 	}
 
-	ag := assistants.NewAssistant[CVEResult](llmModel, systemPrompt, acfg...)
+	ag := assistants.NewAssistant[CVEResult](f, systemPrompt, acfg...)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
@@ -235,8 +234,8 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 	}
 
 	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
-	//llmModel, err := f.ModelByName("gpt-5")
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	//llmModel, err := f.GetModel(llmfactory.GetModelOptions{PreferredModels: []string{"gpt-5"}})
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search", []string{})
@@ -245,34 +244,33 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
+		assistants.WithModel(llmModel),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		assistants.WithMessageStore(memstore),
 		assistants.WithMode(encoding.ModePlainText),
-		assistants.WithTools([]llms.Tool{
-			{
-				Type: "web_search",
-				WebSearchOptions: &llms.WebSearchOptions{
-					AllowedDomains: []string{
-						"cvedetails.com",
-						"cve.org",
-						"nvd.nist.gov",
-						"cisa.gov",
-						"first.org",
-						"api.first.org",
-						"epss.empiricalsecurity.com",
-						"cve2epss.com",
-						"vulners.com",
-						"projectdiscovery.io",
-						"redhat.com",
-						"en.wikipedia.org",
-					},
-					MaxUses: 5,
+		assistants.WithTools(llms.Tool{
+			Type: "web_search",
+			WebSearchOptions: &llms.WebSearchOptions{
+				AllowedDomains: []string{
+					"cvedetails.com",
+					"cve.org",
+					"nvd.nist.gov",
+					"cisa.gov",
+					"first.org",
+					"api.first.org",
+					"epss.empiricalsecurity.com",
+					"cve2epss.com",
+					"vulners.com",
+					"projectdiscovery.io",
+					"redhat.com",
+					"en.wikipedia.org",
 				},
+				MaxUses: 5,
 			},
 		}),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.String](llmModel, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.String](f, systemPrompt, acfg...).
 		WithOutputParser(encoding.NewSimpleOutputParser())
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -313,7 +311,7 @@ func Test_Real_Providers(t *testing.T) {
 	}
 
 	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -326,6 +324,7 @@ func Test_Real_Providers(t *testing.T) {
 
 	var buf strings.Builder
 	acfg := []assistants.Option{
+		assistants.WithModel(llmModel),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 		//assistants.WithPromptCachePolicy(&llms.PromptCachePolicy{Request: &llms.PromptCacheRequestPolicy{Retention: llms.PromptCacheRetentionInMemory}}),
@@ -340,7 +339,7 @@ func Test_Real_Providers(t *testing.T) {
 
 	systemPrompt := prompts.NewPromptTemplate("You can answer questions about the gogentic status using only the provided `gogentic_status` tool. Do not search Web.", []string{})
 
-	ag := assistants.NewAssistant[WeatherResult](llmModel, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[WeatherResult](f, systemPrompt, acfg...).
 		WithTools(wt)
 
 	req := &assistants.CallInput{

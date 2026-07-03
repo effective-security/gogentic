@@ -7,6 +7,7 @@ import (
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/mocks/mockllmfactory"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -21,13 +22,16 @@ func Test_Assistant_BuilderMethods(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").Times(1)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 
 	// Test WithOutputParser
 	outputParser, err := encoding.NewTypedOutputParser(chatmodel.OutputResult{}, encoding.ModeJSON)
 	require.NoError(t, err)
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 	assistant = assistant.WithOutputParser(outputParser)
 	assert.NotNil(t, assistant)
 
@@ -78,6 +82,8 @@ func Test_Assistant_MCPMethods(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -93,7 +99,7 @@ func Test_Assistant_MCPMethods(t *testing.T) {
 		}, nil,
 	).AnyTimes()
 
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	// Test RegisterMCP
 	registrator := &mockMcpRegistrator{}
@@ -131,10 +137,11 @@ func Test_Assistant_GetSystemPrompt_ErrorCases(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{"input"})
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(2)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	// Simulate onPrompt error
 	onPromptErr := func(ctx context.Context, input string) (map[string]any, error) {
@@ -146,7 +153,7 @@ func Test_Assistant_GetSystemPrompt_ErrorCases(t *testing.T) {
 
 	// Simulate FormatPrompt error
 	badPrompt := prompts.NewPromptTemplate("{{missing}}", []string{"input"})
-	assistant = assistants.NewAssistant[chatmodel.OutputResult](mockLLM, badPrompt)
+	assistant = assistants.NewAssistant[chatmodel.OutputResult](mockFactory, badPrompt, assistants.WithModel(mockLLM))
 	_, err = assistant.GetSystemPrompt(context.Background(), "input", nil)
 	assert.Error(t, err)
 }
@@ -156,9 +163,12 @@ func Test_Assistant_RegisterMCP_Error(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	mockLLM.EXPECT().GetName().Return("gpt-4o").Times(1)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	registrator := &mockMcpRegistratorError{}
 	err := assistant.RegisterMCP(registrator)
@@ -176,10 +186,12 @@ func Test_Assistant_CallMCP_ErrorCases(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	// SetChatID error (no chat context)
 	input := chatmodel.MCPInputRequest{ChatID: "id", Input: "input"}
@@ -200,10 +212,12 @@ func Test_Assistant_Run_EdgeCases(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).Times(1)
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	// LLM returns no choices
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{Choices: []*llms.ContentChoice{}}, nil).AnyTimes()
@@ -225,10 +239,12 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 	defer ctrl.Finish()
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
+
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
-	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt)
+	assistant := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM))
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)

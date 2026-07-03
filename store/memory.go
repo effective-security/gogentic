@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/x/slices"
 	"github.com/effective-security/x/values"
@@ -36,7 +35,7 @@ func (t *tenant) add(chatID string, msgs ...llms.Message) {
 	chat, ok := t.chats[chatID]
 	if !ok {
 		chat = &ChatInfo{
-			TenantID:  t.id,
+			UserID:    t.id,
 			ChatID:    chatID,
 			Title:     "New Chat",
 			CreatedAt: now,
@@ -66,7 +65,7 @@ func NewMemoryStore() MessageStore {
 }
 
 func (m *inMemory) Messages(ctx context.Context) []llms.Message {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil
 	}
@@ -82,7 +81,7 @@ func (m *inMemory) Messages(ctx context.Context) []llms.Message {
 }
 
 func (m *inMemory) Add(ctx context.Context, msgs ...llms.Message) error {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
 	}
@@ -104,7 +103,7 @@ func (m *inMemory) Add(ctx context.Context, msgs ...llms.Message) error {
 }
 
 func (m *inMemory) Reset(ctx context.Context) error {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
 	}
@@ -124,7 +123,7 @@ func (m *inMemory) Reset(ctx context.Context) error {
 // If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
 // If tags are empty, it will not be updated, otherwise merged with the existing tags.
 func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) (*ChatInfo, error) {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +144,7 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 	chat, ok := t.chats[chatID]
 	if !ok {
 		chat = &ChatInfo{
-			TenantID:  tenantID,
+			UserID:    tenantID,
 			ChatID:    chatID,
 			CreatedAt: now,
 			Title:     values.StringsCoalesce(title, "New Chat"),
@@ -175,7 +174,7 @@ func (m *inMemory) UpdateChat(ctx context.Context, title string, metadata map[st
 }
 
 func (m *inMemory) ListChatIDs(ctx context.Context) ([]string, error) {
-	tenantID, _, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, _, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +194,7 @@ func (m *inMemory) ListChatIDs(ctx context.Context) ([]string, error) {
 }
 
 func (m *inMemory) GetChatInfo(ctx context.Context, id string, withMessages bool) (*ChatInfo, error) {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}

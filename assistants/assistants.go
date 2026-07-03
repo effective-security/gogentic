@@ -53,6 +53,8 @@ type Response struct {
 	Messages []llms.Message
 	// Usage is the usage stats for the response.
 	Usage llms.UsageStats
+	// Model is the model that was used to generate the response.
+	Model string
 }
 
 type CallInput struct {

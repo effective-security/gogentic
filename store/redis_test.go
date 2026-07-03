@@ -84,7 +84,7 @@ func Test_RedisStore(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(tenantID, chatID, appData)
 	ctx = chatmodel.WithChatContext(ctx, chatCtx)
 
-	tID, cID, err := chatmodel.GetTenantAndChatID(ctx)
+	tID, cID, err := store.GetTenantAndChatID(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
@@ -124,7 +124,7 @@ func Test_RedisStore(t *testing.T) {
 
 	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
-	assert.Equal(t, tenantID, chi.TenantID)
+	assert.Equal(t, tenantID, chi.UserID)
 	assert.Equal(t, chatID, chi.ChatID)
 	assert.Equal(t, []string{"tag1", "tag2", "tag3", "tag4"}, chi.Tags)
 	assert.Equal(t, []string{"key", "key2"}, maps.OrderedKeys(chi.Metadata))
@@ -137,7 +137,7 @@ func Test_RedisStore(t *testing.T) {
 	chatCtx = chatmodel.NewChatContext(tenantID, "", nil)
 	ctx = chatmodel.WithChatContext(ctx, chatCtx)
 
-	tID, cID, err = chatmodel.GetTenantAndChatID(ctx)
+	tID, cID, err = store.GetTenantAndChatID(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, tID)
 	assert.NotEqual(t, chatID, cID)
@@ -147,7 +147,7 @@ func Test_RedisStore(t *testing.T) {
 	ci, err := st.UpdateChat(ctx, "New chat", map[string]any{"key": "value"}, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
+	assert.Equal(t, chatCtx.GetUserID(), ci.UserID)
 	assert.Equal(t, chatCtx.GetChatID(), ci.ChatID)
 	assert.True(t, ci.CreatedAt.After(now))
 	assert.True(t, ci.UpdatedAt.After(now))
@@ -157,7 +157,7 @@ func Test_RedisStore(t *testing.T) {
 	require.NoError(t, st.Add(ctx, msg1))
 	ci2, err := st.GetChatInfo(ctx, "", false)
 	require.NoError(t, err)
-	assert.Equal(t, chatCtx.GetTenantID(), ci2.TenantID)
+	assert.Equal(t, chatCtx.GetUserID(), ci2.UserID)
 	assert.Equal(t, chatCtx.GetChatID(), ci2.ChatID)
 	assert.True(t, ci2.UpdatedAt.After(updatedAt))
 
@@ -167,7 +167,7 @@ func Test_RedisStore(t *testing.T) {
 	for _, chat := range chats {
 		ci, err := st.GetChatInfo(ctx, chat, false)
 		require.NoError(t, err)
-		assert.Equal(t, chatCtx.GetTenantID(), ci.TenantID)
+		assert.Equal(t, chatCtx.GetUserID(), ci.UserID)
 	}
 
 	// Reset the chat
@@ -222,7 +222,7 @@ func Test_RedisStoreManager(t *testing.T) {
 	chatCtx := chatmodel.NewChatContext(tenantID, chatID, appData)
 	ctx = chatmodel.WithChatContext(ctx, chatCtx)
 
-	tID, cID, err := chatmodel.GetTenantAndChatID(ctx)
+	tID, cID, err := store.GetTenantAndChatID(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, tID)
 	assert.Equal(t, chatID, cID)
@@ -237,7 +237,7 @@ func Test_RedisStoreManager(t *testing.T) {
 
 	chi, err := st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
-	assert.Equal(t, tenantID, chi.TenantID)
+	assert.Equal(t, tenantID, chi.UserID)
 	assert.Equal(t, chatID, chi.ChatID)
 
 	time.Sleep(2 * time.Millisecond)
@@ -245,7 +245,7 @@ func Test_RedisStoreManager(t *testing.T) {
 	require.NoError(t, err)
 	chi, err = st.GetChatInfo(ctx, cID, false)
 	require.NoError(t, err)
-	assert.Equal(t, tenantID, chi.TenantID)
+	assert.Equal(t, tenantID, chi.UserID)
 	assert.Equal(t, chatID, chi.ChatID)
 
 	chats, err = st.ListChatIDs(ctx)
@@ -438,7 +438,7 @@ func Test_RedisStore_ConcurrentChatCreation(t *testing.T) {
 		} else {
 			// All chat infos should be identical (except timestamps which may vary slightly)
 			assert.Equal(t, firstChatInfo.ChatID, chatInfo.ChatID)
-			assert.Equal(t, firstChatInfo.TenantID, chatInfo.TenantID)
+			assert.Equal(t, firstChatInfo.UserID, chatInfo.UserID)
 			assert.Equal(t, firstChatInfo.Title, chatInfo.Title)
 			// Don't compare timestamps as they may vary slightly due to creation time
 		}
