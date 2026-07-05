@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/xlog"
 )
@@ -11,14 +13,14 @@ import (
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "store")
 
 type ChatInfo struct {
-	TenantID  string
-	ChatID    string
-	Title     string
-	Messages  []llms.Message
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Metadata  map[string]any
-	Tags      []string
+	UserID    string         `json:"user_id"`
+	ChatID    string         `json:"chat_id"`
+	Title     string         `json:"title"`
+	Messages  []llms.Message `json:"messages"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Metadata  map[string]any `json:"metadata"`
+	Tags      []string       `json:"tags"`
 }
 
 // MessageStore is an interface for storing and retrieving chat messages.
@@ -65,7 +67,7 @@ func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore,
 
 func (c *ChatInfo) Clone() *ChatInfo {
 	clone := &ChatInfo{
-		TenantID:  c.TenantID,
+		UserID:    c.UserID,
 		ChatID:    c.ChatID,
 		Title:     c.Title,
 		CreatedAt: c.CreatedAt,
@@ -82,4 +84,18 @@ func (c *ChatInfo) Clone() *ChatInfo {
 		clone.Tags = append([]string{}, c.Tags...)
 	}
 	return clone
+}
+
+func GetTenantAndChatID(ctx context.Context) (string, string, error) {
+	chatCtx := chatmodel.GetChatContext(ctx)
+	if chatCtx == nil {
+		return "", "", errors.WithStack(chatmodel.ErrInvalidChatContext)
+	}
+	chatID := chatCtx.GetChatID()
+	orgID := chatCtx.GetOrgID()
+	userID := chatCtx.GetUserID()
+	if orgID != "" {
+		userID = orgID + ":" + userID
+	}
+	return userID, chatID, nil
 }

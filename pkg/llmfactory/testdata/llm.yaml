@@ -70,11 +70,17 @@ providers:
     open_ai:
       api_type: GOOGLEAI
 
-tool_models:
-  default:
-    - OPENAI/gpt-5.1
-  web_search:
-    - OPENAI/gpt-5.1
+skills:
+  enable_default_skills: false
+  enable_standard_paths: false
+  paths:
+  - testdata/skills
+  agents:
+    orchestrator:
+      paths:
+        - ~/.agents/skills/.orchestrator
+    remediations:
+      disabled: true
 
 assistant_models:
   default:
@@ -85,12 +91,13 @@ assistant_models:
     - claude-opus-4-8
     - claude-sonnet-4-8
 
-skills:
-  enable_default_skills: true
-  enable_standard_paths: true
-  agents:
-    orchestrator:
-      paths:
-        - ~/.agents/skills/.orchestrator
-    remediations:
-      disabled: true
+orgs_override:
+  1000:
+    assistant_models:
+      default:
+        - OPENAI/gpt-5.1
+      azure_tool:
+        - AZURE/gpt-5.1
+      orchestrator:
+        - claude-opus-4-8
+        - claude-sonnet-4-8

@@ -12,6 +12,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mcp"
+	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/metricskey"
@@ -28,8 +29,8 @@ import (
 // This class provides the core functionality for handling chat interactions, including managing memory,
 // generating system prompts, and obtaining responses from a language model.
 type Assistant[O chatmodel.ContentProvider] struct {
-	LLM          llms.Model
 	OutputParser chatmodel.OutputParser[O]
+	llmFactory   llmfactory.Factory
 
 	toolsByName map[string]tools.ITool
 	toolsNames  []string
@@ -55,38 +56,47 @@ var (
 
 // NewAssistant initializes the AgentAgent
 func NewAssistant[O chatmodel.ContentProvider](
-	llmModel llms.Model,
+	llmFactory llmfactory.Factory,
 	sysprompt prompts.FormatPrompter,
 	options ...Option) *Assistant[O] {
-	ret := &Assistant[O]{
-		cfg: NewConfig(options...),
-		// By default no store is used.
-		//Store:       store.NewMemoryStore(),
-		LLM:         llmModel,
+	a := &Assistant[O]{
+		cfg:         NewConfig(options...),
+		llmFactory:  llmFactory,
 		sysprompt:   sysprompt,
 		name:        "Generic Assistant",
 		description: "An AI assistant that can perform various tasks.",
 	}
 
 	var output O
-	ret.OutputParser, _ = encoding.NewTypedOutputParser(output, ret.cfg.Mode)
+	a.OutputParser, _ = encoding.NewTypedOutputParser(output, a.cfg.Mode)
 
-	prov := llmModel.GetProviderType()
-	strict := ret.cfg.Mode == encoding.ModeJSONSchemaStrict && prov.Supports(llms.CapabilityJSONSchemaStrict)
-	jsonSchema := (ret.cfg.Mode == encoding.ModeJSONSchema || ret.cfg.Mode == encoding.ModeJSONSchemaStrict) &&
+	if a.cfg.Model != nil {
+		// if model is provided, set the response format
+		a.setResponseFormat(a.cfg)
+	}
+	return a
+}
+
+func (a *Assistant[O]) setResponseFormat(cfg *Config) {
+	if cfg.Model == nil {
+		panic("model is required")
+	}
+	prov := cfg.Model.GetProviderType()
+	strict := cfg.Mode == encoding.ModeJSONSchemaStrict && prov.Supports(llms.CapabilityJSONSchemaStrict)
+	jsonSchema := (cfg.Mode == encoding.ModeJSONSchema || cfg.Mode == encoding.ModeJSONSchemaStrict) &&
 		prov.Supports(llms.CapabilityJSONSchema)
 	if jsonSchema {
+		var output O
 		rf, err := schema.NewResponseFormat(reflect.TypeOf(output), strict)
 		if err != nil {
 			logger.KV(xlog.ERROR,
 				"status", "failed_to_create_response_format",
 				"err", err.Error(),
 			)
+		} else {
+			cfg.ResponseFormat = rf
 		}
-		ret.cfg.ResponseFormat = rf
 	}
-
-	return ret
 }
 
 // WithCallback sets the callback.
@@ -142,6 +152,13 @@ func (a *Assistant[O]) WithTools(list ...tools.ITool) *Assistant[O] {
 		name := tool.Name()
 		// use lowercase for the key
 		nameLowerCase := strings.ToLower(name)
+
+		if nameLowerCase == "web_search" {
+			// special case
+			a.cfg.AddTool(llms.Tool{Type: "web_search"})
+			continue
+		}
+
 		if a.toolsByName[nameLowerCase] == nil {
 			a.toolsByName[nameLowerCase] = tool
 			a.toolsNames = append(a.toolsNames, name)
@@ -261,9 +278,12 @@ func (a *Assistant[O]) RegisterMCP(registrator McpServerRegistrator) error {
 }
 
 func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
-	ctx, err := chatmodel.SetChatID(ctx, input.ChatID)
-	if err != nil {
-		return nil, err
+	var err error
+	if input.ChatID != "" {
+		ctx, err = chatmodel.SetChatID(ctx, input.ChatID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	req := &CallInput{
@@ -289,38 +309,53 @@ func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*Response, e
 }
 
 func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error) {
-	orgID := chatmodel.GetOrgID(ctx)
-	started := time.Now()
-	defer metricskey.PerfAssistantCall.MeasureSince(started, a.Name(), a.LLM.GetName(), orgID)
-
 	// create a per call config
 	cfg := a.GetCallConfig(input.Options...)
-	if cfg.Model == "" {
-		cfg.Model = a.LLM.GetName()
-		cfg.modelSet = true
-	}
 
-	callback := cfg.CallbackHandler
-	if callback != nil {
-		callback.OnAssistantStart(ctx, a, input.Input)
+	chatCtx := chatmodel.GetChatContext(ctx)
+	if chatCtx == nil {
+		return nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
 	}
 
 	var (
 		resp           *Response
 		messageHistory llms.Messages
 		err            error
+
+		orgID   = chatCtx.GetOrgID()
+		started = time.Now()
 	)
 
-	for range 2 {
-		resp, messageHistory, err = a.run(ctx, orgID, cfg, input, optionalOutputType)
+	if cfg.Model == nil {
+		if a.llmFactory == nil {
+			return nil, errors.New("no llm factory or model provided")
+		}
+		m, err := a.llmFactory.GetModel(llmfactory.ModelOptions{OrgID: orgID, AssistantName: a.name})
 		if err != nil {
-			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.Name(), cfg.Model, orgID)
+			return nil, errors.WithMessagef(err, "unable to get LLM model for assistant %s", a.name)
+		}
+		cfg.Model = m
+		cfg.ModelName = m.GetName()
+		a.setResponseFormat(cfg)
+	}
+
+	defer metricskey.PerfAssistantCall.MeasureSince(started, a.name, cfg.ModelName, orgID)
+
+	callback := cfg.CallbackHandler
+	if callback != nil {
+		callback.OnAssistantStart(ctx, a, input.Input)
+	}
+
+	for range 2 {
+		resp, messageHistory, err = a.run(ctx, chatCtx, cfg, input, optionalOutputType)
+		if err != nil {
+			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.name, cfg.ModelName, orgID)
 			if callback != nil {
 				callback.OnAssistantError(ctx, a, input.Input, err, messageHistory)
 			}
 			// Sometimes the LLM returns Text vs JSON
 			if errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
-				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.Name(), cfg.Model, orgID)
+				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.name, cfg.ModelName, orgID)
 
 				input.Input = "Return the response in JSON format as requested."
 				// remove the tools
@@ -337,7 +372,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		return nil, err
 	}
 
-	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.Name(), cfg.Model, orgID)
+	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.name, cfg.ModelName, orgID)
 	if callback != nil {
 		callback.OnAssistantEnd(ctx, a, input.Input, resp, messageHistory)
 	}
@@ -346,21 +381,17 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
 // it returns Response with the Run messages and the message history with all messages that are created from the run.
-func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input *CallInput, optionalOutputType *O) (resp *Response, messageHistory llms.Messages, err error) {
-	chatCtx := chatmodel.GetChatContext(ctx)
-	if chatCtx == nil {
-		return nil, nil, errors.WithStack(chatmodel.ErrInvalidChatContext)
-	}
+func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, cfg *Config, input *CallInput, optionalOutputType *O) (resp *Response, messageHistory llms.Messages, err error) {
 	chatID := chatCtx.GetChatID()
 	if chatID == "" {
 		return nil, nil, errors.New("invalid chat ID")
 	}
+	orgID := chatCtx.GetOrgID()
 	runID := chatCtx.GetRunID()
 	actionID := chatmodel.GetActionID(ctx)
-	assistantName := a.Name()
 
 	source := &llms.MessageSource{
-		Name:     assistantName,
+		Name:     a.name,
 		RunID:    runID,
 		ActionID: actionID,
 	}
@@ -384,14 +415,16 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	//   5. additional input messages
 	// Response.Messages are returned to the caller, which are added to the message history Store.
 
-	resp = &Response{}
+	resp = &Response{
+		Model: cfg.ModelName,
+	}
 	messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleSystem, systemPrompt))
 
 	if cfg.Store != nil {
 		prevMessages := cfg.Store.Messages(ctx)
 		messageHistory = appendWithSource(messageHistory, prevMessages...)
 		logger.ContextKV(ctx, xlog.DEBUG,
-			"assistant", assistantName,
+			"assistant", a.name,
 			"chat_id", chatID,
 			"message_history", len(prevMessages))
 	}
@@ -415,7 +448,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		role := llms.RoleHuman
 		if cfg.IsGeneric {
 			role = llms.RoleGeneric
-			parsedInput = llmutils.AddComment("assistant", assistantName, "question", parsedInput)
+			parsedInput = llmutils.AddComment("assistant", a.name, "question", parsedInput)
 		}
 		userMessage = llms.MessageFromTextParts(role, parsedInput)
 		resp.Messages = appendWithSource(resp.Messages, userMessage)
@@ -429,15 +462,14 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 
 	var extraOptions []Option
 	if len(a.llmToolDefs) > 0 {
-		prov := a.LLM.GetProviderType()
+		prov := cfg.Model.GetProviderType()
 		if !prov.Supports(llms.CapabilityFunctionCalling) {
-			return nil, messageHistory, errors.Newf("assistant %s: the %s provider does not support function calling", assistantName, string(prov))
+			return nil, messageHistory, errors.Newf("assistant %s: the %s provider does not support function calling", a.name, string(prov))
 		}
-		extraOptions = append(extraOptions, WithTools(a.llmToolDefs))
+		extraOptions = append(extraOptions, WithTools(a.llmToolDefs...))
 	}
 	callOpts := cfg.GetCallOptions(extraOptions...)
 
-	modelName := cfg.Model
 	var totalToolExecuted int
 	maxRetries := DefaultMaxRetries
 	retryCount := 0
@@ -447,44 +479,44 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 	toolsLimit := values.NumbersCoalesce(cfg.MaxToolCalls, DefaultMaxToolCalls)
 	for {
 		if len(messageHistory) >= cfg.MaxMessages {
-			return nil, messageHistory, errors.Newf("assistant %s: the messages count exceeded limit", assistantName)
+			return nil, messageHistory, errors.Newf("assistant %s: the messages count exceeded limit", a.name)
 		}
 		bytesSent := llmutils.CountMessagesContentSize(messageHistory)
 		if bytesSent > bytesLimit {
-			return nil, messageHistory, errors.Newf("assistant %s: the content size exceeded limit", assistantName)
+			return nil, messageHistory, errors.Newf("assistant %s: the content size exceeded limit", a.name)
 		}
 
 		if cfg.CallbackHandler != nil {
-			cfg.CallbackHandler.OnAssistantLLMCallStart(ctx, a, a.LLM, messageHistory)
+			cfg.CallbackHandler.OnAssistantLLMCallStart(ctx, a, cfg.Model, messageHistory)
 		}
 
-		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), assistantName, modelName, orgID)
-		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), assistantName, modelName, orgID)
+		metricskey.StatsLLMMessagesSent.IncrCounter(float64(len(messageHistory)), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMBytesSent.IncrCounter(float64(bytesSent), a.name, cfg.ModelName, orgID)
 
 		resp.Usage.BytesOut += bytesSent
 		resp.Usage.LlmCallCount++
 
-		llmresp, err := a.LLM.GenerateContent(ctx, messageHistory, callOpts...)
+		llmresp, err := cfg.Model.GenerateContent(ctx, messageHistory, callOpts...)
 		if err != nil {
-			return nil, messageHistory, errors.Wrapf(err, "assistant %s: model %s: failed to generate content from LLM", assistantName, modelName)
+			return nil, messageHistory, errors.Wrapf(err, "assistant %s: model %s: failed to generate content from LLM", a.name, cfg.ModelName)
 		}
 
 		if cfg.CallbackHandler != nil {
-			cfg.CallbackHandler.OnAssistantLLMCallEnd(ctx, a, a.LLM, llmresp)
+			cfg.CallbackHandler.OnAssistantLLMCallEnd(ctx, a, cfg.Model, llmresp)
 		}
 		resp.Choices = llmresp.Choices
 
 		bytesReceived := llmresp.ContentSize()
 		resp.Usage.BytesIn += bytesReceived
-		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), assistantName, modelName, orgID)
-		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), assistantName, modelName, orgID)
+		metricskey.StatsLLMBytesReceived.IncrCounter(float64(bytesReceived), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMBytesTotal.IncrCounter(float64(bytesSent+bytesReceived), a.name, cfg.ModelName, orgID)
 
 		stats := llmresp.Usage()
-		metricskey.StatsLLMInputTokens.IncrCounter(float64(stats.InputTokens), assistantName, modelName, orgID)
-		metricskey.StatsLLMOutputTokens.IncrCounter(float64(stats.OutputTokens), assistantName, modelName, orgID)
-		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(stats.CacheWriteTokens), assistantName, modelName, orgID)
-		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(stats.CacheReadTokens), assistantName, modelName, orgID)
-		metricskey.StatsLLMTotalTokens.IncrCounter(float64(stats.TotalTokens), assistantName, modelName, orgID)
+		metricskey.StatsLLMInputTokens.IncrCounter(float64(stats.InputTokens), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMOutputTokens.IncrCounter(float64(stats.OutputTokens), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(stats.CacheWriteTokens), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(stats.CacheReadTokens), a.name, cfg.ModelName, orgID)
+		metricskey.StatsLLMTotalTokens.IncrCounter(float64(stats.TotalTokens), a.name, cfg.ModelName, orgID)
 		resp.Usage.Usage.Add(stats)
 
 		// Check for empty response and retry if needed
@@ -492,17 +524,17 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			retryCount++
 			if retryCount >= maxRetries {
 				logger.ContextKV(ctx, xlog.ERROR,
-					"assistant", assistantName,
-					"model", modelName,
+					"assistant", a.name,
+					"model", cfg.ModelName,
 					"status", "max_retries_exceeded",
 					"input", slices.StringUpto(parsedInput, 64),
 					"retry_count", retryCount,
 				)
-				return nil, messageHistory, errors.Newf("assistant %s: LLM returned empty response after %d retries", assistantName, retryCount)
+				return nil, messageHistory, errors.Newf("assistant %s: LLM returned empty response after %d retries", a.name, retryCount)
 			}
 			logger.ContextKV(ctx, xlog.WARNING,
-				"assistant", assistantName,
-				"model", modelName,
+				"assistant", a.name,
+				"model", cfg.ModelName,
 				"status", "retrying_empty_response",
 				"retry_count", retryCount,
 			)
@@ -523,30 +555,30 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		consecutiveNotFoundCount += notFoundCount
 		totalToolExecuted += toolExecuted
 		if consecutiveNotFoundCount > 3 {
-			return nil, messageHistory, errors.Newf("assistant %s: the number of not found tools is exceeded", assistantName)
+			return nil, messageHistory, errors.Newf("assistant %s: the number of not found tools is exceeded", a.name)
 		}
 		// reset
 		consecutiveNotFoundCount = 0
 		if totalToolExecuted >= toolsLimit {
-			return nil, messageHistory, errors.Newf("assistant %s: the tool calls limit is exceeded", assistantName)
+			return nil, messageHistory, errors.Newf("assistant %s: the tool calls limit is exceeded", a.name)
 		}
 	}
 
 	choices := resp.Choices
 	if len(choices) < 1 {
 		logger.ContextKV(ctx, xlog.ERROR,
-			"assistant", assistantName,
-			"model", modelName,
+			"assistant", a.name,
+			"model", cfg.ModelName,
 			"status", "empty_choices",
 			"input", slices.StringUpto(parsedInput, 64),
 		)
-		return nil, messageHistory, errors.Newf("assistant %s: LLM returned empty response with no choices", assistantName)
+		return nil, messageHistory, errors.Newf("assistant %s: LLM returned empty response with no choices", a.name)
 	}
 
 	// Log response analysis for debugging
 	logger.ContextKV(ctx, xlog.DEBUG,
-		"assistant", assistantName,
-		"model", modelName,
+		"assistant", a.name,
+		"model", cfg.ModelName,
 		"status", "response_analysis",
 		"choices_count", len(choices),
 		"tool_calls", totalToolExecuted,
@@ -570,7 +602,7 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, result))
 
 		if cfg.IsGeneric {
-			resp.Messages = appendWithSource(resp.Messages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", assistantName, "observation", result)))
+			resp.Messages = appendWithSource(resp.Messages, llms.MessageFromTextParts(llms.RoleGeneric, llmutils.AddComment("assistant", a.name, "observation", result)))
 		} else {
 			resp.Messages = appendWithSource(resp.Messages, llms.MessageFromTextParts(llms.RoleAI, result))
 		}
@@ -582,8 +614,8 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			}
 
 			logger.ContextKV(ctx, xlog.DEBUG,
-				"assistant", assistantName,
-				"model", modelName,
+				"assistant", a.name,
+				"model", cfg.ModelName,
 				"chat_id", chatID,
 				"status", "added_message_history",
 				"message_history", len(resp.Messages),
@@ -599,11 +631,11 @@ func (a *Assistant[O]) run(ctx context.Context, orgID string, cfg *Config, input
 			// add unparsed result to the message history
 			addResultToMessageHistory(result)
 
-			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, assistantName, cfg.Model, orgID)
+			metricskey.StatsAssistantLLMParseErrors.IncrCounter(1, a.name, cfg.ModelName, orgID)
 			logger.ContextKV(ctx, xlog.DEBUG,
-				"assistant", assistantName,
+				"assistant", a.name,
 				"status", "failed_to_parse_llm_response",
-				"model", modelName,
+				"model", cfg.ModelName,
 				"err", err.Error(),
 				"output_parser", a.OutputParser.Type(),
 				"result", result,
@@ -718,7 +750,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 				lock.Lock()
 				notFoundCount++
 				lock.Unlock()
-				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName, cfg.Model, orgID)
+				metricskey.StatsToolCallsNotFound.IncrCounter(1, toolName, cfg.ModelName, orgID)
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolNotFound(ctx, a, toolName)
 				}
@@ -767,10 +799,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			} else {
 				res, err = tool.Call(ctx, toolArgs)
 			}
-			metricskey.PerfToolCall.MeasureSince(started, toolName, cfg.Model, orgID)
+			metricskey.PerfToolCall.MeasureSince(started, toolName, cfg.ModelName, orgID)
 
 			if err != nil {
-				metricskey.StatsToolCallsFailed.IncrCounter(1, toolName, cfg.Model, orgID)
+				metricskey.StatsToolCallsFailed.IncrCounter(1, toolName, cfg.ModelName, orgID)
 
 				if cfg.CallbackHandler != nil {
 					cfg.CallbackHandler.OnToolError(ctx, tool, a.Name(), toolArgs, err)
@@ -787,7 +819,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 					return
 				}
 			}
-			metricskey.StatsToolCallsSucceeded.IncrCounter(1, toolName, cfg.Model, orgID)
+			metricskey.StatsToolCallsSucceeded.IncrCounter(1, toolName, cfg.ModelName, orgID)
 
 			if cfg.CallbackHandler != nil {
 				cfg.CallbackHandler.OnToolEnd(ctx, tool, a.Name(), toolArgs, res)

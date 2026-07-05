@@ -15,6 +15,7 @@ import (
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
 	"github.com/effective-security/gogentic/mocks/mockassitants"
+	"github.com/effective-security/gogentic/mocks/mockllmfactory"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/mocks/mocktools"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -97,6 +98,7 @@ func Test_Assistant_Defined(t *testing.T) {
 
 	searchCalled := false
 	// Create a mock LLM
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -157,11 +159,12 @@ func Test_Assistant_Defined(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchema),
+		assistants.WithModel(mockLLM),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, acfg...).
 		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -181,6 +184,7 @@ func Test_Assistant_Defined(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, output.Content)
 	assert.NotEmpty(t, apiResp.Choices)
+	assert.Equal(t, "gpt-4o", apiResp.Model)
 
 	history := memstore.Messages(ctx)
 	assert.Len(t, history, 2)
@@ -291,6 +295,7 @@ func Test_Assistant_Chat(t *testing.T) {
 
 	searchCalled := false
 	// Create a mock LLM
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -351,11 +356,12 @@ func Test_Assistant_Chat(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModePlainText),
+		assistants.WithModel(mockLLM),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.String](mockLLM, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.String](mockFactory, systemPrompt, acfg...).
 		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -449,6 +455,7 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 
 	// LLM mock: first returns a tool call with invalid input, then with valid input, then the final answer
 	llmCall := 0
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -507,11 +514,12 @@ func Test_Assistant_FailtedParseToolInput(t *testing.T) {
 	var buf strings.Builder
 	acfg := []assistants.Option{
 		assistants.WithMode(encoding.ModeJSONSchemaStrict),
+		assistants.WithModel(mockLLM),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
 	}
 
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, acfg...).
 		WithTools(mockTool)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -581,6 +589,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 	}).AnyTimes()
 
 	// Create a mock LLM that returns multiple tool calls
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -624,7 +633,7 @@ func Test_Assistant_ParallelToolCalls(t *testing.T) {
 		}).Times(2) // Expect exactly 2 calls: one for tool calls, one for final response
 
 	// Create assistant with both tools
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithModel(mockLLM)).
 		WithTools(mockTool1, mockTool2)
 
 	// Create chat context
@@ -699,6 +708,7 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	}
 
 	// Create a mock LLM that returns multiple tool calls
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
 	mockLLM.EXPECT().GetName().Return("gpt-4o").AnyTimes()
@@ -757,7 +767,7 @@ func Test_Assistant_MultipleParallelToolCalls(t *testing.T) {
 	mockCallback.EXPECT().OnToolNotFound(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	// Create assistant with all tools and callback
-	ag := assistants.NewAssistant[chatmodel.OutputResult](mockLLM, systemPrompt, assistants.WithCallback(mockCallback)).
+	ag := assistants.NewAssistant[chatmodel.OutputResult](mockFactory, systemPrompt, assistants.WithCallback(mockCallback), assistants.WithModel(mockLLM)).
 		WithTools(mockTools...)
 
 	// Create chat context

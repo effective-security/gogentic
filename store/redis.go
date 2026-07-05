@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/porto/xhttp/httperror"
 	"github.com/effective-security/x/slices"
@@ -53,7 +52,7 @@ func (m *redisStore) getRedisChatListKey(tenantID string) string {
 }
 
 func (m *redisStore) Messages(ctx context.Context) []llms.Message {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		logger.ContextKV(ctx, xlog.ERROR, "reason", "GetTenantAndChatID", "err", err.Error())
 		return nil
@@ -88,7 +87,7 @@ func (m *redisStore) messages(ctx context.Context, tenantID, chatID string) []ll
 }
 
 func (m *redisStore) Add(ctx context.Context, msgs ...llms.Message) error {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
 	}
@@ -123,7 +122,7 @@ func (m *redisStore) Add(ctx context.Context, msgs ...llms.Message) error {
 }
 
 func (m *redisStore) Reset(ctx context.Context) error {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return err
 	}
@@ -153,7 +152,7 @@ func (m *redisStore) Reset(ctx context.Context) error {
 // If metadata is nil, it will not be updated, otherwise merged with the existing metadata.
 // If tags are empty, it will not be updated, otherwise merged with the existing tags.
 func (m *redisStore) UpdateChat(ctx context.Context, title string, metadata map[string]any, tags []string) (*ChatInfo, error) {
-	_, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	_, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +195,8 @@ func (m *redisStore) updateChat(ctx context.Context, chat *ChatInfo, isNew bool)
 		return errors.Wrap(err, "failed to marshal chat info")
 	}
 
-	chatKey := m.getRedisChatInfoKey(chat.TenantID, chat.ChatID)
-	chatListKey := m.getRedisChatListKey(chat.TenantID)
+	chatKey := m.getRedisChatInfoKey(chat.UserID, chat.ChatID)
+	chatListKey := m.getRedisChatListKey(chat.UserID)
 
 	pipe := m.client.Pipeline()
 	pipe.Set(ctx, chatKey, chatData, 0)
@@ -213,7 +212,7 @@ func (m *redisStore) updateChat(ctx context.Context, chat *ChatInfo, isNew bool)
 }
 
 func (m *redisStore) ListChatIDs(ctx context.Context) ([]string, error) {
-	tenantID, _, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, _, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +241,7 @@ func (m *redisStore) GetChatInfo(ctx context.Context, id string, withMessages bo
 
 	res := info.Clone()
 	if withMessages {
-		res.Messages = m.messages(ctx, info.TenantID, info.ChatID)
+		res.Messages = m.messages(ctx, info.UserID, info.ChatID)
 	}
 	return res, nil
 }
@@ -250,7 +249,7 @@ func (m *redisStore) GetChatInfo(ctx context.Context, id string, withMessages bo
 // returns the chat information for a tenant and chat ID from context,
 // without messages
 func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, error) {
-	tenantID, chatID, err := chatmodel.GetTenantAndChatID(ctx)
+	tenantID, chatID, err := GetTenantAndChatID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +270,7 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 		// Note: This method is called from UpdateChat which already holds the lock
 		// so we don't need additional locking here
 		chat = &ChatInfo{
-			TenantID:  tenantID,
+			UserID:    tenantID,
 			ChatID:    id,
 			Title:     "New Chat",
 			CreatedAt: now,

@@ -2,6 +2,7 @@ package assistants
 
 import (
 	"context"
+	"maps"
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
@@ -22,8 +23,11 @@ const (
 
 type Config struct {
 	// Model is the model to use in an LLM call.
-	Model    string
-	modelSet bool
+	Model     llms.Model
+	ModelName string
+
+	// OnModelOptions is a function to be called to modify the options for the model.
+	OnModelOptions func(model llms.Model) []Option
 
 	// MaxTokens is the maximum number of tokens to generate to use in an LLM call.
 	MaxTokens    int
@@ -65,8 +69,8 @@ type Config struct {
 	CallbackHandler Callback
 
 	// Tools is a list of tools to use. Each tool can be a specific tool or a function.
-	Tools    []llms.Tool
-	toolsSet bool
+	Tools       []llms.Tool
+	toolsByName map[string]bool
 
 	// ToolChoice is the choice of tool to use, it can either be "none", "auto" (the default behavior), or a specific tool as described in the ToolChoice type.
 	ToolChoice    any
@@ -125,10 +129,28 @@ func NewConfig(opts ...Option) *Config {
 // Apply applies the options to the new Config.
 func (c *Config) Apply(opts ...Option) *Config {
 	cfg := *c
+	cfg.toolsByName = maps.Clone(c.toolsByName)
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return &cfg
+}
+
+func (c *Config) AddTool(tool llms.Tool) {
+	if c.toolsByName == nil {
+		c.toolsByName = make(map[string]bool)
+	}
+	key := getToolKey(tool)
+	if !c.toolsByName[key] {
+		c.Tools = append(c.Tools, tool)
+		c.toolsByName[key] = true
+	}
+}
+
+func WithModelOptions(onModelOptions func(model llms.Model) []Option) Option {
+	return func(o *Config) {
+		o.OnModelOptions = onModelOptions
+	}
 }
 
 func WithReasoningEffort(effort llms.ReasoningEffort) Option {
@@ -220,10 +242,12 @@ func WithPromptInput(input map[string]any) Option {
 }
 
 // WithModel is an option for LLM.Call.
-func WithModel(model string) Option {
+func WithModel(model llms.Model) Option {
 	return func(o *Config) {
 		o.Model = model
-		o.modelSet = true
+		if model != nil {
+			o.ModelName = model.GetName()
+		}
 	}
 }
 
@@ -314,25 +338,10 @@ func WithCallback(callbackHandler Callback) Option {
 }
 
 // WithTools is an option for LLM.Call.
-func WithTools(tools []llms.Tool) Option {
+func WithTools(tools ...llms.Tool) Option {
 	return func(o *Config) {
-		if len(tools) > 0 {
-			// Create a map to track existing tool identifiers for deduplication
-			existingTools := make(map[string]bool)
-			for _, existingTool := range o.Tools {
-				key := getToolKey(existingTool)
-				existingTools[key] = true
-			}
-
-			// Add only unique tools
-			for _, tool := range tools {
-				key := getToolKey(tool)
-				if !existingTools[key] {
-					o.Tools = append(o.Tools, tool)
-					existingTools[key] = true
-				}
-			}
-			o.toolsSet = true
+		for _, tool := range tools {
+			o.AddTool(tool)
 		}
 	}
 }
@@ -343,21 +352,6 @@ func getToolKey(tool llms.Tool) string {
 		return tool.Type + ":" + tool.Function.Name
 	}
 	return tool.Type
-}
-
-// WithTool is an option for LLM.Call.
-func WithTool(tool llms.Tool) Option {
-	return func(o *Config) {
-		key := getToolKey(tool)
-		for _, existingTool := range o.Tools {
-			if getToolKey(existingTool) == key {
-				return // Tool already exists, don't add it
-			}
-		}
-
-		o.Tools = append(o.Tools, tool)
-		o.toolsSet = true
-	}
 }
 
 // WithToolChoice is an option for LLM.Call.
@@ -374,9 +368,15 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 		opt(&c)
 	}
 
+	if c.Model != nil && c.OnModelOptions != nil {
+		for _, opt := range c.OnModelOptions(c.Model) {
+			opt(&c)
+		}
+	}
+
 	var chainCallOption []llms.CallOption
-	if c.modelSet {
-		chainCallOption = append(chainCallOption, llms.WithModel(c.Model))
+	if c.ModelName != "" {
+		chainCallOption = append(chainCallOption, llms.WithModel(c.ModelName))
 	}
 	if c.maxTokensSet {
 		chainCallOption = append(chainCallOption, llms.WithMaxTokens(c.MaxTokens))
@@ -405,8 +405,19 @@ func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 	if c.repetitionPenaltySet {
 		chainCallOption = append(chainCallOption, llms.WithRepetitionPenalty(c.RepetitionPenalty))
 	}
-	if c.toolsSet && len(c.Tools) > 0 {
-		chainCallOption = append(chainCallOption, llms.WithTools(c.Tools))
+	if len(c.Tools) > 0 {
+		tools := c.Tools
+		if c.Model != nil {
+			prov := c.Model.GetProviderType()
+			tools = make([]llms.Tool, 0, len(c.Tools))
+			for _, tool := range c.Tools {
+				if tool.Type == "web_search" && !prov.Supports(llms.CapabilityWebSearchTool) {
+					continue
+				}
+				tools = append(tools, tool)
+			}
+		}
+		chainCallOption = append(chainCallOption, llms.WithTools(tools))
 	}
 	if c.toolChoiceSet {
 		chainCallOption = append(chainCallOption, llms.WithToolChoice(c.ToolChoice))

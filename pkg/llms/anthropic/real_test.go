@@ -14,6 +14,7 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/pkg/prompts"
 	"github.com/effective-security/gogentic/pkg/schema"
@@ -43,7 +44,7 @@ func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("ANTHROPIC")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -58,11 +59,12 @@ func Test_Real_Providers(t *testing.T) {
 	acfg := []assistants.Option{
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithModel(llmModel),
 	}
 
 	systemPrompt := prompts.NewPromptTemplate("You can answer questions about the gogentic status using only the provided `gogentic_status` tool. Do not search Web.", []string{})
 
-	ag := assistants.NewAssistant[StatusResult](llmModel, systemPrompt, acfg...).
+	ag := assistants.NewAssistant[StatusResult](f, systemPrompt, acfg...).
 		WithTools(wt)
 
 	req := &assistants.CallInput{

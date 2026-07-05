@@ -11,16 +11,34 @@ type Options struct {
 	HTTPClient HTTPClient
 	// AwsConfigFactory is used to create a new AWS config.
 	AwsConfigFactory func() (*aws.Config, error)
+	// ModelFilter reports whether a model may be used for an org,
+	// e.g. to enforce per-org / per-model quota.
+	ModelFilter ModelFilterFunc
+}
+
+// ModelFilterFunc reports whether the given model may be used for the org.
+// Provide this to enforce per-org / per-model quota: return false when the
+// model must not be used for the org (e.g. quota exceeded), true otherwise.
+// The orgID can be empty, in which case the check applies globally.
+// The modelName can be in the format of <provider_name>/<model_name>.
+type ModelFilterFunc func(orgID string, modelName string) bool
+
+// WithModelFilter sets a predicate used to restrict which models an org may use,
+// for example to enforce per-org / per-model quota.
+func WithModelFilter(filter ModelFilterFunc) Option {
+	return func(opts *Options) {
+		opts.ModelFilter = filter
+	}
 }
 
 type Option func(*Options)
 
-func NewOptions(opts ...Option) Options {
+func NewOptions(opts ...Option) *Options {
 	o := Options{}
 	for _, opt := range opts {
 		opt(&o)
 	}
-	return o
+	return &o
 }
 
 func WithAWSConfigFactory(factory func() (*aws.Config, error)) Option {

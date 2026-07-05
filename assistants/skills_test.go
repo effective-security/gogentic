@@ -10,6 +10,7 @@ import (
 	"github.com/effective-security/gogentic/callbacks"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
+	"github.com/effective-security/gogentic/mocks/mockllmfactory"
 	"github.com/effective-security/gogentic/mocks/mockllms"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -57,14 +58,18 @@ When the user's request matches a skill's description, activate it with the acti
 		TemplateFormat: prompts.TemplateFormatGoTemplate,
 	}
 
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
+
 	// Create a mock LLM
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").Times(1)
 
 	ag := assistants.NewAssistant[chatmodel.String](
-		mockLLM,
+		mockFactory,
 		sysprompt,
 		assistants.WithMode(encoding.ModePlainText),
+		assistants.WithModel(mockLLM),
 	).WithSkills(skilslList)
 
 	sysPrompt, err := ag.GetSystemPrompt(context.Background(), "", nil)
@@ -131,7 +136,7 @@ func Test_Real_Skills_ActivatesSkillAndGeneratesPlan(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("OPENAI")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 
 	// ── Real SKILL.md ──────────────────────────────────────────────────────────
@@ -167,11 +172,12 @@ When the user's request matches a skill's description, activate it with the acti
 	var buf strings.Builder
 
 	ag := assistants.NewAssistant[chatmodel.String](
-		llmModel,
+		f,
 		sysprompt,
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithMessageStore(memstore),
 		assistants.WithCallback(callbacks.NewPrinter(&buf, callbacks.ModeVerbose)),
+		assistants.WithModel(llmModel),
 	).WithSkills(skilslList)
 
 	// Print system prompt so you can see the catalog injection
@@ -229,7 +235,7 @@ func Test_Real_Skills_NoActivationForUnrelatedQuery(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.ModelByType("OPENAI")
+	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 
 	skilslList := skills.Skills{
@@ -248,10 +254,11 @@ func Test_Real_Skills_NoActivationForUnrelatedQuery(t *testing.T) {
 
 	memstore := gstore.NewMemoryStore()
 	ag := assistants.NewAssistant[chatmodel.String](
-		llmModel,
+		f,
 		sysprompt,
 		assistants.WithMode(encoding.ModePlainText),
 		assistants.WithMessageStore(memstore),
+		assistants.WithModel(llmModel),
 	).WithSkills(skilslList)
 
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
@@ -360,13 +367,16 @@ When the user's request matches a skill's description, activate it with the acti
 	defer ctrl.Finish()
 
 	// Create a mock LLM
+	mockFactory := mockllmfactory.NewMockFactory(ctrl)
 	mockLLM := mockllms.NewMockModel(ctrl)
 	mockLLM.EXPECT().GetProviderType().Return(llms.ProviderOpenAI).AnyTimes()
+	mockLLM.EXPECT().GetName().Return("gpt-4o").Times(1)
 
 	ag := assistants.NewAssistant[chatmodel.String](
-		mockLLM,
+		mockFactory,
 		sysprompt,
 		assistants.WithMode(encoding.ModePlainText),
+		assistants.WithModel(mockLLM),
 	).
 		WithSkills(skillsList).
 		WithSkillsPromptProvider(func(ctx context.Context, skills skills.Skills) (string, error) {

@@ -13,7 +13,7 @@ func TestChatContext_Basics(t *testing.T) {
 	c := NewChatContext("tid", "cid", 123)
 	require.NotNil(t, c)
 	// IDs and AppData
-	assert.Equal(t, "tid", c.GetTenantID())
+	assert.Equal(t, "tid", c.GetUserID())
 	assert.Equal(t, "cid", c.GetChatID())
 	assert.Equal(t, 123, c.AppData())
 	// RunID present and not empty
@@ -35,11 +35,15 @@ func TestChatContext_Basics(t *testing.T) {
 
 func TestNewChatContext_DefaultIDs(t *testing.T) {
 	t.Parallel()
-	c := NewChatContext("", "", nil)
+	c := NewChatContext("u", "", nil)
 	require.NotNil(t, c)
-	assert.NotEmpty(t, c.GetTenantID())
+	assert.NotEmpty(t, c.GetUserID())
 	assert.NotEmpty(t, c.GetChatID())
 	assert.NotEmpty(t, c.GetRunID())
+
+	assert.Panics(t, func() {
+		NewChatContext("", "", nil)
+	})
 }
 
 func TestContextPlumbing(t *testing.T) {
@@ -56,11 +60,12 @@ func TestContextPlumbing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bar", GetChatContext(newctx).GetChatID())
 
-	// GetTenantAndChatID
-	tenant, chat, err := GetTenantAndChatID(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, "x", tenant)
-	assert.Equal(t, "bar", chat) // Already set just above
+	chatCtx := GetChatContext(ctx)
+	require.NotNil(t, chatCtx)
+	userID := chatCtx.GetUserID()
+	chatID := chatCtx.GetChatID()
+	assert.Equal(t, "x", userID)
+	assert.Equal(t, "bar", chatID) // Already set just above
 
 	// NewFromContext preserves context
 	back := NewFromContext(ctx)
@@ -77,9 +82,7 @@ func TestGetSetChatID_Error(t *testing.T) {
 	// Setting chatid fails if context does not have correct value
 	_, err := SetChatID(ctx, "fail")
 	require.Error(t, err)
-	// Getting IDs fails if not present
-	_, _, err = GetTenantAndChatID(ctx)
-	require.Error(t, err)
+	assert.Nil(t, GetChatContext(ctx))
 }
 
 func TestNewChatID_Unique(t *testing.T) {
