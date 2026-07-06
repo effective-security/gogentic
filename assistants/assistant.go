@@ -330,7 +330,7 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		if a.llmFactory == nil {
 			return nil, errors.New("no llm factory or model provided")
 		}
-		m, err := a.llmFactory.GetModel(llmfactory.ModelOptions{OrgID: orgID, AssistantName: a.name})
+		m, err := a.llmFactory.GetModel(ctx, llmfactory.ModelOptions{OrgID: orgID, AssistantName: a.name})
 		if err != nil {
 			return nil, errors.WithMessagef(err, "unable to get LLM model for assistant %s", a.name)
 		}
@@ -517,7 +517,7 @@ func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, c
 		metricskey.StatsLLMCachedWriteTokens.IncrCounter(float64(stats.CacheWriteTokens), a.name, cfg.ModelName, orgID)
 		metricskey.StatsLLMCachedReadTokens.IncrCounter(float64(stats.CacheReadTokens), a.name, cfg.ModelName, orgID)
 		metricskey.StatsLLMTotalTokens.IncrCounter(float64(stats.TotalTokens), a.name, cfg.ModelName, orgID)
-		resp.Usage.Usage.Add(stats)
+		resp.Usage.AddModelUsage(cfg.ModelName, stats)
 
 		// Check for empty response and retry if needed
 		if len(resp.Choices) == 0 {

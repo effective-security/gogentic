@@ -789,9 +789,18 @@ func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
 	// The outer response usage aggregates the nested assistant usage that was
 	// returned from tool.CallAssistant: 2 outer LLM calls + 1 inner LLM call.
 	assert.Equal(t, 3, int(apiResp.Usage.LlmCallCount))
-	assert.Equal(t, 100+40+200, int(apiResp.Usage.InputTokens))
-	assert.Equal(t, 10+5+20, int(apiResp.Usage.OutputTokens))
-	assert.Equal(t, 110+45+220, int(apiResp.Usage.TotalTokens))
+
+	usageInner := apiResp.Usage.ModelUsage["inner-model"]
+	require.NotNil(t, usageInner)
+	assert.Equal(t, 40, int(usageInner.InputTokens))
+	assert.Equal(t, 5, int(usageInner.OutputTokens))
+	assert.Equal(t, 45, int(usageInner.TotalTokens))
+
+	usageOuter := apiResp.Usage.ModelUsage["outer-model"]
+	require.NotNil(t, usageOuter)
+	assert.Equal(t, 100+200, int(usageOuter.InputTokens))
+	assert.Equal(t, 10+20, int(usageOuter.OutputTokens))
+	assert.Equal(t, 110+220, int(usageOuter.TotalTokens))
 
 	// The scratchpad accumulates usage at the LLM-call boundary across the whole
 	// run tree, so it must match the aggregated top-level Response.Usage exactly,

@@ -47,9 +47,11 @@ func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 
 func Test_Real_Assistant(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant.", []string{})
@@ -72,9 +74,6 @@ func Test_Real_Assistant(t *testing.T) {
 
 		ag = ag.WithTools(websearch)
 	}
-
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	req := &assistants.CallInput{
 		Input: "What is a capital of largest country in Europe?",
@@ -114,9 +113,11 @@ func (r CVEResult) GetContent() string {
 
 func Test_Real_GoogleAI_Search(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderGoogleAI})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderGoogleAI})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -135,10 +136,6 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 	}
 
 	ag := assistants.NewAssistant[CVEResult](f, systemPrompt, acfg...)
-
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
-
 	req := &assistants.CallInput{
 		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
 	}
@@ -159,8 +156,11 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
 	f := llmfactory.New(cfg)
-	//llmModel, err := f.GetModel(llmfactory.GetModelOptions{PreferredModels: []string{"gemini-2.5-pro"}})
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+
+	//llmModel, err := f.GetModel(ctx,llmfactory.GetModelOptions{PreferredModels: []string{"gemini-2.5-pro"}})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -197,9 +197,6 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 
 	ag := assistants.NewAssistant[CVEResult](f, systemPrompt, acfg...)
 
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
-
 	req := &assistants.CallInput{
 		Input: "What is the classification for CVE-2026-29612 vulnerability? Provide at least 2 sources and include the summary from using web_search tool.",
 	}
@@ -218,6 +215,8 @@ func Test_Real_WebSearch_JSON(t *testing.T) {
 
 func Test_Real_WebSearch_Text(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	awsCfgFunc := func() (*aws.Config, error) {
 		region := os.Getenv("AWS_REGION")
@@ -234,8 +233,8 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 	}
 
 	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
-	//llmModel, err := f.GetModel(llmfactory.GetModelOptions{PreferredModels: []string{"gpt-5"}})
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	//llmModel, err := f.GetModel(ctx,llmfactory.GetModelOptions{PreferredModels: []string{"gpt-5"}})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search", []string{})
@@ -273,9 +272,6 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 	ag := assistants.NewAssistant[chatmodel.String](f, systemPrompt, acfg...).
 		WithOutputParser(encoding.NewSimpleOutputParser())
 
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
-
 	req := &assistants.CallInput{
 		Input: "What is the most recent CVE with Critical severity and Denial of Service? provide at least 2 sources.",
 	}
@@ -294,6 +290,8 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 
 func Test_Real_Providers(t *testing.T) {
 	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 	awsCfgFunc := func() (*aws.Config, error) {
@@ -311,11 +309,8 @@ func Test_Real_Providers(t *testing.T) {
 	}
 
 	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
-
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	wt, err := NewWeatherTool()
 	require.NoError(t, err)

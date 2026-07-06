@@ -51,10 +51,10 @@ type Response struct {
 	Choices []*llms.ContentChoice
 	// Messages is the messages that are created from the run and added to the Message History Store.
 	Messages []llms.Message
-	// Usage is the usage stats for the response.
-	Usage llms.UsageStats
 	// Model is the model that was used to generate the response.
 	Model string
+	// Usage is the usage stats for the response.
+	Usage llms.UsageStats
 }
 
 type CallInput struct {

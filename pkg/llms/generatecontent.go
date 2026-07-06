@@ -256,7 +256,7 @@ func (r *Usage) Add(other *Usage) {
 }
 
 type UsageStats struct {
-	Usage
+	ModelUsage map[string]*Usage
 
 	// BytesOut is the number of bytes sent to the LLM.
 	BytesOut uint64
@@ -266,17 +266,26 @@ type UsageStats struct {
 	LlmCallCount uint32
 }
 
+func (r *UsageStats) AddModelUsage(model string, other *Usage) {
+	if r != nil && other != nil {
+		if r.ModelUsage == nil {
+			r.ModelUsage = make(map[string]*Usage)
+		}
+		if r.ModelUsage[model] == nil {
+			r.ModelUsage[model] = &Usage{}
+		}
+		r.ModelUsage[model].Add(other)
+	}
+}
+
 func (r *UsageStats) Add(other *UsageStats) {
 	if r != nil && other != nil {
-		r.InputTokens += other.InputTokens
-		r.OutputTokens += other.OutputTokens
-		r.CacheWriteTokens += other.CacheWriteTokens
-		r.CacheReadTokens += other.CacheReadTokens
-		r.ReasoningTokens += other.ReasoningTokens
-		r.TotalTokens += other.TotalTokens
-		r.LlmCallCount += other.LlmCallCount
+		for model, usage := range other.ModelUsage {
+			r.AddModelUsage(model, usage)
+		}
 		r.BytesOut += other.BytesOut
 		r.BytesIn += other.BytesIn
+		r.LlmCallCount += other.LlmCallCount
 	}
 }
 

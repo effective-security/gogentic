@@ -28,6 +28,10 @@ var NewLLM = CreateLLM
 // In multi-tenant environments, the OrgID is used to determine the LLM model to use for the organization.
 // The factory can also be provided with a ModelFilterFunc to restrict which models an organization may use.
 type Factory interface {
+	// WithModelFilter sets a predicate used to restrict which models an org may use.
+	// Returns a new Factory with the filter applied.
+	WithModelFilter(filter ModelFilterFunc) Factory
+
 	// GetModel returns an LLM model that matches the given options.
 	//
 	// Resolution rules:
@@ -40,7 +44,7 @@ type Factory interface {
 	//
 	// RequiredCapabilities, when non-zero, restricts the candidates to
 	// providers whose type supports ALL of the requested capabilities.
-	GetModel(opts ModelOptions) (llms.Model, error)
+	GetModel(ctx context.Context, opts ModelOptions) (llms.Model, error)
 
 	// Skills returns all loaded skills for the given agent sorted alphabetically by name.
 	// Use tags to filter skills by tags. The Skill must have all the tags provided.
@@ -148,6 +152,38 @@ func New(cfg *Config, opts ...Option) Factory {
 	}
 
 	return f
+}
+
+func (f *factory) WithModelFilter(filter ModelFilterFunc) Factory {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	newf := &factory{
+		cfg:                f.cfg,
+		defaultProvider:    f.defaultProvider,
+		byType:             make(map[llms.ProviderType]llms.Model, len(f.byType)),
+		byName:             make(map[string]llms.Model, len(f.byName)),
+		assistantModels:    make(map[string][]string, len(f.assistantModels)),
+		orgAssistantModels: make(map[string]map[string][]string, len(f.orgAssistantModels)),
+		skillsLoader:       f.skillsLoader,
+	}
+	ops := *f.options
+	ops.ModelFilter = filter
+	newf.options = &ops
+
+	for k, v := range f.byType {
+		newf.byType[k] = v
+	}
+	for k, v := range f.byName {
+		newf.byName[k] = v
+	}
+	for k, v := range f.assistantModels {
+		newf.assistantModels[k] = v
+	}
+	for k, v := range f.orgAssistantModels {
+		newf.orgAssistantModels[k] = v
+	}
+	return newf
 }
 
 func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (llms.Model, error) {
@@ -319,7 +355,7 @@ func newCloudflare(cfg *ProviderConfig, preferredModels []string, options *Optio
 }
 
 // GetModel returns an LLM model that matches the given options.
-func (f *factory) GetModel(opts ModelOptions) (llms.Model, error) {
+func (f *factory) GetModel(ctx context.Context, opts ModelOptions) (llms.Model, error) {
 	// A specific provider type takes precedence over name-based resolution.
 	if opts.ProviderType != "" {
 		return f.getModelByType(opts)
@@ -337,7 +373,7 @@ func (f *factory) GetModel(opts ModelOptions) (llms.Model, error) {
 		}
 	}
 
-	return f.getModelByName(opts, preferred)
+	return f.getModelByName(ctx, opts, preferred)
 }
 
 // configProviderType returns the normalized provider type for a provider
@@ -361,13 +397,13 @@ func supportsCapabilities(pt llms.ProviderType, required llms.Capability) bool {
 
 // isModelAllowed reports whether the model may be used for the org.
 // When no ModelFilter is configured, all models are allowed.
-func (f *factory) isModelAllowed(orgID, modelName string) bool {
-	return f.options.ModelFilter == nil || f.options.ModelFilter(orgID, modelName)
+func (f *factory) isModelAllowed(ctx context.Context, orgID, modelName string) bool {
+	return f.options.ModelFilter == nil || f.options.ModelFilter(ctx, orgID, modelName)
 }
 
 // resolveDefault returns the default model, honoring capability and org
 // filters. It must be called with f.lock held.
-func (f *factory) resolveDefault(opts ModelOptions) (llms.Model, error) {
+func (f *factory) resolveDefault(ctx context.Context, opts ModelOptions) (llms.Model, error) {
 	if len(f.cfg.Providers) == 0 || f.defaultProvider == nil {
 		return nil, errors.New("no providers configured")
 	}
@@ -380,7 +416,7 @@ func (f *factory) resolveDefault(opts ModelOptions) (llms.Model, error) {
 		return nil, errors.Errorf("default provider %s does not support required capabilities", f.defaultProvider.Name)
 	}
 
-	if !f.isModelAllowed(opts.OrgID, f.defaultProvider.DefaultModel) {
+	if !f.isModelAllowed(ctx, opts.OrgID, f.defaultProvider.DefaultModel) {
 		return nil, errors.Errorf("model not available for org: %s", f.defaultProvider.DefaultModel)
 	}
 
@@ -424,12 +460,12 @@ func (f *factory) getModelByType(opts ModelOptions) (llms.Model, error) {
 
 // getModelByName returns a model by resolving the preferred model names in
 // order, falling back to the default model when none match.
-func (f *factory) getModelByName(opts ModelOptions, modelNames []string) (llms.Model, error) {
+func (f *factory) getModelByName(ctx context.Context, opts ModelOptions, modelNames []string) (llms.Model, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
 	for _, modelNamePath := range modelNames {
-		if !f.isModelAllowed(opts.OrgID, modelNamePath) {
+		if !f.isModelAllowed(ctx, opts.OrgID, modelNamePath) {
 			continue
 		}
 
@@ -457,7 +493,7 @@ func (f *factory) getModelByName(opts ModelOptions, modelNames []string) (llms.M
 				continue
 			}
 			if slices.Contains(cfg.AvailableModels, modelName) {
-				if modelName != modelNamePath && !f.isModelAllowed(opts.OrgID, modelName) {
+				if modelName != modelNamePath && !f.isModelAllowed(ctx, opts.OrgID, modelName) {
 					continue
 				}
 				model, err := NewLLM(cfg, []string{modelName}, f.options)
@@ -486,7 +522,7 @@ func (f *factory) getModelByName(opts ModelOptions, modelNames []string) (llms.M
 		}
 	}
 
-	return f.resolveDefault(opts)
+	return f.resolveDefault(ctx, opts)
 }
 
 func (f *factory) getOrgAssistants(orgID string) map[string][]string {
