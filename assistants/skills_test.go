@@ -134,9 +134,11 @@ Use exact skill names when calling the ` + "`activate_skill`" + ` tool.`
 // To run: comment out the t.Skip line in loadOpenAIConfigOrSkipRealTest.
 func Test_Real_Skills_ActivatesSkillAndGeneratesPlan(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 
 	// ── Real SKILL.md ──────────────────────────────────────────────────────────
@@ -181,8 +183,6 @@ When the user's request matches a skill's description, activate it with the acti
 	).WithSkills(skilslList)
 
 	// Print system prompt so you can see the catalog injection
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	sysPrompt, err := ag.GetSystemPrompt(ctx, "", nil)
 	require.NoError(t, err)
@@ -233,9 +233,11 @@ When the user's request matches a skill's description, activate it with the acti
 // NOT activate a security skill when the question is unrelated to it.
 func Test_Real_Skills_NoActivationForUnrelatedQuery(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
+	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
+	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	f := llmfactory.New(cfg)
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 
 	skilslList := skills.Skills{
@@ -260,9 +262,6 @@ func Test_Real_Skills_NoActivationForUnrelatedQuery(t *testing.T) {
 		assistants.WithMessageStore(memstore),
 		assistants.WithModel(llmModel),
 	).WithSkills(skilslList)
-
-	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
-	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	var output chatmodel.String
 	_, err = ag.Run(ctx, &assistants.CallInput{

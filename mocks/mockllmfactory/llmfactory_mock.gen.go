@@ -10,6 +10,7 @@
 package mockllmfactory
 
 import (
+	context "context"
 	reflect "reflect"
 
 	llmfactory "github.com/effective-security/gogentic/pkg/llmfactory"
@@ -43,18 +44,18 @@ func (m *MockFactory) EXPECT() *MockFactoryMockRecorder {
 }
 
 // GetModel mocks base method.
-func (m *MockFactory) GetModel(opts llmfactory.ModelOptions) (llms.Model, error) {
+func (m *MockFactory) GetModel(ctx context.Context, opts llmfactory.ModelOptions) (llms.Model, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetModel", opts)
+	ret := m.ctrl.Call(m, "GetModel", ctx, opts)
 	ret0, _ := ret[0].(llms.Model)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetModel indicates an expected call of GetModel.
-func (mr *MockFactoryMockRecorder) GetModel(opts any) *gomock.Call {
+func (mr *MockFactoryMockRecorder) GetModel(ctx, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetModel", reflect.TypeOf((*MockFactory)(nil).GetModel), opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetModel", reflect.TypeOf((*MockFactory)(nil).GetModel), ctx, opts)
 }
 
 // Skills mocks base method.
@@ -74,4 +75,18 @@ func (mr *MockFactoryMockRecorder) Skills(agent any, tags ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{agent}, tags...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Skills", reflect.TypeOf((*MockFactory)(nil).Skills), varargs...)
+}
+
+// WithModelFilter mocks base method.
+func (m *MockFactory) WithModelFilter(filter llmfactory.ModelFilterFunc) llmfactory.Factory {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithModelFilter", filter)
+	ret0, _ := ret[0].(llmfactory.Factory)
+	return ret0
+}
+
+// WithModelFilter indicates an expected call of WithModelFilter.
+func (mr *MockFactoryMockRecorder) WithModelFilter(filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithModelFilter", reflect.TypeOf((*MockFactory)(nil).WithModelFilter), filter)
 }

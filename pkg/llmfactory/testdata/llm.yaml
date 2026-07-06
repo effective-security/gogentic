@@ -10,7 +10,7 @@ providers:
     - gpt-5.1
     - gpt-5.1-mini
     - gpt-5.1-codex
-    - gpt-5
+    - gpt-5.5
     open_ai:
       api_type: OPENAI
 
@@ -20,7 +20,7 @@ providers:
     available_models:
       - gpt-5.1
       - gpt-5-mini
-      - gpt-5
+      - gpt-5.5
     open_ai:
       api_type: AZURE
       base_url: env://AZURE_OPENAI_URL
@@ -84,6 +84,7 @@ skills:
 
 assistant_models:
   default:
+    - OPENAI/gpt-5.5
     - OPENAI/gpt-5.1
   azure_tool:
     - AZURE/gpt-5.1

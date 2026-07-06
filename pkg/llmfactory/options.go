@@ -1,6 +1,7 @@
 package llmfactory
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -21,7 +22,7 @@ type Options struct {
 // model must not be used for the org (e.g. quota exceeded), true otherwise.
 // The orgID can be empty, in which case the check applies globally.
 // The modelName can be in the format of <provider_name>/<model_name>.
-type ModelFilterFunc func(orgID string, modelName string) bool
+type ModelFilterFunc func(ctx context.Context, orgID string, modelName string) bool
 
 // WithModelFilter sets a predicate used to restrict which models an org may use,
 // for example to enforce per-org / per-model quota.

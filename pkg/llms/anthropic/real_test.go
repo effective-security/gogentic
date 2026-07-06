@@ -42,13 +42,11 @@ func loadOpenAIConfigOrSkipRealTest(t *testing.T) *llmfactory.Config {
 
 func Test_Real_Providers(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
-
-	f := llmfactory.New(cfg)
-	llmModel, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
-	require.NoError(t, err)
-
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
+	f := llmfactory.New(cfg)
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	require.NoError(t, err)
 
 	wt, err := NewStatusTool()
 	require.NoError(t, err)

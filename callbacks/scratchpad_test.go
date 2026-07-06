@@ -122,10 +122,12 @@ func TestScratchpad_OnCallbacks(t *testing.T) {
 			{Source: src, Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextContent{Text: "very long message that should be truncated shdgfkasjhdgfakjhs khasgdfkjhagsdfh\nagsjhdfgkajshdfg gajkshdgfkjasdhjfg ahsdfkgasjhdfga akjhsdgfakjhsdgfakj gasjdkhfgakjsdhga aksjdhfgakjdsfg"}}},
 		},
 		Usage: llms.UsageStats{
-			Usage: llms.Usage{
-				InputTokens:  10,
-				OutputTokens: 11,
-				TotalTokens:  21,
+			ModelUsage: map[string]*llms.Usage{
+				"gpt-4o": {
+					InputTokens:  10,
+					OutputTokens: 11,
+					TotalTokens:  21,
+				},
 			},
 			BytesOut:     12,
 			BytesIn:      13,
@@ -205,7 +207,8 @@ Answer 1
 2024-01-01 12:00:00 run1: step1 A1 *** Assistant End ***
 2024-01-01 12:00:00 run1: Assistant calls: 1, Failed: 2
 2024-01-01 12:00:00 run1: Tool calls: 1, Failed: 1, Not Found: 1
-2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16, Input Tokens: 10, Output Tokens: 11, Total Tokens: 21
+2024-01-01 12:00:00 run1: LLM calls: 1, Messages: 1, Bytes Out: 8, Bytes In: 8, Bytes Total: 16
+2024-01-01 12:00:00 run1: Model: gpt-4o, Input Tokens: 10, Output Tokens: 11, Total Tokens: 21
 2024-01-01 12:00:00 run1: === Run Ended. Duration: 0s ===
 `
 	assert.Equal(t, exp, outStr)

@@ -18,6 +18,7 @@ func Test_Factory(t *testing.T) {
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 
+	ctx := context.Background()
 	cfg, err := llmfactory.LoadConfig("testdata/llm.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.Providers)
@@ -34,7 +35,7 @@ func Test_Factory(t *testing.T) {
 	}()
 
 	f := llmfactory.New(cfg)
-	model, err := f.GetModel(llmfactory.ModelOptions{})
+	model, err := f.GetModel(ctx, llmfactory.ModelOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm := model.(*fakeLLM)
@@ -42,21 +43,21 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with single model
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-5"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-5"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"AZURE/gpt-5.1"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"AZURE/gpt-5.1"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "AZURE", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"OPENAI/gpt-5.1"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"OPENAI/gpt-5.1"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -64,7 +65,7 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with multiple preferred models
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-5.1-unknown", "gpt-5.1-mini"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-5.1-unknown", "gpt-5.1-mini"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -72,42 +73,42 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test ModelByName with non-existent models (should fallback to default)
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"non-existent-model"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"non-existent-model"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "AZURE", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "claude-sonnet-4-8", fm.model)
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderBedrock})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderBedrock})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "us.anthropic.claude-opus-4-20250514-v1:0", fm.model)
 	assert.Equal(t, "BEDROCK", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderPerplexity})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderPerplexity})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -115,7 +116,7 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "PERPLEXITY", fm.provider)
 
 	// Test AssistantModel with specific assistant
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "orchestrator"})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "orchestrator"})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -123,29 +124,29 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "ANTHROPIC", fm.provider)
 
 	// Test AssistantModel with preferred models
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "orchestrator", PreferredModels: []string{"gpt-5"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "orchestrator", PreferredModels: []string{"gpt-5.5"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5", fm.model)
+	assert.Equal(t, "gpt-5.5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test AssistantModel with path
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "azure_tool", PreferredModels: []string{"gpt-5.1"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "azure_tool", PreferredModels: []string{"gpt-5.1"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "azure_tool"})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "azure_tool"})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5.1", fm.model)
 	assert.Equal(t, "AZURE", fm.provider)
 
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "azure_tool", PreferredModels: []string{"AZURE/gpt-5.1"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "azure_tool", PreferredModels: []string{"AZURE/gpt-5.1"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -153,22 +154,22 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "AZURE", fm.provider)
 
 	// Test AssistantModel with non-existent assistant (should use default)
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "non-existent-assistant"})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "non-existent-assistant"})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
-	assert.Equal(t, "gpt-5.1", fm.model)
+	assert.Equal(t, "gpt-5.5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
 
 	// Test error cases
 	// Test with unsupported provider type
-	_, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderType("UNSUPPORTED")})
+	_, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderType("UNSUPPORTED")})
 	assert.EqualError(t, err, "provider not found for type: UNSUPPORTED")
 
 	// Test with empty providers list
 	emptyCfg := &llmfactory.Config{}
 	emptyFactory := llmfactory.New(emptyCfg)
-	_, err = emptyFactory.GetModel(llmfactory.ModelOptions{})
+	_, err = emptyFactory.GetModel(ctx, llmfactory.ModelOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no providers configured")
 
@@ -178,7 +179,7 @@ func Test_Factory(t *testing.T) {
 		Providers:       cfg.Providers,
 	}
 	invalidFactory := llmfactory.New(invalidCfg)
-	model, err = invalidFactory.GetModel(llmfactory.ModelOptions{})
+	model, err = invalidFactory.GetModel(ctx, llmfactory.ModelOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -381,14 +382,14 @@ func Test_ModelCaching(t *testing.T) {
 	}()
 
 	f := llmfactory.New(cfg)
-
+	ctx := context.Background()
 	// First call should create the model
-	model1, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	model1, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 	require.NotNil(t, model1)
 
 	// Second call should return cached model
-	model2, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	model2, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.NoError(t, err)
 	require.NotNil(t, model2)
 
@@ -396,11 +397,11 @@ func Test_ModelCaching(t *testing.T) {
 	assert.Equal(t, model1, model2)
 
 	// Test name caching
-	model3, err := f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
+	model3, err := f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
 	require.NoError(t, err)
 	require.NotNil(t, model3)
 
-	model4, err := f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
+	model4, err := f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
 	require.NoError(t, err)
 	require.NotNil(t, model4)
 
@@ -440,23 +441,23 @@ func Test_AssistantModelFallback(t *testing.T) {
 	}()
 
 	f := llmfactory.New(cfg)
-
+	ctx := context.Background()
 	// Test assistant with specific mapping
-	model, err := f.GetModel(llmfactory.ModelOptions{AssistantName: "orchestrator"})
+	model, err := f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "orchestrator"})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm := model.(*fakeLLM)
 	assert.Equal(t, "gpt-4-mini", fm.model)
 
 	// Test assistant with default mapping
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "unknown_assistant"})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "unknown_assistant"})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-4-mini", fm.model)
 
 	// Test assistant with preferred models
-	model, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "unknown_assistant", PreferredModels: []string{"gpt-4"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "unknown_assistant", PreferredModels: []string{"gpt-4"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -466,7 +467,7 @@ func Test_AssistantModelFallback(t *testing.T) {
 // Test_ConcurrentAccess tests concurrent access to factory methods
 func Test_ConcurrentAccess(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
-
+	ctx := context.Background()
 	// Create a config manually instead of loading from YAML to avoid env var dependencies
 	cfg := &llmfactory.Config{
 		Providers: []*llmfactory.ProviderConfig{
@@ -498,7 +499,7 @@ func Test_ConcurrentAccess(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			model, err := f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+			model, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 			assert.NoError(t, err)
 			assert.NotNil(t, model)
 			done <- true
@@ -512,7 +513,7 @@ func Test_ConcurrentAccess(t *testing.T) {
 	// Test concurrent access to ModelByName
 	for i := 0; i < 10; i++ {
 		go func() {
-			model, err := f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
+			model, err := f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-4-mini"}})
 			assert.NoError(t, err)
 			assert.NotNil(t, model)
 			done <- true
@@ -569,20 +570,20 @@ func Test_EmptyConfig(t *testing.T) {
 	// Test with completely empty config
 	emptyCfg := &llmfactory.Config{}
 	f := llmfactory.New(emptyCfg)
-
-	_, err := f.GetModel(llmfactory.ModelOptions{})
+	ctx := context.Background()
+	_, err := f.GetModel(ctx, llmfactory.ModelOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no providers configured")
 
-	_, err = f.GetModel(llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
+	_, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAI})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "provider not found for type: OPENAI")
 
-	_, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"gpt-4"}})
+	_, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"gpt-4"}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no providers configured")
 
-	_, err = f.GetModel(llmfactory.ModelOptions{AssistantName: "orchestrator"})
+	_, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "orchestrator"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no providers configured")
 }
@@ -653,9 +654,9 @@ func Test_ModelByNameWithFallback(t *testing.T) {
 	}()
 
 	f := llmfactory.New(cfg)
-
+	ctx := context.Background()
 	// Test fallback when first model not found but second is
-	model, err := f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"non-existent", "gpt-41-mini"}})
+	model, err := f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"non-existent", "gpt-41-mini"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm := model.(*fakeLLM)
@@ -663,7 +664,7 @@ func Test_ModelByNameWithFallback(t *testing.T) {
 	assert.Equal(t, "AZURE", fm.provider)
 
 	// Test fallback to default when no models found
-	model, err = f.GetModel(llmfactory.ModelOptions{PreferredModels: []string{"non-existent-1", "non-existent-2"}})
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{"non-existent-1", "non-existent-2"}})
 	require.NoError(t, err)
 	require.NotNil(t, model)
 	fm = model.(*fakeLLM)
@@ -754,7 +755,7 @@ func Test_YamlConfigOverride(t *testing.T) {
 func Test_ModelFilter(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-
+	ctx := context.Background()
 	newConfig := func() *llmfactory.Config {
 		return &llmfactory.Config{
 			DefaultProvider: "OPENAI",
@@ -792,7 +793,7 @@ func Test_ModelFilter(t *testing.T) {
 	t.Run("nil filter allows all", func(t *testing.T) {
 		f := llmfactory.New(newConfig())
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1"})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1"})
 		require.NoError(t, err)
 		assert.Equal(t, "gpt-5", model.(*fakeLLM).model)
 	})
@@ -803,33 +804,33 @@ func Test_ModelFilter(t *testing.T) {
 			model string
 		}
 		var calls []call
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			calls = append(calls, call{orgID: orgID, model: modelName})
 			return true
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org-42"})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org-42"})
 		require.NoError(t, err)
 		require.NotNil(t, model)
 		require.Equal(t, []call{{orgID: "org-42", model: "gpt-5"}}, calls)
 	})
 
 	t.Run("deny default model returns error", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return false
 		}))
 
-		_, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1"})
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1"})
 		require.Error(t, err)
 		assert.EqualError(t, err, "model not available for org: gpt-5")
 	})
 
 	t.Run("skip denied preferred model and select allowed one", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini", "gpt-5"}})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini", "gpt-5"}})
 		require.NoError(t, err)
 		fm := model.(*fakeLLM)
 		assert.Equal(t, "gpt-5", fm.model)
@@ -837,11 +838,11 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("all preferred denied falls back to allowed default", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
 		require.NoError(t, err)
 		fm := model.(*fakeLLM)
 		assert.Equal(t, "gpt-5", fm.model)
@@ -849,23 +850,23 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("all denied including default returns error", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return false
 		}))
 
-		_, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
 		require.Error(t, err)
 		assert.EqualError(t, err, "model not available for org: gpt-5")
 	})
 
 	t.Run("filter is called once per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			counts[modelName]++
 			return true
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
 		require.NoError(t, err)
 		require.NotNil(t, model)
 		assert.Equal(t, 1, counts["gpt-5"], "resolver must not be invoked more than once per model")
@@ -873,12 +874,12 @@ func Test_ModelFilter(t *testing.T) {
 
 	t.Run("filter is called twice per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			counts[modelName]++
 			return true
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"OPENAI/gpt-5"}})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"OPENAI/gpt-5"}})
 		require.NoError(t, err)
 		require.NotNil(t, model)
 		assert.Equal(t, 1, counts["gpt-5"], "resolver must not be invoked more than once per model")
@@ -887,29 +888,196 @@ func Test_ModelFilter(t *testing.T) {
 
 	t.Run("filter gates cached model", func(t *testing.T) {
 		deny := false
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return !deny
 		}))
 
 		// First call populates the cache while allowed.
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
 		require.NoError(t, err)
 		assert.Equal(t, "gpt-5", model.(*fakeLLM).model)
 
 		// Once denied, the cached model must not be returned; falls through to
 		// the (also denied) default model.
 		deny = true
-		_, err = f.GetModel(llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		_, err = f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
 		require.Error(t, err)
 		assert.EqualError(t, err, "model not available for org: gpt-5")
 	})
 
 	t.Run("filter applies through AssistantModelForOrg", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		}))
 
-		model, err := f.GetModel(llmfactory.ModelOptions{OrgID: "org1", AssistantName: "orchestrator"})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", AssistantName: "orchestrator"})
+		require.NoError(t, err)
+		fm := model.(*fakeLLM)
+		assert.Equal(t, "gpt-5", fm.model)
+		assert.Equal(t, "OPENAI", fm.provider)
+	})
+}
+
+// Test_ModelFilter tests the per-org model filter (e.g. quota enforcement).
+func Test_ModelFilterOnFactory(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "fakekey")
+	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
+	ctx := context.Background()
+	newConfig := func() *llmfactory.Config {
+		return &llmfactory.Config{
+			DefaultProvider: "OPENAI",
+			Providers: []*llmfactory.ProviderConfig{
+				{
+					Name:            "OPENAI",
+					OpenAI:          llmfactory.OpenAIConfig{APIType: "OPEN_AI"},
+					AvailableModels: []string{"gpt-5", "gpt-5-mini"},
+					DefaultModel:    "gpt-5",
+				},
+				{
+					Name:            "ANTHROPIC",
+					OpenAI:          llmfactory.OpenAIConfig{APIType: "ANTHROPIC"},
+					AvailableModels: []string{"claude-opus-4-8"},
+					DefaultModel:    "claude-opus-4-8",
+				},
+			},
+			AssistantModels: map[string][]string{
+				"orchestrator": {"gpt-5-mini", "gpt-5"},
+			},
+		}
+	}
+
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, opts *llmfactory.Options) (llms.Model, error) {
+		model, err := cfg.FindModel(preferredModels...)
+		if err != nil {
+			return nil, err
+		}
+		return &fakeLLM{provider: cfg.Name, model: model}, nil
+	}
+	defer func() {
+		llmfactory.NewLLM = llmfactory.CreateLLM
+	}()
+
+	factory := llmfactory.New(newConfig())
+
+	t.Run("nil filter allows all", func(t *testing.T) {
+		model, err := factory.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1"})
+		require.NoError(t, err)
+		assert.Equal(t, "gpt-5", model.(*fakeLLM).model)
+	})
+
+	t.Run("filter receives orgID and model", func(t *testing.T) {
+		type call struct {
+			orgID string
+			model string
+		}
+		var calls []call
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			calls = append(calls, call{orgID: orgID, model: modelName})
+			return true
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org-42"})
+		require.NoError(t, err)
+		require.NotNil(t, model)
+		require.Equal(t, []call{{orgID: "org-42", model: "gpt-5"}}, calls)
+	})
+
+	t.Run("deny default model returns error", func(t *testing.T) {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return false
+		})
+
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1"})
+		require.Error(t, err)
+		assert.EqualError(t, err, "model not available for org: gpt-5")
+	})
+
+	t.Run("skip denied preferred model and select allowed one", func(t *testing.T) {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return modelName != "gpt-5-mini"
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini", "gpt-5"}})
+		require.NoError(t, err)
+		fm := model.(*fakeLLM)
+		assert.Equal(t, "gpt-5", fm.model)
+		assert.Equal(t, "OPENAI", fm.provider)
+	})
+
+	t.Run("all preferred denied falls back to allowed default", func(t *testing.T) {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return modelName != "gpt-5-mini"
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
+		require.NoError(t, err)
+		fm := model.(*fakeLLM)
+		assert.Equal(t, "gpt-5", fm.model)
+		assert.Equal(t, "OPENAI", fm.provider)
+	})
+
+	t.Run("all denied including default returns error", func(t *testing.T) {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return false
+		})
+
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5-mini"}})
+		require.Error(t, err)
+		assert.EqualError(t, err, "model not available for org: gpt-5")
+	})
+
+	t.Run("filter is called once per selection", func(t *testing.T) {
+		counts := map[string]int{}
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			counts[modelName]++
+			return true
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		require.NoError(t, err)
+		require.NotNil(t, model)
+		assert.Equal(t, 1, counts["gpt-5"], "resolver must not be invoked more than once per model")
+	})
+
+	t.Run("filter is called twice per selection", func(t *testing.T) {
+		counts := map[string]int{}
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			counts[modelName]++
+			return true
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"OPENAI/gpt-5"}})
+		require.NoError(t, err)
+		require.NotNil(t, model)
+		assert.Equal(t, 1, counts["gpt-5"], "resolver must not be invoked more than once per model")
+		assert.Equal(t, 1, counts["OPENAI/gpt-5"], "resolver must not be invoked more than once per model")
+	})
+
+	t.Run("filter gates cached model", func(t *testing.T) {
+		deny := false
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return !deny
+		})
+
+		// First call populates the cache while allowed.
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		require.NoError(t, err)
+		assert.Equal(t, "gpt-5", model.(*fakeLLM).model)
+
+		// Once denied, the cached model must not be returned; falls through to
+		// the (also denied) default model.
+		deny = true
+		_, err = f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", PreferredModels: []string{"gpt-5"}})
+		require.Error(t, err)
+		assert.EqualError(t, err, "model not available for org: gpt-5")
+	})
+
+	t.Run("filter applies through AssistantModelForOrg", func(t *testing.T) {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+			return modelName != "gpt-5-mini"
+		})
+
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", AssistantName: "orchestrator"})
 		require.NoError(t, err)
 		fm := model.(*fakeLLM)
 		assert.Equal(t, "gpt-5", fm.model)
@@ -922,7 +1090,7 @@ func Test_ModelFilter(t *testing.T) {
 func Test_GetModel_RequiredCapabilities(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-
+	ctx := context.Background()
 	newConfig := func() *llmfactory.Config {
 		return &llmfactory.Config{
 			DefaultProvider: "OPENAI",
@@ -963,7 +1131,7 @@ func Test_GetModel_RequiredCapabilities(t *testing.T) {
 
 		// claude lives on ANTHROPIC, which lacks Batch, so it is skipped and the
 		// default OpenAI model is returned instead.
-		model, err := f.GetModel(llmfactory.ModelOptions{
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{
 			PreferredModels:      []string{"claude-opus-4-8"},
 			RequiredCapabilities: llms.CapabilityBatch,
 		})
@@ -976,7 +1144,7 @@ func Test_GetModel_RequiredCapabilities(t *testing.T) {
 	t.Run("preferred model on supported provider is selected", func(t *testing.T) {
 		f := llmfactory.New(newConfig())
 
-		model, err := f.GetModel(llmfactory.ModelOptions{
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{
 			PreferredModels:      []string{"gpt-5-mini"},
 			RequiredCapabilities: llms.CapabilityBatch,
 		})
@@ -989,7 +1157,7 @@ func Test_GetModel_RequiredCapabilities(t *testing.T) {
 	t.Run("provider type not supporting capability returns error", func(t *testing.T) {
 		f := llmfactory.New(newConfig())
 
-		_, err := f.GetModel(llmfactory.ModelOptions{
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{
 			ProviderType:         "ANTHROPIC",
 			RequiredCapabilities: llms.CapabilityBatch,
 		})
@@ -1002,7 +1170,7 @@ func Test_GetModel_RequiredCapabilities(t *testing.T) {
 		cfg.DefaultProvider = "ANTHROPIC"
 		f := llmfactory.New(cfg)
 
-		_, err := f.GetModel(llmfactory.ModelOptions{
+		_, err := f.GetModel(ctx, llmfactory.ModelOptions{
 			RequiredCapabilities: llms.CapabilityBatch,
 		})
 		require.Error(t, err)
@@ -1012,7 +1180,7 @@ func Test_GetModel_RequiredCapabilities(t *testing.T) {
 	t.Run("zero capabilities matches any provider", func(t *testing.T) {
 		f := llmfactory.New(newConfig())
 
-		model, err := f.GetModel(llmfactory.ModelOptions{
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{
 			PreferredModels: []string{"claude-opus-4-8"},
 		})
 		require.NoError(t, err)

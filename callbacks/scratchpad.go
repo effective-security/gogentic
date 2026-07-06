@@ -14,6 +14,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/effective-security/gogentic/tools"
+	"github.com/effective-security/x/maps"
 )
 
 // ensure ScratchpadCallback implements assistants.Callback
@@ -93,16 +94,22 @@ func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 		stats.ToolsCallsFailed,
 		stats.ToolNotFound,
 	))
-	run.printEntry(fmt.Sprintf("LLM calls: %d, Messages: %d, Bytes Out: %d, Bytes In: %d, Bytes Total: %d, Input Tokens: %d, Output Tokens: %d, Total Tokens: %d",
+	run.printEntry(fmt.Sprintf("LLM calls: %d, Messages: %d, Bytes Out: %d, Bytes In: %d, Bytes Total: %d",
 		stats.Usage.LlmCallCount,
 		stats.TotalMessages,
 		stats.Usage.BytesOut,
 		stats.Usage.BytesIn,
 		stats.Usage.BytesOut+stats.Usage.BytesIn,
-		stats.Usage.InputTokens,
-		stats.Usage.OutputTokens,
-		stats.Usage.TotalTokens,
 	))
+	for _, model := range maps.OrderedKeys(stats.Usage.ModelUsage) {
+		usage := stats.Usage.ModelUsage[model]
+		run.printEntry(fmt.Sprintf("Model: %s, Input Tokens: %d, Output Tokens: %d, Total Tokens: %d",
+			model,
+			usage.InputTokens,
+			usage.OutputTokens,
+			usage.TotalTokens,
+		))
+	}
 
 	run.printEntry(fmt.Sprintf("=== Run Ended. Duration: %s ===", stats.Duration))
 	data := run.w.Bytes()
@@ -291,7 +298,7 @@ func (l *Scratchpad) OnAssistantLLMCallEnd(ctx context.Context, agent assistants
 	// Accumulate token usage and received bytes once per LLM call. stats only
 	// carries token fields (no BytesIn/LlmCallCount), so we add BytesIn here and
 	// the call count is incremented in OnAssistantLLMCallStart.
-	run.stats.Usage.Usage.Add(stats)
+	run.stats.Usage.AddModelUsage(llm.GetName(), stats)
 	run.stats.Usage.BytesIn += resp.ContentSize()
 
 	actionID := chatmodel.GetActionID(ctx)
