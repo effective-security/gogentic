@@ -252,7 +252,7 @@ func (s *Server) DeregisterTool(name string) error {
 func (s *Server) RegisterResource(uri string, name string, description string, mimeType string, handler any) error {
 	err := validateResourceHandler(handler)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	s.resources.Store(uri, &resource{
 		Name:        name,
