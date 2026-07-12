@@ -20,6 +20,7 @@ var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "as
 //go:generate mockgen -destination=../mocks/mockllms/llm_mock.gen.go -package mockllms github.com/effective-security/gogentic/pkg/llms  Model,Batcher
 //go:generate mockgen -source=assistants.go -destination=../mocks/mockassitants/assistants_mock.gen.go  -package mockassitants
 
+// McpServerRegistrator registers assistant prompts with an MCP server.
 type McpServerRegistrator interface {
 	RegisterPrompt(name string, description string, handler any) error
 }
@@ -83,6 +84,7 @@ func (c *CallInput) GetArg(key string) string {
 	return c.Args[key]
 }
 
+// OnProgressFunc is a callback for reporting generic progress updates.
 type OnProgressFunc func(ctx context.Context, a IAssistant, title, message string)
 
 // IAssistantTool provides an interface for tools that use underlying the Assistants.

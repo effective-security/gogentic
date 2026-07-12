@@ -9,6 +9,8 @@ import (
 	yamlcfg "go.uber.org/config"
 )
 
+// Config is the top-level factory configuration for providers, defaults,
+// assistant→model mappings and optional per‑org overrides and skills.
 type Config struct {
 	// Providers specifies the list of providers to use
 	Providers []*ProviderConfig `json:"providers" yaml:"providers"`
@@ -25,6 +27,8 @@ type Config struct {
 	Skills *skills.Config `json:"skills,omitempty" yaml:"skills,omitempty"`
 }
 
+// OrgConfig defines assistant→model mappings that override global mappings for
+// a given organization.
 type OrgConfig struct {
 	// AssistantModels specifies the mapping of assistants to models.
 	// key is the assistant name, value is the model name.
@@ -33,7 +37,9 @@ type OrgConfig struct {
 	AssistantModels map[string][]string `json:"assistant_models" yaml:"assistant_models"`
 }
 
-// ProviderConfig for the OpenAI provider
+// ProviderConfig defines a single provider instance and its available models.
+// The OpenAI field conveys the API style for both OpenAI proper and
+// OpenAI‑compatible APIs (Azure, Perplexity, Cloudflare, etc.).
 type ProviderConfig struct {
 	Name            string       `json:"name" yaml:"name"`
 	Token           string       `json:"token,omitempty" yaml:"token,omitempty"`
@@ -42,7 +48,8 @@ type ProviderConfig struct {
 	OpenAI          OpenAIConfig `json:"open_ai" yaml:"open_ai"`
 }
 
-// OpenAIConfig specifies options config
+// OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType
+// selects the provider family: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY.
 type OpenAIConfig struct {
 	BaseURL    string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	APIVersion string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
@@ -51,6 +58,9 @@ type OpenAIConfig struct {
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`
 }
 
+// FindModel selects the first name from models that is present in
+// AvailableModels. If none match, DefaultModel is returned when set.
+// Returns an error when no model can be selected.
 func (c *ProviderConfig) FindModel(models ...string) (string, error) {
 	for _, model := range models {
 		if slices.Contains(c.AvailableModels, model) {

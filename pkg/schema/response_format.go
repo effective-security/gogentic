@@ -6,6 +6,9 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+// NewResponseFormat builds an OpenAI-style JSON Schema response format from the
+// provided Go type. When strict is true, additionalProperties are disabled for
+// objects and only defined fields are allowed.
 func NewResponseFormat(t reflect.Type, strict bool) (*ResponseFormat, error) {
 	sc, err := New(t)
 	if err != nil {
@@ -21,6 +24,9 @@ func NewResponseFormat(t reflect.Type, strict bool) (*ResponseFormat, error) {
 	}, nil
 }
 
+// ResponseFormatJSONSchemaProperty represents a property within the flattened
+// JSON Schema used for prompting. Only fields relevant for LLM guidance are
+// retained and rendered.
 type ResponseFormatJSONSchemaProperty struct {
 	Type                 string                                       `json:"type"`
 	Title                string                                       `json:"title,omitempty"`
@@ -35,13 +41,16 @@ type ResponseFormatJSONSchemaProperty struct {
 	Ref                  string                                       `json:"$ref,omitempty"`
 }
 
+// ResponseFormatJSONSchema is the container for the top-level JSON Schema
+// definition used in prompts, including the schema name and strictness.
 type ResponseFormatJSONSchema struct {
 	Name   string                            `json:"name"`
 	Strict bool                              `json:"strict"`
 	Schema *ResponseFormatJSONSchemaProperty `json:"schema"`
 }
 
-// ResponseFormat is the format of the response.
+// ResponseFormat defines the LLM response format. Currently supports a
+// JSON Schema variant compatible with OpenAI’s response_format.
 type ResponseFormat struct {
 	Type       string                    `json:"type"`
 	JSONSchema *ResponseFormatJSONSchema `json:"json_schema,omitempty"`

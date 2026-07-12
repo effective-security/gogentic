@@ -7,7 +7,13 @@ import (
 )
 
 var (
-	ErrFailedUnmarshalInput  = errors.New("failed to unmarshal input: check the schema and try again")
+	// ErrFailedUnmarshalInput indicates input could not be parsed into the
+	// expected request type; typically surfaced by InputParser or an output
+	// parser handling tool inputs.
+	ErrFailedUnmarshalInput = errors.New("failed to unmarshal input: check the schema and try again")
+	// ErrFailedUnmarshalOutput indicates model output could not be parsed into
+	// the expected typed result, often due to deviating from format
+	// instructions.
 	ErrFailedUnmarshalOutput = errors.New("failed to unmarshal output: check the schema and try again")
 )
 
@@ -30,6 +36,8 @@ type Stringer interface {
 	String() string
 }
 
+// Stringify returns a string representation for values implementing `Stringer`
+// or `ContentProvider`; otherwise it falls back to JSON marshaling.
 func Stringify(s any) string {
 	if v, ok := s.(Stringer); ok {
 		return v.String()
@@ -41,6 +49,8 @@ func Stringify(s any) string {
 	return string(bs)
 }
 
+// ToBytes returns bytes for values implementing `Stringer` or `ContentProvider`,
+// otherwise it returns the JSON-encoded bytes.
 func ToBytes(s any) []byte {
 	if v, ok := s.(Stringer); ok {
 		return []byte(v.String())
@@ -52,9 +62,12 @@ func ToBytes(s any) []byte {
 	return bs
 }
 
+// FewShotExample describes a single prompt/completion pair for few-shot
+// prompting helpers found in the prompts package.
 type FewShotExample struct {
 	Prompt     string
 	Completion string
 }
 
+// FewShotExamples is a collection of FewShotExample.
 type FewShotExamples []FewShotExample

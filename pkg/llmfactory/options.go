@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
+// Options customize model construction for providers that need extra clients
+// or environment hooks, and allow installing per‑org model filters.
 type Options struct {
 	// HTTPClient is used to create a new HTTP client.
 	HTTPClient HTTPClient
@@ -32,6 +34,7 @@ func WithModelFilter(filter ModelFilterFunc) Option {
 	}
 }
 
+// Option configures Options.
 type Option func(*Options)
 
 func NewOptions(opts ...Option) *Options {
