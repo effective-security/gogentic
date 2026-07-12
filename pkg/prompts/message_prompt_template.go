@@ -111,6 +111,9 @@ type MessagesPlaceholder struct {
 	VariableName string
 }
 
+// MessagesPlaceholder injects a pre-constructed slice of `llms.Message` from
+// the formatting values. It expects a value with key `VariableName` of type
+// `[]llms.Message` and returns it as the formatted message list.
 // FormatMessages formats the messages from the values by variable name.
 func (p MessagesPlaceholder) FormatMessages(values map[string]any) ([]llms.Message, error) {
 	value, ok := values[p.VariableName]

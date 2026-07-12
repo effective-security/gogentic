@@ -93,6 +93,9 @@ func (c *chatContext) SetMetadata(key string, value any) {
 	c.metadata.Store(key, value)
 }
 
+// NewChatContext constructs a new ChatContext. If chatID is empty, a new one is
+// generated. The returned context also gets a fresh RunID. AppData is stored as
+// immutable payload and can be retrieved via AppData().
 func NewChatContext(userID, chatID string, appData any) ChatContext {
 	if userID == "" {
 		panic("userID is required")

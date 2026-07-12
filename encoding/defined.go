@@ -8,8 +8,8 @@ import (
 )
 
 // TypedOutputParser parses output from an LLM into Go structs.
-// By providing the NewDefined constructor with a struct, one or more TypeScript interfaces
-// are generated to help LLMs format responses with the desired JSON structure.
+// By providing NewTypedOutputParser with a struct value, a schema is generated
+// to help LLMs format responses with the desired structure.
 type TypedOutputParser[T any] struct {
 	enc      SchemaEncoder
 	name     string
@@ -35,6 +35,8 @@ func NewTypedOutputParser[T any](sourceType T, mode Mode) (*TypedOutputParser[T]
 	}, nil
 }
 
+// WithValidation enables or disables validation for parsed outputs when the
+// underlying encoder supports it.
 func (p *TypedOutputParser[T]) WithValidation(validate bool) {
 	p.validate = validate
 }

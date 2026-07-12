@@ -51,7 +51,7 @@ func (o InputRequest) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Description = "The input request from the user to the AI assistant."
 }
 
-// GetContent gets the content of the message for the chat history
+// GetContent returns the user input for use in chat history or logging.
 func (o InputRequest) GetContent() string {
 	return o.Input
 }
@@ -64,7 +64,7 @@ func (o *InputRequest) ParseInput(input string) error {
 	return nil
 }
 
-// NewInputRequest returns a new InputRequest
+// NewInputRequest constructs an InputRequest from a raw user message.
 func NewInputRequest(chatMessage string) *InputRequest {
 	return &InputRequest{
 		Input: chatMessage,
@@ -77,24 +77,28 @@ type OutputResult struct {
 	Content string `json:"content" yaml:"content" jsonschema:"title=Response Content,description=The content returned by assistant or tool."`
 }
 
-// GetContent gets the content of the message for the chat history
+// GetContent returns the assistant/tool content for use in chat history or logging.
 func (o OutputResult) GetContent() string {
 	return o.Content
 }
 
-// NewOutputResult returns a new OutputResult
+// NewOutputResult constructs an OutputResult from a raw assistant message.
 func NewOutputResult(chatMessage string) *OutputResult {
 	return &OutputResult{
 		Content: chatMessage,
 	}
 }
 
+// BaseClarificationResult holds common clarification-related fields that result
+// types can embed to encourage follow-up questions or provide confidence.
 type BaseClarificationResult struct {
 	Confidence    string `json:"confidence,omitempty" yaml:"confidence" jsonschema:"title=Confidence Level,description=The confidence level of the response,enum=Low,enum=Medium,enum=High"`
 	Clarification string `json:"clarification,omitempty" yaml:"clarification" jsonschema:"title=Clarification,description=Clarification is returned when the assistant is not sure about the answer and needs to ask for more information."`
 	Reasoning     string `json:"reasoning,omitempty" yaml:"reasoning" jsonschema:"title=Reasoning,description=Optional reasoning for the response choice."`
 }
 
+// IBaseResult defines the common setters supported by result types that embed
+// BaseClarificationResult.
 type IBaseResult interface {
 	SetConfidence(string)
 	SetClarification(string)
