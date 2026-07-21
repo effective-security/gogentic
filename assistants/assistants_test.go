@@ -975,3 +975,23 @@ I'm here to help you.
 `
 	assert.Equal(t, exp, cr.String())
 }
+
+func Test_Response_GetUsage(t *testing.T) {
+	t.Parallel()
+
+	cr := &assistants.Response{
+		Usage: llms.UsageStats{
+			ModelUsage: map[string]*llms.Usage{
+				"gpt-4o": {
+					InputTokens:  100,
+					OutputTokens: 200,
+				},
+			},
+		},
+	}
+	assert.Equal(t, 100, int(cr.GetUsage().ModelUsage["gpt-4o"].InputTokens))
+	assert.Equal(t, 200, int(cr.GetUsage().ModelUsage["gpt-4o"].OutputTokens))
+
+	var nilUsage *assistants.Response
+	assert.Nil(t, nilUsage.GetUsage())
+}
