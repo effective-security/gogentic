@@ -58,6 +58,13 @@ type Response struct {
 	Usage llms.UsageStats
 }
 
+func (c *Response) GetUsage() *llms.UsageStats {
+	if c == nil {
+		return nil
+	}
+	return &c.Usage
+}
+
 type CallInput struct {
 	// Input is the input to the assistant.
 	Input string
