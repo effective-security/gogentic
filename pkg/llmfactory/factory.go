@@ -191,6 +191,8 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 	switch provType {
 	case string(llms.ProviderOpenAI), "OPEN_AI":
 		return newOpenAI(cfg, preferredModels)
+	case string(llms.ProviderOpenAIBedrock):
+		return newOpenAIBedrock(cfg, preferredModels, opts)
 	case string(llms.ProviderPerplexity):
 		return newPerplexity(cfg, preferredModels)
 	case string(llms.ProviderAzure), string(llms.ProviderAzureAD):
@@ -222,6 +224,35 @@ func newOpenAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error
 	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
+	}
+	return openai.New(opts...)
+}
+
+func newOpenAIBedrock(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
+	var opts []openai.Option
+	model, err := cfg.FindModel(preferredModels...)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts,
+		openai.WithProvider(openai.ProviderOpenAIBedrock),
+		openai.WithModel(model),
+	)
+	if cfg.Token != "" {
+		opts = append(opts, openai.WithToken(cfg.Token))
+	}
+	if cfg.OpenAI.BaseURL != "" {
+		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
+	}
+	if options != nil && options.AwsConfigFactory != nil {
+		cfg, err := options.AwsConfigFactory()
+		if err != nil {
+			return nil, err
+		}
+		if options.HTTPClient != nil {
+			cfg.HTTPClient = options.HTTPClient
+		}
+		opts = append(opts, openai.WithAWSConfig(cfg))
 	}
 	return openai.New(opts...)
 }
@@ -330,7 +361,7 @@ func newAnthropicBedrock(cfg *ProviderConfig, preferredModels []string, options 
 		if options.HTTPClient != nil {
 			cfg.HTTPClient = options.HTTPClient
 		}
-		opts = append(opts, anthropic.WithConfig(cfg))
+		opts = append(opts, anthropic.WithAWSConfig(cfg))
 	}
 	return anthropic.NewBedrock(opts...)
 }

@@ -4,6 +4,7 @@ BUILD_FLAGS=
 export COVERAGE_EXCLUSIONS="vendor|tests|third_party|api/pb/|main\.go|testsuite\.go|gomock|mocks/|\.gen\.go|\.pb\.go"
 
 export OPENAI_API_KEY=fakekey
+export AWS_BEARER_TOKEN_BEDROCK=fakekey
 export TAVILY_API_KEY=fakekey
 export ANTHROPIC_API_KEY=fakekey
 export PERPLEXITY_TOKEN=fakekey

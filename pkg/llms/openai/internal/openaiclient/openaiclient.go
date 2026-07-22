@@ -29,10 +29,11 @@ var ErrEmptyResponse = errors.New("empty response")
 type ProviderType string
 
 const (
-	ProviderOpenAI     ProviderType = "OPENAI"
-	ProviderAzure      ProviderType = "AZURE"
-	ProviderAzureAD    ProviderType = "AZURE_AD"
-	ProviderPerplexity ProviderType = "PERPLEXITY"
+	ProviderOpenAI        ProviderType = "OPENAI"
+	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
+	ProviderAzure         ProviderType = "AZURE"
+	ProviderAzureAD       ProviderType = "AZURE_AD"
+	ProviderPerplexity    ProviderType = "PERPLEXITY"
 )
 
 // ToolType is the type of a tool.
@@ -144,7 +145,7 @@ func isResponsesAPI(provider ProviderType, apiVersion string) bool {
 		thresholdDate := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
 		return !versionDate.Before(thresholdDate)
 	}
-	return provider == ProviderOpenAI || provider == "OPEN_AI"
+	return provider == ProviderOpenAI || provider == "OPEN_AI" || provider == ProviderOpenAIBedrock
 }
 
 func (c *Client) SupportsResponsesAPI() bool {
@@ -261,9 +262,17 @@ func IsAzure(apiType ProviderType) bool {
 	return apiType == ProviderAzure || apiType == ProviderAzureAD
 }
 
+func IsBedrock(apiType ProviderType) bool {
+	return apiType == ProviderOpenAIBedrock
+}
+
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
-	if c.Provider == ProviderOpenAI || c.Provider == ProviderAzure || c.Provider == ProviderAzureAD || c.Provider == "OPEN_AI" {
+	if c.Provider == ProviderOpenAI ||
+		c.Provider == ProviderAzure ||
+		c.Provider == ProviderAzureAD ||
+		c.Provider == "OPEN_AI" ||
+		c.Provider == ProviderOpenAIBedrock {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	} else {
 		req.Header.Set("api-key", c.token)

@@ -13,6 +13,7 @@ import (
 
 func Test_Factory(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
@@ -93,6 +94,13 @@ func Test_Factory(t *testing.T) {
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "gpt-5", fm.model)
 	assert.Equal(t, "OPENAI", fm.provider)
+
+	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAIBedrock})
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	fm = model.(*fakeLLM)
+	assert.Equal(t, "openai.gpt-5.6-luna", fm.model)
+	assert.Equal(t, "OPENAI_BEDROCK", fm.provider)
 
 	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
 	require.NoError(t, err)
@@ -189,6 +197,7 @@ func Test_Factory(t *testing.T) {
 
 func Test_Load(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
@@ -209,6 +218,7 @@ func Test_Load(t *testing.T) {
 
 func Test_CreateLLM(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")

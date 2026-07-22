@@ -62,7 +62,8 @@ func WithAnthropicBetaHeader(value string) Option {
 	}
 }
 
-func WithConfig(cfg *aws.Config) Option {
+// WithAWSConfig passes the AWS config to the client.
+func WithAWSConfig(cfg *aws.Config) Option {
 	return func(opts *Options) {
 		opts.AWSCfg = cfg
 	}

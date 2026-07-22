@@ -26,6 +26,8 @@ const (
 	ProviderGoogleAI ProviderType = "GOOGLEAI"
 	// ProviderOpenAI is the type of provider.
 	ProviderOpenAI ProviderType = "OPENAI"
+	// ProviderOpenAIBedrock is the type of provider.
+	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
 	// ProviderPerplexity is the type of provider.
 	ProviderPerplexity ProviderType = "PERPLEXITY"
 )
@@ -100,6 +102,19 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityWebSearchTool |
 		CapabilityPromptCaching |
 		CapabilityBatch,
+
+	ProviderOpenAIBedrock: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityJSONSchemaStrict |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilityToolCallStreaming |
+		CapabilitySystemPrompt |
+		CapabilityVision |
+		CapabilityPromptCaching |
+		CapabilityBatch,
+	// CapabilityWebSearchTool |
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
