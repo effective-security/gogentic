@@ -1,16 +1,18 @@
 package openai
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
+	"github.com/effective-security/x/values"
 )
 
 var (
 	ErrEmptyResponse              = errors.New("no response")
-	ErrMissingToken               = errors.New("missing the OpenAI API key, set it in the OPENAI_API_KEY environment variable") //nolint:lll
+	ErrMissingToken               = errors.New("missing the OpenAI API key")
 	ErrMissingAzureModel          = errors.New("model needs to be provided when using Azure API")
 	ErrMissingAzureEmbeddingModel = errors.New("embeddings model needs to be provided when using Azure API")
 
@@ -21,10 +23,9 @@ var (
 func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 	// default options
 	options := &options{
-		token:        os.Getenv(tokenEnvVarName),
-		model:        os.Getenv(modelEnvVarName),
-		baseURL:      getEnvs(baseURLEnvVarName, baseAPIBaseEnvVarName),
-		organization: os.Getenv(organizationEnvVarName),
+		model:        os.Getenv(DefaultModelEnvVarName),
+		baseURL:      os.Getenv(DefaultBaseURLEnvVarName),
+		organization: os.Getenv(DefaultOrganizationEnvVarName),
 		provider:     ProviderType(openaiclient.ProviderOpenAI),
 		httpClient:   http.DefaultClient,
 	}
@@ -33,23 +34,39 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		opt(options)
 	}
 
-	// set of options needed for Azure client
-	if openaiclient.IsAzure(openaiclient.ProviderType(options.provider)) && options.apiVersion == "" {
-		options.apiVersion = DefaultAPIVersion
-		if options.model == "" {
-			return options, nil, ErrMissingAzureModel
-		}
-		if options.embeddingModel == "" {
-			return options, nil, ErrMissingAzureEmbeddingModel
-		}
+	typ := openaiclient.ProviderType(options.provider)
+	tokenVarName := DefaultTokenEnvVarName
+	if openaiclient.IsBedrock(typ) {
+		tokenVarName = "AWS_BEARER_TOKEN_BEDROCK"
+	}
+	options.token = values.StringsCoalesce(options.token, os.Getenv(tokenVarName))
+	if len(options.token) == 0 {
+		return options, nil, errors.WithStack(ErrMissingToken)
 	}
 
-	if len(options.token) == 0 {
-		return options, nil, ErrMissingToken
+	// set of options needed for Azure client
+	if openaiclient.IsAzure(typ) && options.apiVersion == "" {
+		options.apiVersion = DefaultAPIVersion
+		if options.model == "" {
+			return options, nil, errors.WithStack(ErrMissingAzureModel)
+		}
+		if options.embeddingModel == "" {
+			return options, nil, errors.WithStack(ErrMissingAzureEmbeddingModel)
+		}
+	} else if openaiclient.IsBedrock(typ) {
+		if options.AWSCfg == nil {
+			return options, nil, errors.New("bedrock openai: AWS config is required")
+		}
+		if options.AWSCfg.Region == "" {
+			return options, nil, errors.New("bedrock openai: AWS region is required")
+		}
+		if options.baseURL == "" {
+			options.baseURL = fmt.Sprintf("https://bedrock-mantle.%s.api.aws/openai/v1", options.AWSCfg.Region)
+		}
 	}
 
 	cli, err := openaiclient.New(
-		openaiclient.ProviderType(options.provider),
+		typ,
 		options.model,
 		options.token,
 		options.baseURL,
@@ -60,14 +77,4 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		options.responseFormat,
 	)
 	return options, cli, err
-}
-
-func getEnvs(keys ...string) string {
-	for _, key := range keys {
-		val, ok := os.LookupEnv(key)
-		if ok {
-			return val
-		}
-	}
-	return ""
 }

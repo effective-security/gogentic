@@ -1,25 +1,26 @@
 package openai
 
 import (
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
 	"github.com/effective-security/gogentic/pkg/schema"
 )
 
 const (
-	tokenEnvVarName        = "OPENAI_API_KEY"      //nolint:gosec
-	modelEnvVarName        = "OPENAI_MODEL"        //nolint:gosec
-	baseURLEnvVarName      = "OPENAI_BASE_URL"     //nolint:gosec
-	baseAPIBaseEnvVarName  = "OPENAI_API_BASE"     //nolint:gosec
-	organizationEnvVarName = "OPENAI_ORGANIZATION" //nolint:gosec
+	DefaultTokenEnvVarName        = "OPENAI_API_KEY"      //nolint:gosec
+	DefaultModelEnvVarName        = "OPENAI_MODEL"        //nolint:gosec
+	DefaultBaseURLEnvVarName      = "OPENAI_BASE_URL"     //nolint:gosec
+	DefaultOrganizationEnvVarName = "OPENAI_ORGANIZATION" //nolint:gosec
 )
 
 type ProviderType string
 
 const (
-	ProviderOpenAI     ProviderType = "OPENAI"
-	ProviderAzure      ProviderType = "AZURE"
-	ProviderAzureAD    ProviderType = "AZURE_AD"
-	ProviderPerplexity ProviderType = "PERPLEXITY"
+	ProviderOpenAI        ProviderType = "OPENAI"
+	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
+	ProviderAzure         ProviderType = "AZURE"
+	ProviderAzureAD       ProviderType = "AZURE_AD"
+	ProviderPerplexity    ProviderType = "PERPLEXITY"
 )
 const (
 	DefaultAPIVersion = "2023-05-15"
@@ -38,6 +39,9 @@ type options struct {
 	// required when provider is APITypeAzure or APITypeAzureAD
 	apiVersion     string
 	embeddingModel string
+
+	// AWSCfg is used with Bedrock
+	AWSCfg *aws.Config
 }
 
 // Option is a functional option for the OpenAI client.
@@ -73,6 +77,13 @@ func WithEmbeddingModel(embeddingModel string) Option {
 func WithBaseURL(baseURL string) Option {
 	return func(opts *options) {
 		opts.baseURL = baseURL
+	}
+}
+
+// WithAWSConfig passes the AWS config to the client.
+func WithAWSConfig(cfg *aws.Config) Option {
+	return func(opts *options) {
+		opts.AWSCfg = cfg
 	}
 }
 

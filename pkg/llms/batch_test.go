@@ -58,6 +58,7 @@ func TestBatchRequestError_Error(t *testing.T) {
 func TestCapabilityBatch_OpenAI(t *testing.T) {
 	t.Parallel()
 	assert.True(t, llms.ProviderOpenAI.Supports(llms.CapabilityBatch))
+	assert.True(t, llms.ProviderOpenAIBedrock.Supports(llms.CapabilityBatch))
 	assert.False(t, llms.ProviderAnthropic.Supports(llms.CapabilityBatch))
 	assert.False(t, llms.ProviderAzure.Supports(llms.CapabilityBatch))
 }

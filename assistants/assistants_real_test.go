@@ -289,7 +289,10 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 }
 
 func Test_Real_Providers(t *testing.T) {
-	//providers := []string{"OPENAI","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
+	//providers := []string{"OPENAI","OPENAI_BEDROCK","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "set your key here")
+	providerType := llms.ProviderOpenAIBedrock
+
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
@@ -309,7 +312,7 @@ func Test_Real_Providers(t *testing.T) {
 	}
 
 	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
-	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAnthropic})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: providerType})
 	require.NoError(t, err)
 
 	wt, err := NewWeatherTool()
