@@ -813,7 +813,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 				} else {
 					resultChan <- toolCallResult{
 						toolCall: tc,
-						err:      errors.WithMessagef(err, "failed to call tool %s", toolName),
+						err:      errors.WithMessagef(err, "tool %s call failed", toolName),
 						index:    index,
 					}
 					return
@@ -852,7 +852,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			toolCall := toolCalls[i]
 			results[i] = toolCallResult{
 				toolCall: toolCall,
-				response: "Tool call failed: No response received",
+				response: "tool call failed: no response received",
 				err:      errors.New("no response received from tool"),
 				index:    i,
 			}
@@ -869,8 +869,10 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 	for _, result := range results {
 		var content string
 		if result.err != nil {
-			// Format error as a message for the LLM
-			content = fmt.Sprintf("Tool call failed: %s", result.err.Error())
+			// Return a structured JSON error so the LLM can reason about the
+			// failure and optionally retry, without aborting the tool-call loop.
+			// Every tool_call_id must still get a RoleTool message.
+			content = llmutils.ToJSON(map[string]string{"error": result.err.Error()})
 			// Log the error for monitoring
 			logger.ContextKV(ctx, xlog.WARNING,
 				"assistant", a.name,

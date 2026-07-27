@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/assistants"
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
@@ -266,12 +267,14 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 	_, err := assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
 	assert.NoError(t, err)
 
-	// Tool returns error case
+	// Tool returns error case: error is wrapped as structured JSON tool content
+	// so the LLM can reason about the failure instead of receiving raw text.
+	toolErr := errors.New(`db query failed: column "id" not found`)
 	mockTool := mocktools.NewMockTool[any, any](ctrl)
 	mockTool.EXPECT().Name().Return("err_tool").Times(1)
 	mockTool.EXPECT().Description().Return("desc").Times(1)
 	mockTool.EXPECT().Parameters().Return(nil).Times(1)
-	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).Return("", assert.AnError).Times(1)
+	mockTool.EXPECT().Call(gomock.Any(), gomock.Any()).Return("", toolErr).Times(1)
 	assistant = assistant.WithTools(mockTool)
 	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{
 		Choices: []*llms.ContentChoice{{
@@ -280,14 +283,52 @@ func Test_Assistant_Run_ToolCallEdgeCases(t *testing.T) {
 			}},
 		}},
 	}, nil).Times(1)
-	// Final response after tool error
-	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).Return(&llms.ContentResponse{
-		Choices: []*llms.ContentChoice{{
-			Content: "I encountered an error while trying to use the tool.",
-		}},
-	}, nil).Times(1)
-	_, err = assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
-	assert.NoError(t, err)
+	// Final response after tool error — assert the tool message content format
+	mockLLM.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, messages []llms.Message, _ ...llms.CallOption) (*llms.ContentResponse, error) {
+			var toolResp *llms.ToolCallResponse
+			for _, msg := range messages {
+				if msg.Role != llms.RoleTool {
+					continue
+				}
+				require.Len(t, msg.Parts, 1)
+				tr, ok := msg.Parts[0].(llms.ToolCallResponse)
+				require.True(t, ok)
+				toolResp = &tr
+			}
+			require.NotNil(t, toolResp, "expected a RoleTool message with the error payload")
+			assert.Equal(t, "2", toolResp.ToolCallID)
+			assert.Equal(t, "err_tool", toolResp.Name)
+			// Must be valid JSON with an "error" field (quotes in the message escaped)
+			assert.JSONEq(t,
+				`{"error":"tool err_tool call failed: db query failed: column \"id\" not found"}`,
+				toolResp.Content,
+			)
+			return &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{{
+					Content: "I encountered an error while trying to use the tool.",
+				}},
+			}, nil
+		},
+	).Times(1)
+	resp, err := assistant.Run(ctx, &assistants.CallInput{Input: "input"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	// Also surface the structured error in the returned message history
+	var foundErrContent bool
+	for _, msg := range resp.Messages {
+		if msg.Role != llms.RoleTool {
+			continue
+		}
+		tr, ok := msg.Parts[0].(llms.ToolCallResponse)
+		require.True(t, ok)
+		assert.JSONEq(t,
+			`{"error":"tool err_tool call failed: db query failed: column \"id\" not found"}`,
+			tr.Content,
+		)
+		foundErrContent = true
+	}
+	assert.True(t, foundErrContent, "expected structured error tool response in Messages")
 
 	// Tool returns success case
 	mockTool = mocktools.NewMockTool[any, any](ctrl)
