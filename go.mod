@@ -20,7 +20,7 @@ require (
 	github.com/effective-security/metrics v0.8.147
 	github.com/effective-security/porto v0.38.409
 	github.com/effective-security/x v0.16.100
-	github.com/effective-security/xdb v0.24.154
+	github.com/effective-security/xdb v0.24.156
 	github.com/effective-security/xlog v0.11.59
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/go-cmp v0.7.0
@@ -37,7 +37,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	go.uber.org/config v1.4.1
 	go.uber.org/mock v0.6.0
-	golang.org/x/exp v0.0.0-20260718201538-764159d718ef
+	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
 	golang.org/x/tools v0.48.0
 	google.golang.org/api v0.290.0
 	google.golang.org/genai v1.65.0
