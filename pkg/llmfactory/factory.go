@@ -14,6 +14,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms/googleai"
 	"github.com/effective-security/gogentic/pkg/llms/openai"
 	"github.com/effective-security/gogentic/skills"
+	"github.com/effective-security/x/values"
 	"github.com/effective-security/xlog"
 )
 
@@ -426,10 +427,11 @@ func supportsCapabilities(pt llms.ProviderType, required llms.Capability) bool {
 	return llms.ProviderCapabilities(pt)&required == required
 }
 
-// isModelAllowed reports whether the model may be used for the org.
+// isModelAllowed reports whether the model may be used for the org, assistant, and model.
 // When no ModelFilter is configured, all models are allowed.
-func (f *factory) isModelAllowed(ctx context.Context, orgID, modelName string) bool {
-	return f.options.ModelFilter == nil || f.options.ModelFilter(ctx, orgID, modelName)
+func (f *factory) isModelAllowed(ctx context.Context, orgID, assistantName, modelName string) bool {
+	assistantName = values.StringsCoalesce(assistantName, "default")
+	return f.options.ModelFilter == nil || f.options.ModelFilter(ctx, orgID, assistantName, modelName)
 }
 
 // resolveDefault returns the default model, honoring capability and org
@@ -447,7 +449,7 @@ func (f *factory) resolveDefault(ctx context.Context, opts ModelOptions) (llms.M
 		return nil, errors.Errorf("default provider %s does not support required capabilities", f.defaultProvider.Name)
 	}
 
-	if !f.isModelAllowed(ctx, opts.OrgID, f.defaultProvider.DefaultModel) {
+	if !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, f.defaultProvider.DefaultModel) {
 		return nil, errors.Errorf("model not available for org: %s", f.defaultProvider.DefaultModel)
 	}
 
@@ -496,7 +498,7 @@ func (f *factory) getModelByName(ctx context.Context, opts ModelOptions, modelNa
 	defer f.lock.Unlock()
 
 	for _, modelNamePath := range modelNames {
-		if !f.isModelAllowed(ctx, opts.OrgID, modelNamePath) {
+		if !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, modelNamePath) {
 			continue
 		}
 
@@ -524,7 +526,7 @@ func (f *factory) getModelByName(ctx context.Context, opts ModelOptions, modelNa
 				continue
 			}
 			if slices.Contains(cfg.AvailableModels, modelName) {
-				if modelName != modelNamePath && !f.isModelAllowed(ctx, opts.OrgID, modelName) {
+				if modelName != modelNamePath && !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, modelName) {
 					continue
 				}
 				model, err := NewLLM(cfg, []string{modelName}, f.options)

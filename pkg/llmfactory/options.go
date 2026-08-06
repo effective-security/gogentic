@@ -20,14 +20,15 @@ type Options struct {
 }
 
 // ModelFilterFunc reports whether the given model may be used for the org.
-// Provide this to enforce per-org / per-model quota: return false when the
+// Provide this to enforce per-org / per-assistant / per-model quota: return false when the
 // model must not be used for the org (e.g. quota exceeded), true otherwise.
 // The orgID can be empty, in which case the check applies globally.
+// The assistantName can be empty, in which case the check applies globally.
 // The modelName can be in the format of <provider_name>/<model_name>.
-type ModelFilterFunc func(ctx context.Context, orgID string, modelName string) bool
+type ModelFilterFunc func(ctx context.Context, orgID string, assistantName string, modelName string) bool
 
 // WithModelFilter sets a predicate used to restrict which models an org may use,
-// for example to enforce per-org / per-model quota.
+// for example to enforce per-org / per-assistant / per-model quota.
 func WithModelFilter(filter ModelFilterFunc) Option {
 	return func(opts *Options) {
 		opts.ModelFilter = filter

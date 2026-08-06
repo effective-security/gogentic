@@ -814,7 +814,7 @@ func Test_ModelFilter(t *testing.T) {
 			model string
 		}
 		var calls []call
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			calls = append(calls, call{orgID: orgID, model: modelName})
 			return true
 		}))
@@ -826,7 +826,7 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("deny default model returns error", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return false
 		}))
 
@@ -836,7 +836,7 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("skip denied preferred model and select allowed one", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		}))
 
@@ -848,7 +848,7 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("all preferred denied falls back to allowed default", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		}))
 
@@ -860,7 +860,7 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("all denied including default returns error", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return false
 		}))
 
@@ -871,7 +871,7 @@ func Test_ModelFilter(t *testing.T) {
 
 	t.Run("filter is called once per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			counts[modelName]++
 			return true
 		}))
@@ -884,7 +884,7 @@ func Test_ModelFilter(t *testing.T) {
 
 	t.Run("filter is called twice per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			counts[modelName]++
 			return true
 		}))
@@ -898,7 +898,7 @@ func Test_ModelFilter(t *testing.T) {
 
 	t.Run("filter gates cached model", func(t *testing.T) {
 		deny := false
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return !deny
 		}))
 
@@ -916,16 +916,27 @@ func Test_ModelFilter(t *testing.T) {
 	})
 
 	t.Run("filter applies through AssistantModelForOrg", func(t *testing.T) {
-		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
-			return modelName != "gpt-5-mini"
+		f := llmfactory.New(newConfig(), llmfactory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
+			if assistantName == "orchestrator" {
+				return modelName == "gpt-5-mini"
+			}
+			return true
 		}))
 
-		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", AssistantName: "orchestrator"})
+		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1"})
 		require.NoError(t, err)
 		fm := model.(*fakeLLM)
 		assert.Equal(t, "gpt-5", fm.model)
 		assert.Equal(t, "OPENAI", fm.provider)
+
+		model, err = f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org1", AssistantName: "orchestrator"})
+		require.NoError(t, err)
+		fm = model.(*fakeLLM)
+		assert.Equal(t, "gpt-5-mini", fm.model)
+		assert.Equal(t, "OPENAI", fm.provider)
+
 	})
+
 }
 
 // Test_ModelFilter tests the per-org model filter (e.g. quota enforcement).
@@ -977,23 +988,24 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 
 	t.Run("filter receives orgID and model", func(t *testing.T) {
 		type call struct {
-			orgID string
-			model string
+			orgID         string
+			assistantName string
+			model         string
 		}
 		var calls []call
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
-			calls = append(calls, call{orgID: orgID, model: modelName})
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
+			calls = append(calls, call{orgID: orgID, assistantName: assistantName, model: modelName})
 			return true
 		})
 
 		model, err := f.GetModel(ctx, llmfactory.ModelOptions{OrgID: "org-42"})
 		require.NoError(t, err)
 		require.NotNil(t, model)
-		require.Equal(t, []call{{orgID: "org-42", model: "gpt-5"}}, calls)
+		require.Equal(t, []call{{orgID: "org-42", assistantName: "default", model: "gpt-5"}}, calls)
 	})
 
 	t.Run("deny default model returns error", func(t *testing.T) {
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return false
 		})
 
@@ -1003,7 +1015,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 	})
 
 	t.Run("skip denied preferred model and select allowed one", func(t *testing.T) {
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		})
 
@@ -1015,7 +1027,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 	})
 
 	t.Run("all preferred denied falls back to allowed default", func(t *testing.T) {
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		})
 
@@ -1027,7 +1039,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 	})
 
 	t.Run("all denied including default returns error", func(t *testing.T) {
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return false
 		})
 
@@ -1038,7 +1050,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 
 	t.Run("filter is called once per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			counts[modelName]++
 			return true
 		})
@@ -1051,7 +1063,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 
 	t.Run("filter is called twice per selection", func(t *testing.T) {
 		counts := map[string]int{}
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			counts[modelName]++
 			return true
 		})
@@ -1065,7 +1077,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 
 	t.Run("filter gates cached model", func(t *testing.T) {
 		deny := false
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return !deny
 		})
 
@@ -1083,7 +1095,7 @@ func Test_ModelFilterOnFactory(t *testing.T) {
 	})
 
 	t.Run("filter applies through AssistantModelForOrg", func(t *testing.T) {
-		f := factory.WithModelFilter(func(ctx context.Context, orgID, modelName string) bool {
+		f := factory.WithModelFilter(func(ctx context.Context, orgID, assistantName, modelName string) bool {
 			return modelName != "gpt-5-mini"
 		})
 
