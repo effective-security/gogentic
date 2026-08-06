@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
 	"github.com/effective-security/x/values"
 )
@@ -26,7 +27,7 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		model:        os.Getenv(DefaultModelEnvVarName),
 		baseURL:      os.Getenv(DefaultBaseURLEnvVarName),
 		organization: os.Getenv(DefaultOrganizationEnvVarName),
-		provider:     ProviderType(openaiclient.ProviderOpenAI),
+		provider:     llms.ProviderOpenAI,
 		httpClient:   http.DefaultClient,
 	}
 

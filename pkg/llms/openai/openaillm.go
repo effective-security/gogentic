@@ -19,7 +19,8 @@ import (
 type ChatMessage = openaiclient.ChatMessage
 
 type LLM struct {
-	client *openaiclient.Client
+	client       *openaiclient.Client
+	providerType llms.ProviderType
 }
 
 const (
@@ -37,12 +38,13 @@ var (
 
 // New returns a new OpenAI LLM.
 func New(opts ...Option) (*LLM, error) {
-	_, c, err := newClient(opts...)
+	popts, c, err := newClient(opts...)
 	if err != nil {
 		return nil, err
 	}
 	return &LLM{
-		client: c,
+		client:       c,
+		providerType: popts.provider,
 	}, err
 }
 
@@ -53,7 +55,7 @@ func (o *LLM) GetName() string {
 
 // GetProviderType implements the Model interface.
 func (o *LLM) GetProviderType() llms.ProviderType {
-	return llms.ProviderOpenAI
+	return o.providerType
 }
 
 // GenerateContent implements the Model interface.
@@ -176,7 +178,7 @@ func (o *LLM) buildChatRequestBody(messages []llms.Message, options ...llms.Call
 	applyPromptCacheToChatRequest(req, o.client.Provider, &opts)
 
 	for _, tool := range opts.Tools {
-		t, err := toolFromTool(tool)
+		t, err := o.toolFromTool(tool)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
 		}
@@ -370,7 +372,7 @@ func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms
 	}
 
 	for _, tool := range opts.Tools {
-		t, err := responsesToolFromTool(tool)
+		t, err := o.responsesToolFromTool(tool)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert llms tool to openai tool")
 		}
@@ -424,13 +426,16 @@ func ExtractToolParts(msg *ChatMessage) ([]llms.ContentPart, []llms.ToolCall) {
 }
 
 // toolFromTool converts an llms.Tool to a Tool.
-func toolFromTool(t llms.Tool) (openaiclient.Tool, error) {
+func (o *LLM) toolFromTool(t llms.Tool) (openaiclient.Tool, error) {
 	tool := openaiclient.Tool{
 		Type: openaiclient.ToolType(t.Type),
 	}
 	switch t.Type {
 	case string(openaiclient.ToolTypeWebSearch):
-		if t.WebSearchOptions != nil && len(t.WebSearchOptions.AllowedDomains) > 0 {
+		// bedrock does not support WebSearchOptions
+		if o.providerType != llms.ProviderOpenAIBedrock &&
+			t.WebSearchOptions != nil &&
+			len(t.WebSearchOptions.AllowedDomains) > 0 {
 			tool.WebSearchOptions = &openaiclient.WebSearchOptions{
 				AllowedDomains: t.WebSearchOptions.AllowedDomains,
 			}
@@ -470,11 +475,13 @@ func toolCallFromToolCall(tc llms.ToolCall) openaiclient.ToolCall {
 }
 
 // responsesToolFromTool converts an llms.Tool to a Responses ToolUnionParam.
-func responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, error) {
+func (o *LLM) responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, error) {
 	switch t.Type {
 	case string(openaiclient.ToolTypeWebSearch):
 		var filters responses.WebSearchToolFiltersParam
-		if t.WebSearchOptions != nil {
+		// bedrock does not support WebSearchOptions
+		if t.WebSearchOptions != nil &&
+			o.providerType != llms.ProviderOpenAIBedrock {
 			filters.AllowedDomains = t.WebSearchOptions.AllowedDomains
 		}
 		return responses.ToolUnionParam{

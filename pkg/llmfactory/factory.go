@@ -217,7 +217,7 @@ func newOpenAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, openai.WithProvider(openai.ProviderOpenAI), openai.WithModel(model))
+	opts = append(opts, openai.WithProvider(llms.ProviderOpenAI), openai.WithModel(model))
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -235,7 +235,7 @@ func newOpenAIBedrock(cfg *ProviderConfig, preferredModels []string, options *Op
 		return nil, err
 	}
 	opts = append(opts,
-		openai.WithProvider(openai.ProviderOpenAIBedrock),
+		openai.WithProvider(llms.ProviderOpenAIBedrock),
 		openai.WithModel(model),
 	)
 	if cfg.Token != "" {
@@ -263,7 +263,7 @@ func newPerplexity(cfg *ProviderConfig, preferredModels []string) (llms.Model, e
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, openai.WithProvider(openai.ProviderPerplexity), openai.WithModel(model))
+	opts = append(opts, openai.WithProvider(llms.ProviderPerplexity), openai.WithModel(model))
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -286,9 +286,9 @@ func newAzure(cfg *ProviderConfig, preferredModels []string) (llms.Model, error)
 		opts = append(opts, openai.WithToken(cfg.Token))
 	}
 	if strings.EqualFold(cfg.OpenAI.APIType, "AZURE_AD") {
-		opts = append(opts, openai.WithProvider(openai.ProviderAzureAD))
+		opts = append(opts, openai.WithProvider(llms.ProviderAzureAD))
 	} else {
-		opts = append(opts, openai.WithProvider(openai.ProviderAzure))
+		opts = append(opts, openai.WithProvider(llms.ProviderAzure))
 	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))

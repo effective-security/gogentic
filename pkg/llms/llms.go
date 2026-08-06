@@ -113,8 +113,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilitySystemPrompt |
 		CapabilityVision |
 		CapabilityPromptCaching |
-		CapabilityBatch,
-	// CapabilityWebSearchTool |
+		CapabilityBatch |
+		CapabilityWebSearchTool,
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
