@@ -155,12 +155,30 @@ func Test_Real_GoogleAI_Search(t *testing.T) {
 func Test_Real_WebSearch_JSON(t *testing.T) {
 	cfg := loadOpenAIConfigOrSkipRealTest(t)
 
-	f := llmfactory.New(cfg)
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "set up your key here")
+	awsCfgFunc := func() (*aws.Config, error) {
+		region := os.Getenv("AWS_REGION")
+		cfg := aws.Config{
+			Region: values.StringsCoalesce(region, "us-west-2"),
+		}
+
+		// Bedrock uses API Key
+		//
+		// keyID := os.Getenv("AWS_ACCESS_KEY_ID")
+		// secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		// if keyID != "" && secretKey != "" {
+		// 	cfg.Credentials = credentials.NewStaticCredentialsProvider(keyID, secretKey, "")
+		// }
+		return &cfg, nil
+	}
+
+	f := llmfactory.New(cfg, llmfactory.WithAWSConfigFactory(awsCfgFunc))
+
 	chatCtx := chatmodel.NewChatContext(chatmodel.NewChatID(), chatmodel.NewChatID(), nil)
 	ctx := chatmodel.WithChatContext(context.Background(), chatCtx)
 
 	//llmModel, err := f.GetModel(ctx,llmfactory.GetModelOptions{PreferredModels: []string{"gemini-2.5-pro"}})
-	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderAzure})
+	llmModel, err := f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderOpenAIBedrock})
 	require.NoError(t, err)
 
 	systemPrompt := prompts.NewPromptTemplate("You are helpful and friendly AI assistant capable of Web Search. You return responses in JSON format.", []string{})
@@ -303,11 +321,12 @@ func Test_Real_Providers(t *testing.T) {
 			Region: values.StringsCoalesce(region, "us-west-2"),
 		}
 
-		keyID := os.Getenv("AWS_ACCESS_KEY_ID")
-		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-		if keyID != "" && secretKey != "" {
-			cfg.Credentials = credentials.NewStaticCredentialsProvider(keyID, secretKey, "")
-		}
+		// Bedrock uses API Key
+		// keyID := os.Getenv("AWS_ACCESS_KEY_ID")
+		// secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		// if keyID != "" && secretKey != "" {
+		// 	cfg.Credentials = credentials.NewStaticCredentialsProvider(keyID, secretKey, "")
+		// }
 		return &cfg, nil
 	}
 

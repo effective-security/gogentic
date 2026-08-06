@@ -200,7 +200,7 @@ func humanMsg(s string) llms.Message {
 	return llms.Message{Role: llms.RoleHuman, Parts: []llms.ContentPart{llms.TextPart(s)}}
 }
 
-func newTestLLM(t *testing.T, baseURL string, provider ProviderType) *LLM {
+func newTestLLM(t *testing.T, baseURL string, provider llms.ProviderType) *LLM {
 	t.Helper()
 	llm, err := New(
 		WithToken("test-token"),
@@ -220,7 +220,7 @@ func TestSubmitBatch_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
 
-	llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 	requests := []llms.BatchRequest{
 		{
@@ -273,7 +273,7 @@ func TestSubmitBatch_RejectsBadInput(t *testing.T) {
 	fs := newFakeBatchServer(t)
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
-	llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 	tests := []struct {
 		name string
@@ -318,7 +318,7 @@ func TestSubmitBatch_AzureNotSupported(t *testing.T) {
 		WithBaseURL(srv.URL+"/v1"),
 		WithModel("gpt-5-mini"),
 		WithEmbeddingModel("text-embedding-3-small"),
-		WithProvider(ProviderAzure),
+		WithProvider(llms.ProviderAzure),
 		WithAPIVersion("2024-12-01-preview"),
 		WithHTTPClient(http.DefaultClient),
 	)
@@ -354,7 +354,7 @@ func TestGetBatch_StatusMapping(t *testing.T) {
 			fs := newFakeBatchServer(t)
 			srv := httptest.NewServer(fs.handler())
 			defer srv.Close()
-			llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+			llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 			handle, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
 				{CustomID: "r-1", Messages: []llms.Message{humanMsg("hi")}},
@@ -375,7 +375,7 @@ func TestFetchBatchResults_NotReady(t *testing.T) {
 	fs := newFakeBatchServer(t)
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
-	llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 	handle, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
 		{CustomID: "r-1", Messages: []llms.Message{humanMsg("hi")}},
@@ -394,7 +394,7 @@ func TestFetchBatchResults_ResponsesEndpoint(t *testing.T) {
 	fs := newFakeBatchServer(t)
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
-	llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 	handle, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
 		{CustomID: "r-ok", Messages: []llms.Message{humanMsg("say hi")}},
@@ -455,7 +455,7 @@ func TestCancelBatch(t *testing.T) {
 	fs := newFakeBatchServer(t)
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
-	llm := newTestLLM(t, srv.URL, ProviderOpenAI)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
 
 	handle, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
 		{CustomID: "r-1", Messages: []llms.Message{humanMsg("hi")}},
@@ -477,7 +477,7 @@ func TestBuildBatchLine_ChatEndpoint(t *testing.T) {
 		// Azure-with-old-apiVersion is the only path that yields chat-completions routing,
 		// but the buildBatchLine method itself accepts the endpoint as input, so we can
 		// test the chat path directly without depending on SupportsResponsesAPI.
-		WithProvider(ProviderOpenAI),
+		WithProvider(llms.ProviderOpenAI),
 		WithHTTPClient(http.DefaultClient),
 	)
 	require.NoError(t, err)

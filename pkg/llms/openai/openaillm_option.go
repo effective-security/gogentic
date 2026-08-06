@@ -2,6 +2,7 @@ package openai
 
 import (
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
 	"github.com/effective-security/gogentic/pkg/schema"
 )
@@ -13,15 +14,6 @@ const (
 	DefaultOrganizationEnvVarName = "OPENAI_ORGANIZATION" //nolint:gosec
 )
 
-type ProviderType string
-
-const (
-	ProviderOpenAI        ProviderType = "OPENAI"
-	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
-	ProviderAzure         ProviderType = "AZURE"
-	ProviderAzureAD       ProviderType = "AZURE_AD"
-	ProviderPerplexity    ProviderType = "PERPLEXITY"
-)
 const (
 	DefaultAPIVersion = "2023-05-15"
 )
@@ -31,7 +23,7 @@ type options struct {
 	model        string
 	baseURL      string
 	organization string
-	provider     ProviderType
+	provider     llms.ProviderType
 	httpClient   openaiclient.Doer
 
 	responseFormat *schema.ResponseFormat
@@ -97,7 +89,7 @@ func WithOrganization(organization string) Option {
 
 // WithProvider passes the api type to the client. If not set, the default value
 // is ProviderOpenAI.
-func WithProvider(apiType ProviderType) Option {
+func WithProvider(apiType llms.ProviderType) Option {
 	return func(opts *options) {
 		opts.provider = apiType
 	}
