@@ -12,6 +12,7 @@ const (
 	DefaultModelEnvVarName        = "OPENAI_MODEL"        //nolint:gosec
 	DefaultBaseURLEnvVarName      = "OPENAI_BASE_URL"     //nolint:gosec
 	DefaultOrganizationEnvVarName = "OPENAI_ORGANIZATION" //nolint:gosec
+	DefaultProjectEnvVarName      = "OPENAI_PROJECT"      //nolint:gosec
 )
 
 const (
@@ -23,6 +24,7 @@ type options struct {
 	model        string
 	baseURL      string
 	organization string
+	project      string
 	provider     llms.ProviderType
 	httpClient   openaiclient.Doer
 
@@ -84,6 +86,14 @@ func WithAWSConfig(cfg *aws.Config) Option {
 func WithOrganization(organization string) Option {
 	return func(opts *options) {
 		opts.organization = organization
+	}
+}
+
+// WithProject passes the OpenAI project to the client. If not set, the
+// project is read from the OPENAI_PROJECT environment variable.
+func WithProject(project string) Option {
+	return func(opts *options) {
+		opts.project = project
 	}
 }
 

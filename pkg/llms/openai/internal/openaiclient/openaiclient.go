@@ -52,6 +52,7 @@ type Client struct {
 	token        string
 	baseURL      string
 	organization string
+	project      string
 	httpClient   Doer
 
 	EmbeddingModel string
@@ -72,7 +73,7 @@ type Client struct {
 // It is safe for concurrent use.
 func (c *Client) sdkClient() *openaisdk.Client {
 	c.sdkOnce.Do(func() {
-		opts := make([]option.RequestOption, 0, 4)
+		opts := make([]option.RequestOption, 0, 5)
 		if c.token != "" {
 			opts = append(opts, option.WithAPIKey(c.token))
 		}
@@ -81,6 +82,9 @@ func (c *Client) sdkClient() *openaisdk.Client {
 		}
 		if c.organization != "" {
 			opts = append(opts, option.WithOrganization(c.organization))
+		}
+		if c.project != "" {
+			opts = append(opts, option.WithProject(c.project))
 		}
 		if c.httpClient != nil {
 			opts = append(opts, option.WithHTTPClient(c.httpClient))
@@ -100,7 +104,7 @@ type Doer interface {
 }
 
 // New returns a new OpenAI client.
-func New(provider ProviderType, model string, token string, baseURL string, organization string,
+func New(provider ProviderType, model string, token string, baseURL string, organization, project string,
 	apiVersion string, httpClient Doer, embeddingModel string,
 	responseFormat *schema.ResponseFormat,
 	opts ...Option,
@@ -111,6 +115,7 @@ func New(provider ProviderType, model string, token string, baseURL string, orga
 		EmbeddingModel:       embeddingModel,
 		baseURL:              strings.TrimSuffix(baseURL, "/"),
 		organization:         organization,
+		project:              project,
 		Provider:             provider,
 		apiVersion:           apiVersion,
 		httpClient:           httpClient,
@@ -279,6 +284,9 @@ func (c *Client) setHeaders(req *http.Request) {
 	}
 	if c.organization != "" {
 		req.Header.Set("OpenAI-Organization", c.organization)
+	}
+	if c.project != "" {
+		req.Header.Set("OpenAI-Project", c.project)
 	}
 }
 

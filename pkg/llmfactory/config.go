@@ -56,6 +56,10 @@ type OpenAIConfig struct {
 	// APIType specifies the type of API to use:
 	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`
+	// Organization is the organization ID for the OpenAI API.
+	Organization string `json:"organization,omitempty" yaml:"organization,omitempty"`
+	// Project is the project ID for the OpenAI API.
+	Project string `json:"project,omitempty" yaml:"project,omitempty"`
 }
 
 // FindModel selects the first name from models that is present in
