@@ -226,6 +226,12 @@ func newOpenAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
 	}
+	if cfg.OpenAI.Organization != "" {
+		opts = append(opts, openai.WithOrganization(cfg.OpenAI.Organization))
+	}
+	if cfg.OpenAI.Project != "" {
+		opts = append(opts, openai.WithProject(cfg.OpenAI.Project))
+	}
 	return openai.New(opts...)
 }
 
@@ -244,6 +250,12 @@ func newOpenAIBedrock(cfg *ProviderConfig, preferredModels []string, options *Op
 	}
 	if cfg.OpenAI.BaseURL != "" {
 		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
+	}
+	if cfg.OpenAI.Organization != "" {
+		opts = append(opts, openai.WithOrganization(cfg.OpenAI.Organization))
+	}
+	if cfg.OpenAI.Project != "" {
+		opts = append(opts, openai.WithProject(cfg.OpenAI.Project))
 	}
 	if options != nil && options.AwsConfigFactory != nil {
 		cfg, err := options.AwsConfigFactory()

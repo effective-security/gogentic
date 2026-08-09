@@ -27,6 +27,7 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		model:        os.Getenv(DefaultModelEnvVarName),
 		baseURL:      os.Getenv(DefaultBaseURLEnvVarName),
 		organization: os.Getenv(DefaultOrganizationEnvVarName),
+		project:      os.Getenv(DefaultProjectEnvVarName),
 		provider:     llms.ProviderOpenAI,
 		httpClient:   http.DefaultClient,
 	}
@@ -72,6 +73,7 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		options.token,
 		options.baseURL,
 		options.organization,
+		options.project,
 		options.apiVersion,
 		options.httpClient,
 		options.embeddingModel,
