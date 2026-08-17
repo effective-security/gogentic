@@ -39,9 +39,9 @@ require (
 	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
 	golang.org/x/tools v0.48.0
-	google.golang.org/api v0.292.0
-	google.golang.org/genai v1.67.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/api v0.293.0
+	google.golang.org/genai v1.68.0
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/yaml v1.6.0
 )
