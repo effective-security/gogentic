@@ -1,0 +1,22 @@
+---
+default_provider: openrouter
+providers:
+  - name: openrouter
+    token: env://OPENROUTER_API_KEY
+    available_models:
+      - anthropic/claude-sonnet-4
+      - openai/gpt-5-mini
+    headers:
+      HTTP-Referer: env://OPENROUTER_HTTP_REFERER
+      X-OpenRouter-Title: Secdi
+    open_ai:
+      api_type: OPENROUTER
+      base_url: https://openrouter.ai/api/v1
+assistant_models:
+  triage_factor_extractor:
+    - openrouter/anthropic/claude-sonnet-4
+orgs_override:
+  "12345":
+    assistant_models:
+      triage_factor_extractor:
+        - openrouter/openai/gpt-5-mini

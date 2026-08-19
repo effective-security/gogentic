@@ -15,6 +15,40 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
+func unexpectedResponsesStatusError(r *http.Response, requestURL string) error {
+	msg := fmt.Sprintf("API returned unexpected status code: %d", r.StatusCode)
+	if r.StatusCode == http.StatusNotFound {
+		msg += ": url: " + requestURL
+	}
+	if retryAfter := r.Header.Get("Retry-After"); retryAfter != "" {
+		msg += "; retry after: " + retryAfter
+	}
+
+	var errResp errorMessage
+	if err := json.NewDecoder(r.Body).Decode(&errResp); err != nil || errResp.Error.Message == "" {
+		return errors.New(msg)
+	}
+	return errors.Errorf("%s: %s", msg, errResp.Error.Message)
+}
+
+func failedResponseError(resp *responses.Response) error {
+	if resp == nil || resp.Status != responses.ResponseStatusFailed {
+		return nil
+	}
+	code := string(resp.Error.Code)
+	message := resp.Error.Message
+	switch {
+	case code != "" && message != "":
+		return errors.Errorf("responses API failed (%s): %s", code, message)
+	case message != "":
+		return errors.Errorf("responses API failed: %s", message)
+	case code != "":
+		return errors.Errorf("responses API failed (%s)", code)
+	default:
+		return errors.New("responses API failed")
+	}
+}
+
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "openai")
 
 // createResponse sends the request to /responses and parses a non-streaming reply.
@@ -40,15 +74,7 @@ func (c *Client) createResponse(ctx context.Context, payload *responses.Response
 	defer func() { _ = r.Body.Close() }()
 
 	if r.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("API returned unexpected status code: %d", r.StatusCode)
-		if r.StatusCode == http.StatusNotFound {
-			msg += ": url: " + u
-		}
-		var errResp errorMessage
-		if err := json.NewDecoder(r.Body).Decode(&errResp); err != nil {
-			return nil, errors.New(msg)
-		}
-		return nil, errors.Errorf("%s: %s", msg, errResp.Error.Message)
+		return nil, unexpectedResponsesStatusError(r, u)
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -59,6 +85,9 @@ func (c *Client) createResponse(ctx context.Context, payload *responses.Response
 	var resp responses.Response
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, errors.Wrap(err, "decode response")
+	}
+	if err := failedResponseError(&resp); err != nil {
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -102,15 +131,7 @@ func (c *Client) createStreamingResponse( //nolint:cyclop
 	defer func() { _ = r.Body.Close() }()
 
 	if r.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("API returned unexpected status code: %d", r.StatusCode)
-		if r.StatusCode == http.StatusNotFound {
-			msg += ": url: " + u
-		}
-		var errResp errorMessage
-		if err := json.NewDecoder(r.Body).Decode(&errResp); err != nil {
-			return nil, errors.New(msg)
-		}
-		return nil, errors.Errorf("%s: %s", msg, errResp.Error.Message)
+		return nil, unexpectedResponsesStatusError(r, u)
 	}
 
 	return parseStreamingResponses(ctx, r.Body, streamFunc)
@@ -165,18 +186,44 @@ func parseStreamingResponses( //nolint:cyclop
 				resp := ev.Response
 				completed = &resp
 
-			case "response.failed", "error":
+			case "response.failed":
+				var ev responses.ResponseFailedEvent
+				if err := json.Unmarshal([]byte(data), &ev); err != nil {
+					return nil, errors.Wrap(err, "unmarshal response.failed event")
+				}
+				failure := failedResponseError(&ev.Response)
+				if failure == nil {
+					failure = errors.New("responses API failed")
+				}
+				return nil, errors.WithMessage(failure, "openai responses API streaming error")
+
+			case "response.error", "error":
 				var ev struct {
-					Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+					Error   struct {
+						Code    string `json:"code"`
 						Message string `json:"message"`
 					} `json:"error"`
 				}
-				_ = json.Unmarshal([]byte(data), &ev)
-				msg := ev.Error.Message
-				if msg == "" {
-					msg = "streaming response failed"
+				if err := json.Unmarshal([]byte(data), &ev); err != nil {
+					return nil, errors.Wrap(err, "unmarshal responses error event")
 				}
-				return nil, errors.Errorf("openai responses API streaming error: %s", msg)
+				code := ev.Code
+				message := ev.Message
+				if ev.Error.Code != "" {
+					code = ev.Error.Code
+				}
+				if ev.Error.Message != "" {
+					message = ev.Error.Message
+				}
+				if message == "" {
+					message = "streaming response failed"
+				}
+				if code != "" {
+					return nil, errors.Errorf("openai responses API streaming error (%s): %s", code, message)
+				}
+				return nil, errors.Errorf("openai responses API streaming error: %s", message)
 			}
 		}
 	}
