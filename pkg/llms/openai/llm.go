@@ -11,9 +11,11 @@ import (
 	"github.com/effective-security/x/values"
 )
 
+const DefaultOpenRouterTokenEnvVarName = "OPENROUTER_API_KEY" //nolint:gosec
 var (
 	ErrEmptyResponse              = errors.New("no response")
 	ErrMissingToken               = errors.New("missing the OpenAI API key")
+	ErrMissingOpenRouterToken     = errors.New("missing the OpenRouter API key")
 	ErrMissingAzureModel          = errors.New("model needs to be provided when using Azure API")
 	ErrMissingAzureEmbeddingModel = errors.New("embeddings model needs to be provided when using Azure API")
 
@@ -38,11 +40,17 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 
 	typ := openaiclient.ProviderType(options.provider)
 	tokenVarName := DefaultTokenEnvVarName
-	if openaiclient.IsBedrock(typ) {
+	switch {
+	case openaiclient.IsBedrock(typ):
 		tokenVarName = "AWS_BEARER_TOKEN_BEDROCK"
+	case typ == openaiclient.ProviderOpenRouter:
+		tokenVarName = DefaultOpenRouterTokenEnvVarName
 	}
 	options.token = values.StringsCoalesce(options.token, os.Getenv(tokenVarName))
 	if len(options.token) == 0 {
+		if typ == openaiclient.ProviderOpenRouter {
+			return options, nil, errors.WithStack(ErrMissingOpenRouterToken)
+		}
 		return options, nil, errors.WithStack(ErrMissingToken)
 	}
 
@@ -78,6 +86,7 @@ func newClient(opts ...Option) (*options, *openaiclient.Client, error) {
 		options.httpClient,
 		options.embeddingModel,
 		options.responseFormat,
+		options.headers,
 	)
 	return options, cli, err
 }

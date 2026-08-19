@@ -18,6 +18,8 @@ func Test_Factory(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
+	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
+	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
 
 	ctx := context.Background()
 	cfg, err := llmfactory.LoadConfig("testdata/llm.yaml")
@@ -195,6 +197,96 @@ func Test_Factory(t *testing.T) {
 	assert.Equal(t, "OPENAI", fm.provider)
 }
 
+func Test_ModelNamePathResolution(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name         string
+		providers    []*llmfactory.ProviderConfig
+		requested    string
+		wantProvider string
+		wantModel    string
+	}{
+		{
+			name: "provider-qualified model preserves slash-delimited model ID",
+			providers: []*llmfactory.ProviderConfig{
+				{
+					Name:            "openrouter",
+					AvailableModels: []string{"anthropic/claude-sonnet-4"},
+				},
+			},
+			requested:    "openrouter/anthropic/claude-sonnet-4",
+			wantProvider: "openrouter",
+			wantModel:    "anthropic/claude-sonnet-4",
+		},
+		{
+			name: "unqualified slash-delimited model ID remains intact",
+			providers: []*llmfactory.ProviderConfig{
+				{
+					Name:            "openrouter",
+					AvailableModels: []string{"anthropic/claude-sonnet-4"},
+					DefaultModel:    "fallback/model",
+				},
+			},
+			requested:    "anthropic/claude-sonnet-4",
+			wantProvider: "openrouter",
+			wantModel:    "anthropic/claude-sonnet-4",
+		},
+		{
+			name: "legacy provider-qualified model remains supported",
+			providers: []*llmfactory.ProviderConfig{
+				{
+					Name:            "openai",
+					AvailableModels: []string{"gpt-5"},
+					DefaultModel:    "gpt-5",
+				},
+			},
+			requested:    "openai/gpt-5",
+			wantProvider: "openai",
+			wantModel:    "gpt-5",
+		},
+		{
+			name: "unknown prefix is part of the raw model ID",
+			providers: []*llmfactory.ProviderConfig{
+				{
+					Name:            "openrouter",
+					AvailableModels: []string{"vendor/family/model"},
+					DefaultModel:    "fallback/model",
+				},
+			},
+			requested:    "vendor/family/model",
+			wantProvider: "openrouter",
+			wantModel:    "vendor/family/model",
+		},
+	}
+
+	originalNewLLM := llmfactory.NewLLM
+	llmfactory.NewLLM = func(cfg *llmfactory.ProviderConfig, preferredModels []string, _ *llmfactory.Options) (llms.Model, error) {
+		model, err := cfg.FindModel(preferredModels...)
+		if err != nil {
+			return nil, err
+		}
+		return &fakeLLM{provider: cfg.Name, model: model}, nil
+	}
+	t.Cleanup(func() {
+		llmfactory.NewLLM = originalNewLLM
+	})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory := llmfactory.New(&llmfactory.Config{
+				DefaultProvider: tt.providers[0].Name,
+				Providers:       tt.providers,
+			})
+
+			model, err := factory.GetModel(ctx, llmfactory.ModelOptions{PreferredModels: []string{tt.requested}})
+			require.NoError(t, err)
+			require.NotNil(t, model)
+			selected := model.(*fakeLLM)
+			assert.Equal(t, tt.wantProvider, selected.provider)
+			assert.Equal(t, tt.wantModel, selected.model)
+		})
+	}
+}
 func Test_Load(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
@@ -202,6 +294,8 @@ func Test_Load(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
+	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
+	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
 
 	// Test successful load
 	f, err := llmfactory.Load("testdata/llm.yaml")
@@ -224,6 +318,7 @@ func Test_CreateLLM(t *testing.T) {
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
+	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
 
 	cfg := &llmfactory.ProviderConfig{
 		Name: "test-provider",
@@ -285,6 +380,31 @@ func Test_CreateLLM(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported provider type")
 }
 
+func Test_CreateOpenRouterLLM(t *testing.T) {
+	cfg := &llmfactory.ProviderConfig{
+		Name:            "openrouter",
+		Token:           "test-token",
+		AvailableModels: []string{"anthropic/claude-sonnet-4"},
+		Headers: map[string]string{
+			"HTTP-Referer":       "https://secdi.example",
+			"X-OpenRouter-Title": "Secdi",
+		},
+		OpenAI: llmfactory.OpenAIConfig{
+			APIType: string(llms.ProviderOpenRouter),
+			BaseURL: "https://openrouter.ai/api/v1",
+		},
+	}
+
+	model, err := llmfactory.CreateLLM(cfg, []string{"anthropic/claude-sonnet-4"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, llms.ProviderOpenRouter, model.GetProviderType())
+	assert.Equal(t, "anthropic/claude-sonnet-4", model.GetName())
+	assert.True(t, llms.ProviderOpenRouter.Supports(llms.CapabilityText))
+	assert.True(t, llms.ProviderOpenRouter.Supports(llms.CapabilityFunctionCalling))
+	assert.True(t, llms.ProviderOpenRouter.Supports(llms.CapabilityJSONSchema))
+	assert.False(t, llms.ProviderOpenRouter.Supports(llms.CapabilityBatch))
+}
+
 func Test_LoadConfig(t *testing.T) {
 	// Test loading non-existent file
 	_, err := llmfactory.LoadConfig("testdata/non-existent.yaml")
@@ -300,6 +420,8 @@ func Test_GoogleAIProvider(t *testing.T) {
 	t.Skip("GoogleAI provider is not supported yet")
 	// Test with valid API key
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
+	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
+	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
 
 	cfg := &llmfactory.ProviderConfig{
 		Name:  "google-test",
@@ -310,7 +432,6 @@ func Test_GoogleAIProvider(t *testing.T) {
 		AvailableModels: []string{"gemini-2.5-flash-preview-05-20"},
 		DefaultModel:    "gemini-2.5-flash-preview-05-20",
 	}
-
 	model, err := llmfactory.CreateLLM(cfg, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
@@ -328,6 +449,47 @@ func Test_GoogleAIProvider(t *testing.T) {
 			"Expected error to contain auth-related message, got: %s", err.Error())
 	} else {
 		require.NotNil(t, model)
+	}
+}
+
+func Test_LoadOpenRouterConfig(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "openrouter-token")
+	t.Setenv("OPENROUTER_HTTP_REFERER", "https://secdi.example")
+
+	cfg, err := llmfactory.LoadConfig("testdata/openrouter.yaml")
+	require.NoError(t, err)
+	require.Len(t, cfg.Providers, 1)
+	provider := cfg.Providers[0]
+	assert.Equal(t, "openrouter-token", provider.Token)
+	assert.Equal(t, "https://secdi.example", provider.Headers["HTTP-Referer"])
+	assert.Equal(t, "Secdi", provider.Headers["X-OpenRouter-Title"])
+
+	factory := llmfactory.New(cfg)
+	tests := []struct {
+		name      string
+		orgID     string
+		wantModel string
+	}{
+		{
+			name:      "global assistant mapping",
+			wantModel: "anthropic/claude-sonnet-4",
+		},
+		{
+			name:      "organization assistant override",
+			orgID:     "12345",
+			wantModel: "openai/gpt-5-mini",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model, err := factory.GetModel(context.Background(), llmfactory.ModelOptions{
+				AssistantName: "triage_factor_extractor",
+				OrgID:         tt.orgID,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, llms.ProviderOpenRouter, model.GetProviderType())
+			assert.Equal(t, tt.wantModel, model.GetName())
+		})
 	}
 }
 
@@ -688,6 +850,8 @@ func Test_ProviderConfigWithTokens(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
 	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
+	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
+	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
 
 	// Test OpenAI with token
 	cfg := &llmfactory.ProviderConfig{

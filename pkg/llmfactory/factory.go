@@ -20,6 +20,8 @@ import (
 
 //go:generate mockgen -source=factory.go -destination=../../mocks/mockllmfactory/llmfactory_mock.gen.go  -package mockllmfactory
 
+const defaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
+
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "llmfactory")
 
 // NewLLM is a wrapper for CreateLLM to allow for overriding the default implementation.
@@ -192,6 +194,8 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 	switch provType {
 	case string(llms.ProviderOpenAI), "OPEN_AI":
 		return newOpenAI(cfg, preferredModels)
+	case string(llms.ProviderOpenRouter):
+		return newOpenRouter(cfg, preferredModels, opts)
 	case string(llms.ProviderOpenAIBedrock):
 		return newOpenAIBedrock(cfg, preferredModels, opts)
 	case string(llms.ProviderPerplexity):
@@ -231,6 +235,31 @@ func newOpenAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error
 	}
 	if cfg.OpenAI.Project != "" {
 		opts = append(opts, openai.WithProject(cfg.OpenAI.Project))
+	}
+	return openai.New(opts...)
+}
+
+func newOpenRouter(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
+	model, err := cfg.FindModel(preferredModels...)
+	if err != nil {
+		return nil, err
+	}
+
+	baseURL := cfg.OpenAI.BaseURL
+	if baseURL == "" {
+		baseURL = defaultOpenRouterBaseURL
+	}
+	opts := []openai.Option{
+		openai.WithProvider(llms.ProviderOpenRouter),
+		openai.WithModel(model),
+		openai.WithBaseURL(baseURL),
+		openai.WithHeaders(cfg.Headers),
+	}
+	if cfg.Token != "" {
+		opts = append(opts, openai.WithToken(cfg.Token))
+	}
+	if options != nil && options.HTTPClient != nil {
+		opts = append(opts, openai.WithHTTPClient(options.HTTPClient))
 	}
 	return openai.New(opts...)
 }
@@ -521,14 +550,7 @@ func (f *factory) getModelByName(ctx context.Context, opts ModelOptions, modelNa
 			continue
 		}
 
-		parts := strings.Split(modelNamePath, "/")
-		var providerName, modelName string
-		if len(parts) == 2 {
-			providerName = parts[0]
-			modelName = parts[1]
-		} else {
-			modelName = parts[0]
-		}
+		providerName, modelName := f.resolveModelNamePath(modelNamePath)
 
 		for _, cfg := range f.cfg.Providers {
 			if providerName != "" && providerName != cfg.Name {
@@ -575,6 +597,19 @@ func (f *factory) getOrgAssistants(orgID string) map[string][]string {
 		return am
 	}
 	return f.assistantModels
+}
+
+// resolveModelNamePath splits a provider-qualified model reference while preserving
+// slash-delimited model IDs. A prefix is treated as a provider only when it
+// exactly matches a configured provider name.
+func (f *factory) resolveModelNamePath(modelNamePath string) (string, string) {
+	for _, cfg := range f.cfg.Providers {
+		prefix := cfg.Name + "/"
+		if strings.HasPrefix(modelNamePath, prefix) {
+			return cfg.Name, strings.TrimPrefix(modelNamePath, prefix)
+		}
+	}
+	return "", modelNamePath
 }
 
 // Skills returns all loaded skills for the given agent sorted alphabetically by name.

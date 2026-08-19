@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"maps"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
@@ -27,6 +29,7 @@ type options struct {
 	project      string
 	provider     llms.ProviderType
 	httpClient   openaiclient.Doer
+	headers      map[string]string
 
 	responseFormat *schema.ResponseFormat
 
@@ -118,6 +121,14 @@ func WithAPIVersion(apiVersion string) Option {
 func WithHTTPClient(client openaiclient.Doer) Option {
 	return func(opts *options) {
 		opts.httpClient = client
+	}
+}
+
+// WithHeaders adds custom headers to each provider request. Authentication and
+// content type remain controlled by the client and cannot be overridden here.
+func WithHeaders(headers map[string]string) Option {
+	return func(opts *options) {
+		opts.headers = maps.Clone(headers)
 	}
 }
 

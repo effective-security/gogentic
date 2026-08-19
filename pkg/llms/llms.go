@@ -28,6 +28,8 @@ const (
 	ProviderOpenAI ProviderType = "OPENAI"
 	// ProviderOpenAIBedrock is the type of provider.
 	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
+	// ProviderOpenRouter is the type of provider.
+	ProviderOpenRouter ProviderType = "OPENROUTER"
 	// ProviderPerplexity is the type of provider.
 	ProviderPerplexity ProviderType = "PERPLEXITY"
 )
@@ -114,6 +116,17 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityVision |
 		CapabilityPromptCaching |
 		CapabilityBatch |
+		CapabilityWebSearchTool,
+
+	ProviderOpenRouter: CapabilityText |
+		CapabilityJSONResponse |
+		CapabilityJSONSchema |
+		CapabilityJSONSchemaStrict |
+		CapabilityFunctionCalling |
+		CapabilityMultiToolCalling |
+		CapabilityToolCallStreaming |
+		CapabilitySystemPrompt |
+		CapabilityVision |
 		CapabilityWebSearchTool,
 
 	ProviderAnthropic: CapabilityText |

@@ -41,20 +41,21 @@ type OrgConfig struct {
 // The OpenAI field conveys the API style for both OpenAI proper and
 // OpenAI‑compatible APIs (Azure, Perplexity, Cloudflare, etc.).
 type ProviderConfig struct {
-	Name            string       `json:"name" yaml:"name"`
-	Token           string       `json:"token,omitempty" yaml:"token,omitempty"`
-	DefaultModel    string       `json:"default_model,omitempty" yaml:"default_model,omitempty"`
-	AvailableModels []string     `json:"available_models,omitempty" yaml:"available_models,omitempty"`
-	OpenAI          OpenAIConfig `json:"open_ai" yaml:"open_ai"`
+	Name            string            `json:"name" yaml:"name"`
+	Token           string            `json:"token,omitempty" yaml:"token,omitempty"`
+	DefaultModel    string            `json:"default_model,omitempty" yaml:"default_model,omitempty"`
+	AvailableModels []string          `json:"available_models,omitempty" yaml:"available_models,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
+	OpenAI          OpenAIConfig      `json:"open_ai" yaml:"open_ai"`
 }
 
 // OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType
-// selects the provider family: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY.
+// selects the provider family: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY.
 type OpenAIConfig struct {
 	BaseURL    string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	APIVersion string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
 	// APIType specifies the type of API to use:
-	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
+	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`
 	// Organization is the organization ID for the OpenAI API.
 	Organization string `json:"organization,omitempty" yaml:"organization,omitempty"`

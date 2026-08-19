@@ -3,6 +3,7 @@ package openaiclient
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ type ProviderType string
 const (
 	ProviderOpenAI        ProviderType = "OPENAI"
 	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
+	ProviderOpenRouter    ProviderType = "OPENROUTER"
 	ProviderAzure         ProviderType = "AZURE"
 	ProviderAzureAD       ProviderType = "AZURE_AD"
 	ProviderPerplexity    ProviderType = "PERPLEXITY"
@@ -54,6 +56,7 @@ type Client struct {
 	organization string
 	project      string
 	httpClient   Doer
+	headers      map[string]string
 
 	EmbeddingModel string
 	// required when APIType is APITypeAzure or APITypeAzureAD
@@ -73,7 +76,13 @@ type Client struct {
 // It is safe for concurrent use.
 func (c *Client) sdkClient() *openaisdk.Client {
 	c.sdkOnce.Do(func() {
-		opts := make([]option.RequestOption, 0, 5)
+		opts := make([]option.RequestOption, 0, 5+len(c.headers))
+		for key, value := range c.headers {
+			if isReservedRequestHeader(key) {
+				continue
+			}
+			opts = append(opts, option.WithHeader(key, value))
+		}
 		if c.token != "" {
 			opts = append(opts, option.WithAPIKey(c.token))
 		}
@@ -106,7 +115,7 @@ type Doer interface {
 // New returns a new OpenAI client.
 func New(provider ProviderType, model string, token string, baseURL string, organization, project string,
 	apiVersion string, httpClient Doer, embeddingModel string,
-	responseFormat *schema.ResponseFormat,
+	responseFormat *schema.ResponseFormat, headers map[string]string,
 	opts ...Option,
 ) (*Client, error) {
 	c := &Client{
@@ -119,6 +128,7 @@ func New(provider ProviderType, model string, token string, baseURL string, orga
 		Provider:             provider,
 		apiVersion:           apiVersion,
 		httpClient:           httpClient,
+		headers:              maps.Clone(headers),
 		ResponseFormat:       responseFormat,
 		supportsResponsesAPI: isResponsesAPI(provider, apiVersion),
 	}
@@ -150,7 +160,8 @@ func isResponsesAPI(provider ProviderType, apiVersion string) bool {
 		thresholdDate := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
 		return !versionDate.Before(thresholdDate)
 	}
-	return provider == ProviderOpenAI || provider == "OPEN_AI" || provider == ProviderOpenAIBedrock
+	return provider == ProviderOpenAI || provider == "OPEN_AI" ||
+		provider == ProviderOpenAIBedrock || provider == ProviderOpenRouter
 }
 
 func (c *Client) SupportsResponsesAPI() bool {
@@ -271,13 +282,24 @@ func IsBedrock(apiType ProviderType) bool {
 	return apiType == ProviderOpenAIBedrock
 }
 
+func isReservedRequestHeader(key string) bool {
+	return strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Content-Type")
+}
+
 func (c *Client) setHeaders(req *http.Request) {
+	for key, value := range c.headers {
+		if isReservedRequestHeader(key) {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.Provider == ProviderOpenAI ||
 		c.Provider == ProviderAzure ||
 		c.Provider == ProviderAzureAD ||
 		c.Provider == "OPEN_AI" ||
-		c.Provider == ProviderOpenAIBedrock {
+		c.Provider == ProviderOpenAIBedrock ||
+		c.Provider == ProviderOpenRouter {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	} else {
 		req.Header.Set("api-key", c.token)
