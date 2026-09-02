@@ -325,7 +325,7 @@ func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms
 				return nil, errors.Errorf("expected ToolCallResponse for tool role, got %T", mc.Parts[0])
 			}
 			fco := responses.ResponseInputItemFunctionCallOutputParam{
-				CallID: tr.ToolCallID,
+				CallID: param.NewOpt(tr.ToolCallID),
 				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: param.NewOpt(tr.Content)},
 			}
 			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{OfFunctionCallOutput: &fco})
@@ -344,7 +344,7 @@ func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms
 	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
 
 	effort := opts.ReasoningEffort
-	if strings.HasPrefix(o.client.Model, "gpt-5-pro") {
+	if strings.HasPrefix(o.client.Model, "gpt-5-pro") || strings.HasPrefix(o.client.Model, "gpt-5.6-sol") {
 		effort = llms.ReasoningEffortHigh
 	}
 
