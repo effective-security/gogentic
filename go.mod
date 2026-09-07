@@ -28,7 +28,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/moby/moby/api v1.55.0
 	github.com/nikolalohinski/gonja v1.5.3
-	github.com/openai/openai-go/v3 v3.54.0
+	github.com/openai/openai-go/v3 v3.56.0
 	github.com/pb33f/ordered-map/v2 v2.3.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
