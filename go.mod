@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/auth v0.23.2
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/anthropics/anthropic-sdk-go v1.69.0
+	github.com/anthropics/anthropic-sdk-go v1.70.1
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.2
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.2
