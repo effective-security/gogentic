@@ -9,9 +9,10 @@ import (
 type Option func(*options)
 
 type options struct {
-	modelID string
-	client  *bedrockruntime.Client
-	awsCfg  *aws.Config
+	modelID  string
+	converse bool
+	client   *bedrockruntime.Client
+	awsCfg   *aws.Config
 }
 
 // WithModel allows setting a custom modelId.
@@ -42,3 +43,7 @@ func WithConfig(cfg *aws.Config) Option {
 		opts.awsCfg = cfg
 	}
 }
+
+// WithConverse enables the optional portable Infer method through Bedrock Converse.
+// Legacy GenerateContent continues to use InvokeModel.
+func WithConverse() Option { return func(o *options) { o.converse = true } }

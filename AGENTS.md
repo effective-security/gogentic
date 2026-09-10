@@ -1,6 +1,19 @@
-# CODING GUIDELINES
+# RULES OF CONDUCT
 
-## Go Code
+## CODING GUIDELINES
+
+### Style
+
+- do not use long one liners for map or structs population, split key-value pairs on new lines for readability.
+- do not to use many hardcoded strings or integers, define const on top of the file or in the package.
+- memoize into variables, do not call functions with the same parameters more than once,
+  Bad example:
+
+```go
+  if len(r.Tools) > 0 {
+	ts := make([]any, 0, len(r.Tools))
+  }
+```
 
 ### Errors
 
@@ -9,6 +22,8 @@
   serialization, filesystem, generated helpers, etc.) using either:
   - `errors.WithMessage(err, "failed to initialize mcp client")`, for static context strings.
   - `errors.Wrapf(err, "invalid %s for asset %s", LabelOpenPorts, resourceID)`, when context includes dynamic values.
+- errors originated from internal errors type also should be wrapped in order to provide the stack.
+  For example, for `var ErrModelNotFound = errors.New("model not found")` do not simply `return ErrModelNotFound`.
 - Never ignore errors from serialization, DB calls, queue operations, cloud SDK
   calls, generated helpers, or filesystem operations.
 - Preserve sentinel errors used by callers. For example, invalid SQS payloads
@@ -37,6 +52,7 @@
 ### Tools
 
 - `make generate` : generate mocks on updated interfaces
+- `make fmt` : apply go fmt
 - `make test` : test entire project
 - `make lint` : final check
 
@@ -52,7 +68,7 @@
   same change, and re-check `Documentation/codemap.md` if you added, moved or
   renamed an exported symbol.
 
-# REPOSITORY MAP
+## REPOSITORY MAP
 
 Start here instead of grepping the tree.
 
@@ -103,6 +119,6 @@ Start here instead of grepping the tree.
 The full list with file references is in
 [`Documentation/codemap.md`](Documentation/codemap.md#invariants-to-preserve-when-editing).
 
-# Post Work
+## Post Work
 
 If new packages, methods, interfaces are added or changed, make sure the documentation stays up to date in sync with applied changes.

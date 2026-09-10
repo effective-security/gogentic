@@ -21,6 +21,7 @@ type ChatMessage = openaiclient.ChatMessage
 type LLM struct {
 	client       *openaiclient.Client
 	providerType llms.ProviderType
+	inferenceAPI InferenceAPI
 }
 
 const (
@@ -45,6 +46,7 @@ func New(opts ...Option) (*LLM, error) {
 	return &LLM{
 		client:       c,
 		providerType: popts.provider,
+		inferenceAPI: popts.inferenceAPI,
 	}, err
 }
 
