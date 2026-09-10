@@ -38,6 +38,7 @@ func WithModelFilter(filter ModelFilterFunc) Option {
 // Option configures Options.
 type Option func(*Options)
 
+// NewOptions returns Options with the given options applied.
 func NewOptions(opts ...Option) *Options {
 	o := Options{}
 	for _, opt := range opts {
@@ -46,6 +47,9 @@ func NewOptions(opts ...Option) *Options {
 	return &o
 }
 
+// WithAWSConfigFactory supplies the AWS configuration used by the Bedrock-based
+// providers (BEDROCK, ANTHROPIC_BEDROCK, OPENAI_BEDROCK). It is called once per
+// model construction.
 func WithAWSConfigFactory(factory func() (*aws.Config, error)) Option {
 	return func(opts *Options) {
 		opts.AwsConfigFactory = factory

@@ -32,12 +32,16 @@ type ITool interface {
 	Call(context.Context, string) (string, error)
 }
 
+// Callback receives tool execution events. Tool calls run in parallel
+// goroutines, so implementations must be safe for concurrent use.
 type Callback interface {
 	OnToolStart(ctx context.Context, tool ITool, assistantName, input string)
 	OnToolEnd(ctx context.Context, tool ITool, assistantName, input string, output string)
 	OnToolError(ctx context.Context, tool ITool, assistantName, input string, err error)
 }
 
+// Tool is an ITool with a typed Run, so the same implementation is usable from
+// Go code and from an LLM.
 type Tool[I any, O any] interface {
 	ITool
 	Run(context.Context, *I) (*O, error)
@@ -52,18 +56,24 @@ type IMCPTool interface {
 	RegisterMCP(registrator McpServerRegistrator) error
 }
 
+// MCPTool is an IMCPTool whose MCP handler returns rich content such as images
+// or embedded resources.
 type MCPTool[I any] interface {
 	IMCPTool
 	RunMCP(context.Context, *I) (*mcp.ToolResponse, error)
 }
 
+// Description is a compact, prompt-friendly summary of a tool.
 type Description struct {
 	Name        string `json:"Name" yaml:"Name"`
 	Description string `json:"Description" yaml:"Description"`
 }
 
+// Descriptions is a renderable collection of tool descriptions.
 type Descriptions []Description
 
+// ToMarkdown renders the descriptions as a markdown list, with each
+// description collapsed to a single line.
 func (d Descriptions) ToMarkdown() string {
 	var ts strings.Builder
 	for _, tool := range d {
@@ -75,6 +85,8 @@ func (d Descriptions) ToMarkdown() string {
 	return ts.String()
 }
 
+// Render renders the descriptions in the requested format; markdown uses
+// ToMarkdown, other formats delegate to llmutils.RenderToString.
 func (d Descriptions) Render(format llmutils.RenderFormat) string {
 	if format == llmutils.RenderFormatMarkdown {
 		return d.ToMarkdown()
@@ -82,6 +94,8 @@ func (d Descriptions) Render(format llmutils.RenderFormat) string {
 	return llmutils.RenderToString(format, d)
 }
 
+// GetDescriptions returns the name and description of each tool, for embedding
+// a tool catalog in a prompt.
 func GetDescriptions(list ...ITool) Descriptions {
 	var d Descriptions
 	for _, tool := range list {

@@ -58,6 +58,7 @@ type inMemory struct {
 	tenants map[string]*tenant
 }
 
+// NewMemoryStore returns a process-local MessageStore, locked per tenant.
 func NewMemoryStore() MessageStore {
 	return &inMemory{
 		tenants: make(map[string]*tenant),
@@ -221,6 +222,8 @@ func (m *inMemory) GetChatInfo(ctx context.Context, id string, withMessages bool
 	return res, nil
 }
 
+// NewMemoryStoreManager returns a manager for a store created by
+// NewMemoryStore.
 func NewMemoryStoreManager(store MessageStore) MessageStoreManager {
 	if mgr, ok := store.(MessageStoreManager); ok {
 		return mgr

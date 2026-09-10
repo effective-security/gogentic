@@ -42,10 +42,13 @@ type Fanout struct {
 	callbacks []assistants.Callback
 }
 
+// NewFanout returns a handler that forwards every event to the given handlers.
 func NewFanout(callbacks ...assistants.Callback) *Fanout {
 	return &Fanout{callbacks: callbacks}
 }
 
+// Add appends another handler to receive events. Not safe to call concurrently
+// with event delivery.
 func (l *Fanout) Add(callback assistants.Callback) {
 	l.callbacks = append(l.callbacks, callback)
 }
@@ -115,6 +118,9 @@ type Noop struct {
 	onProgress func(ctx context.Context, assistant assistants.IAssistant, title, message string)
 }
 
+// NewNoop returns a handler that ignores every event. Embed *Noop in a custom
+// handler to implement only the events you care about, or use WithProgress for
+// progress reporting without tracing.
 func NewNoop() *Noop {
 	return &Noop{}
 }
@@ -145,6 +151,9 @@ func (l *Noop) OnProgress(ctx context.Context, agent assistants.IAssistant, titl
 		l.onProgress(ctx, agent, title, message)
 	}
 }
+
+// WithProgress installs a progress callback, so a Noop handler can report
+// progress without tracing anything else.
 func (l *Noop) WithProgress(cb assistants.OnProgressFunc) {
 	l.onProgress = cb
 }
@@ -157,6 +166,8 @@ type Printer struct {
 	lock sync.Mutex
 }
 
+// NewPrinter returns a handler that writes a human-readable trace to out.
+// ModeVerbose adds full message payloads and assistant output.
 func NewPrinter(out io.Writer, mode Mode) *Printer {
 	return &Printer{Out: out, Mode: mode}
 }
@@ -249,6 +260,8 @@ type PackageLogger struct {
 	logger *xlog.PackageLogger
 }
 
+// NewPackageLogger returns a handler that emits structured key/value log
+// entries through the given package logger.
 func NewPackageLogger(logger *xlog.PackageLogger) *PackageLogger {
 	return &PackageLogger{logger: logger}
 }

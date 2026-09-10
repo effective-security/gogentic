@@ -54,6 +54,8 @@ type Factory interface {
 	Skills(agent string, tags ...string) skills.Skills
 }
 
+// ModelOptions selects which model GetModel should return. See Factory.GetModel
+// for the resolution rules.
 type ModelOptions struct {
 	// ProviderType specifies the provider type to use.
 	// If not specified, a matching provider will be used.
@@ -189,6 +191,12 @@ func (f *factory) WithModelFilter(filter ModelFilterFunc) Factory {
 	return newf
 }
 
+// CreateLLM builds a provider client from its configuration, choosing the first
+// of preferredModels that the provider offers and falling back to its default
+// model. The provider family is selected by cfg.OpenAI.APIType; an unknown type
+// returns an error.
+//
+// Assign to the NewLLM variable to substitute this in tests.
 func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (llms.Model, error) {
 	provType := strings.ToUpper(cfg.OpenAI.APIType)
 	switch provType {

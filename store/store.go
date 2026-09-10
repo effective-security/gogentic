@@ -12,6 +12,8 @@ import (
 
 var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "store")
 
+// ChatInfo is the stored metadata for one chat, optionally including its
+// messages.
 type ChatInfo struct {
 	UserID    string         `json:"user_id"`
 	ChatID    string         `json:"chat_id"`
@@ -46,11 +48,15 @@ type MessageStore interface {
 	GetChatInfo(ctx context.Context, id string, withMessages bool) (*ChatInfo, error)
 }
 
+// MessageStoreManager provides housekeeping across tenants, for retention jobs.
 type MessageStoreManager interface {
 	ListTenants(ctx context.Context) ([]string, error)
 	Cleanup(ctx context.Context, tenantID string, olderThan time.Duration) (uint32, error)
 }
 
+// PopulateMemoryStore returns a new in-memory store seeded with the current
+// chat's messages from store, which may be nil. Use it for a speculative run
+// that must not modify durable history.
 func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore, error) {
 	s := NewMemoryStore()
 	if store != nil {
@@ -65,6 +71,8 @@ func PopulateMemoryStore(ctx context.Context, store MessageStore) (MessageStore,
 	return s, nil
 }
 
+// Clone returns a copy of the chat metadata WITHOUT its messages, for returning
+// chat summaries without copying a long transcript.
 func (c *ChatInfo) Clone() *ChatInfo {
 	clone := &ChatInfo{
 		UserID:    c.UserID,
@@ -86,6 +94,9 @@ func (c *ChatInfo) Clone() *ChatInfo {
 	return clone
 }
 
+// GetTenantAndChatID derives the store keys from the chatmodel.ChatContext on
+// ctx. The tenant is "orgID:userID", or just the user ID when no org is set.
+// Returns chatmodel.ErrInvalidChatContext when ctx carries no chat context.
 func GetTenantAndChatID(ctx context.Context) (string, string, error) {
 	chatCtx := chatmodel.GetChatContext(ctx)
 	if chatCtx == nil {

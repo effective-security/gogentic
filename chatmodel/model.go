@@ -32,6 +32,8 @@ type OutputParser[T any] interface {
 	//ParseWithPrompt(text string, prompt llms.PromptValue) (*T, error)
 }
 
+// Stringer is the subset of fmt.Stringer used by Stringify and ToBytes to
+// render a value for the LLM.
 type Stringer interface {
 	String() string
 }

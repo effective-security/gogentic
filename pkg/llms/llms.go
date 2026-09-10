@@ -183,10 +183,18 @@ var providerCapabilities = map[ProviderType]Capability{
 	ProviderAzureAD: CapabilityText, // Proxy passthrough
 }
 
+// ProviderCapabilities returns the capability mask for a provider type, or
+// zero for an unknown type.
 func ProviderCapabilities(pt ProviderType) Capability {
 	return providerCapabilities[pt]
 }
 
+// Supports reports whether the provider supports ANY of the requested
+// capabilities. Passing an OR of several bits therefore does not mean "all of
+// them": for an all-of check use llmfactory.ModelOptions.RequiredCapabilities,
+// or compare the mask directly:
+//
+//	llms.ProviderCapabilities(pt)&required == required
 func (p ProviderType) Supports(cap Capability) bool {
 	return ProviderCapabilities(p)&cap != 0
 }

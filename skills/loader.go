@@ -19,6 +19,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Loader gives access to the skills discovered on the filesystem or in a tar
+// archive, grouped by agent. Obtain one with NewLoader, or via
+// llmfactory.Factory.Skills when skills are declared in the factory config.
 type Loader interface {
 	// ClientName returns the name of the client that owns the skills.
 	ClientName() string
@@ -74,6 +77,7 @@ type Config struct {
 	Agents map[string]*AgentConfig `json:"agents,omitempty" yaml:"agents,omitempty"`
 }
 
+// AgentConfig overrides the loader configuration for a single agent.
 type AgentConfig struct {
 	// Disabled specifies to skip the agent to load skills.
 	Disabled bool `json:"disabled,omitempty" yaml:"disabled,omitempty"`
@@ -82,6 +86,7 @@ type AgentConfig struct {
 	Paths []string `json:"paths,omitempty" yaml:"paths,omitempty"`
 }
 
+// LoadConfig reads a loader Config from a YAML or JSON file.
 func LoadConfig(path string) (*Config, error) {
 	var cfg Config
 	if err := configloader.Unmarshal(path, &cfg); err != nil {

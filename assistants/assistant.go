@@ -138,6 +138,8 @@ func (a *Assistant[O]) Description() string {
 	return a.description
 }
 
+// GetTools returns the tools registered with the assistant, in registration
+// order.
 func (a *Assistant[O]) GetTools() []tools.ITool {
 	return a.tools
 }
@@ -198,23 +200,34 @@ func (a *Assistant[O]) WithSkills(skillsList skills.Skills) *Assistant[O] {
 	return a.WithTools(tool)
 }
 
+// GetSkills returns the skills attached with WithSkills.
 func (a *Assistant[O]) GetSkills() skills.Skills {
 	return a.skills
 }
 
+// WithSkillsPromptProvider replaces DefaultPromptProvider for rendering the
+// skills catalog into the system prompt. Because the catalog is rendered once
+// and cached, call this before the first run.
 func (a *Assistant[O]) WithSkillsPromptProvider(cb ProvideSkillsPromptFunc) *Assistant[O] {
 	a.onSkills = cb
 	return a
 }
 
+// FormatPrompt renders the system prompt template with the configured prompt
+// input merged with the supplied values, where the supplied values win.
 func (a *Assistant[O]) FormatPrompt(promptInputs map[string]any) (llms.PromptValue, error) {
 	return a.sysprompt.FormatPrompt(llmutils.MergeInputs(a.cfg.PromptInput, promptInputs))
 }
 
+// GetPromptInputVariables returns the variable names the system prompt
+// requires. Every one must be supplied, because templates are rendered with
+// missingkey=error.
 func (a *Assistant[O]) GetPromptInputVariables() []string {
 	return a.sysprompt.GetInputVariables()
 }
 
+// WithPromptInputProvider registers a callback that computes additional prompt
+// values from the input on every run, merged over the static ones.
 func (a *Assistant[O]) WithPromptInputProvider(cb ProvidePromptInputsFunc) {
 	a.onPrompt = cb
 }
@@ -271,12 +284,20 @@ func (a *Assistant[O]) GetSystemPrompt(ctx context.Context, input string, prompt
 	return systemPrompt, nil
 }
 
+// RegisterMCP registers the assistant as an MCP prompt named Name(), taking a
+// chatmodel.MCPInputRequest and answering via CallMCP.
 func (a *Assistant[O]) RegisterMCP(registrator McpServerRegistrator) error {
 	return registrator.RegisterPrompt(a.Name(), a.Description(), func(ctx context.Context, input chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
 		return a.CallMCP(ctx, input)
 	})
 }
 
+// CallMCP runs the assistant for an MCP prompt request. A non-empty
+// input.ChatID is applied to the ChatContext on ctx, so an MCP client can
+// continue an existing conversation. Output parsing is skipped and each choice
+// is returned as an assistant prompt message.
+//
+// ctx must already carry a chatmodel.ChatContext.
 func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequest) (*mcp.PromptResponse, error) {
 	var err error
 	if input.ChatID != "" {
@@ -303,11 +324,23 @@ func (a *Assistant[O]) CallMCP(ctx context.Context, input chatmodel.MCPInputRequ
 	return mcpres, nil
 }
 
+// Call runs the assistant and validates the output against O, discarding the
+// parsed value. Use Run to obtain the typed result.
 func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*Response, error) {
 	var output O
 	return a.Run(ctx, input, &output)
 }
 
+// Run executes the assistant: it assembles the system prompt, resolves a model
+// when none is configured, then repeatedly calls the LLM and executes the tools
+// it requests until no tool is called. When optionalOutputType is non-nil the
+// final content is parsed into it; passing nil skips parsing, which is what
+// prose assistants want.
+//
+// ctx must carry a chatmodel.ChatContext, otherwise
+// chatmodel.ErrInvalidChatContext is returned. A response that fails to parse
+// into O is retried once with tools disabled before the error is returned.
+// Exceeding MaxToolCalls, MaxMessages or the content-size limit fails the run.
 func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error) {
 	// create a per call config
 	cfg := a.GetCallConfig(input.Options...)

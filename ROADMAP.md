@@ -1,56 +1,80 @@
 # gogentic Roadmap
 
-This roadmap outlines the current state, missing features, and actionable next steps for evolving gogentic into a modern, production-ready agentic and multi-assistant chat platform.
+Where the library stands today, and what is still missing. See
+[Documentation/](Documentation/README.md) for how the existing pieces work.
 
-## ✅ Current Capabilities
+## ✅ Current capabilities
 
-- Core agent/assistant abstractions (single-agent flows)
-- Extensible tool system with schema generation and MCP integration
-- LLM model factory (multi-provider support)
-- In-memory and Redis chat/message storage
-- Pluggable encoding (JSON, YAML, TOML, dummy)
-- Real-time and local transport via MCP (SSE, local)
-- Utilities for prompt formatting, message handling, and output cleaning
-- Mocks for assistants, tools, and LLMs (testing)
-- Comprehensive package-level documentation and coding guidelines
+- Agent loop with parallel tool calling, per-run limits, empty-response and
+  output-parse retries — [Assistants](Documentation/assistants.md)
+- Typed, schema-validated outputs; provider-native response formats with a
+  prompt-instruction fallback — [Structured Output](Documentation/structured-output.md)
+- Tool system with JSON Schema parameters generated from Go types, and a
+  recoverable tool-error contract — [Tools](Documentation/tools.md)
+- Multi-agent delegation: any assistant can be wrapped as a tool, with
+  callback propagation and usage roll-up — [Orchestration](Documentation/orchestration.md)
+- Multi-provider factory (OpenAI, Anthropic, Azure, Bedrock, Google AI,
+  OpenRouter, Perplexity, Cloudflare) with per-assistant and per-organization
+  model routing, capability filtering and a model allow/deny hook —
+  [LLM Factory](Documentation/llm-factory.md)
+- Provider-native prompt caching and asynchronous Batch APIs —
+  [LLM Providers](Documentation/llms.md)
+- Agent Skills (`SKILL.md`) with progressive disclosure and folder/tar
+  discovery — [Skills](Documentation/skills.md)
+- MCP server and client over stdio, HTTP, SSE and in-process transports —
+  [MCP](Documentation/mcp.md)
+- Message history in memory or Redis, multi-tenant by org + user + chat —
+  [Memory](Documentation/memory.md)
+- Prompt templates (Go template, Jinja2, f-string), chat prompts, few-shot —
+  [Prompts](Documentation/prompts.md)
+- Callbacks, per-run transcripts and stats, and metric descriptors for tokens,
+  bytes, tool outcomes and latencies — [Observability](Documentation/observability.md)
+- Generated mocks for assistants, tools, models and the factory
 
-## ⚠️ Key Areas for Enhancement
+## ⚠️ Key areas for enhancement
 
-### Multi-Assistant Orchestration
+### Orchestration
 
-- [ ] Implement a `MultiAssistantOrchestrator` to:
-  - Register and manage multiple assistants
-  - Route/dispatch user queries to the appropriate assistant(s) based on context, intent, or user selection
-  - Aggregate or coordinate responses from multiple assistants
-  - Support tool-calling across assistants
+Delegation works today through `assistants.AssistantTool`, driven by the
+supervisor's model. Still missing:
 
-### Conversation & Session Management
+- [ ] A first-class router/supervisor helper, so intent-based dispatch does not
+      have to be hand-written per application
+- [ ] Response aggregation across several assistants invoked for one request
+- [ ] Declarative, multi-step workflows (planner / task graph) rather than
+      model-driven chaining only
 
-- [ ] Add a `SessionManager` abstraction for:
-  - User/session lifecycle and authentication
-  - Session timeouts, reconnections, and multi-device support
-  - Persistent context across sessions
+### Conversation & session management
 
-### Advanced Agentic Features
+- [ ] A `SessionManager` abstraction for session lifecycle and authentication
+- [ ] Session timeouts, reconnection and multi-device support
+- [ ] History compaction (summarize-and-replace) as a reusable primitive rather
+      than application code
 
-- [ ] Integrate with a vector DB or retrieval system for context-aware responses (RAG)
-- [ ] Add a planner or workflow engine for multi-step reasoning and task chaining
-- [ ] Support agent/assistant "personas" or profiles
+### Retrieval
 
-### Observability & Monitoring
+- [ ] Vector store / retriever interfaces and a RAG-oriented prompter
+      (`Embedder` exists on providers that support embeddings, but there is no
+      retrieval layer above it)
 
-- [ ] Add Prometheus metrics and OpenTelemetry tracing
-- [ ] (Optional) Build a simple admin dashboard for monitoring agent activity and health
+### Observability
 
-### Security & Rate Limiting
+- [ ] OpenTelemetry tracing spans across assistant, LLM and tool boundaries
+      (metric descriptors already exist in `pkg/metricskey`)
 
-- [ ] Add middleware for rate limiting, input validation, and abuse prevention
+### Reliability & safety
 
-## 🛠️ How to Contribute
+- [ ] Retry/backoff policy for transient provider errors, above the current
+      empty-response and parse retries
+- [ ] Rate limiting and input-validation middleware
+- [ ] Enforcement of a skill's `allowed-tools` (currently metadata only)
 
-- See [AGENTS.md](AGENTS.md) and README for coding/testing guidelines
-- Open issues or PRs for any of the above roadmap items
+## 🛠️ How to contribute
 
----
+- Read [AGENTS.md](AGENTS.md) for coding, error-handling and testing conventions
+- Read [Documentation/codemap.md](Documentation/codemap.md) to find the right
+  file, and its invariants list before changing the agent loop
+- Run `make generate && make test && make lint` before opening a PR
 
-**Prioritize based on your use case! If you need help designing or implementing any of these features, open an issue or ask for guidance.**
+Prioritize based on your use case — open an issue if you want help designing
+any of the above.

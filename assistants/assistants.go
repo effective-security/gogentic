@@ -25,6 +25,9 @@ type McpServerRegistrator interface {
 	RegisterPrompt(name string, description string, handler any) error
 }
 
+// IAssistant is the interface every assistant implements. It is what tools,
+// callbacks and orchestrating assistants depend on, so a hand-written flow can
+// be substituted for *Assistant anywhere.
 type IAssistant interface {
 	// Name returns the name of the Assistant.
 	Name() string
@@ -36,7 +39,7 @@ type IAssistant interface {
 	// GetSkills returns the skills that the Assistant can activate.
 	GetSkills() skills.Skills
 
-	// FormatPrompter returns the format prompter for the Assistant.
+	// FormatPrompt renders the Assistant's system prompt with the given values.
 	FormatPrompt(values map[string]any) (llms.PromptValue, error)
 	// GetPromptInputVariables returns the input variables for the prompt.
 	GetPromptInputVariables() []string
@@ -58,6 +61,8 @@ type Response struct {
 	Usage llms.UsageStats
 }
 
+// GetUsage returns the usage stats, or nil for a nil Response. Safe to call on
+// the result of a failed call.
 func (c *Response) GetUsage() *llms.UsageStats {
 	if c == nil {
 		return nil
@@ -65,6 +70,8 @@ func (c *Response) GetUsage() *llms.UsageStats {
 	return &c.Usage
 }
 
+// CallInput is the per-call input to an assistant: the user turn plus optional
+// prompt values, config overrides, extra messages and progress reporting.
 type CallInput struct {
 	// Input is the input to the assistant.
 	Input string
@@ -108,6 +115,8 @@ type ProvidePromptInputsFunc func(ctx context.Context, input string) (map[string
 // ProvideSkillsPromptFunc is a function that provides a prompt for the skills.
 type ProvideSkillsPromptFunc func(ctx context.Context, skillList skills.Skills) (string, error)
 
+// TypeableAssistant is an IAssistant with a known output type. Run populates
+// the supplied output value; passing nil skips output parsing entirely.
 type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	IAssistant
 	// Run executes the assistant with the given input and prompt inputs.
@@ -115,6 +124,10 @@ type TypeableAssistant[O chatmodel.ContentProvider] interface {
 	Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error)
 }
 
+// Callback receives every assistant, LLM and tool event of a run. The handler
+// is propagated into nested assistants invoked through AssistantTool, and tool
+// events are delivered from parallel goroutines, so implementations must be
+// safe for concurrent use. See the callbacks package for implementations.
 type Callback interface {
 	tools.Callback
 	OnAssistantStart(ctx context.Context, a IAssistant, input string)
@@ -136,14 +149,20 @@ type IMCPAssistant interface {
 	CallMCP(context.Context, chatmodel.MCPInputRequest) (*mcp.PromptResponse, error)
 }
 
+// Description is a compact, prompt-friendly summary of an assistant, optionally
+// including its tools. Use it to tell a supervising assistant what specialists
+// are available.
 type Description struct {
 	Name        string              `json:"Name" yaml:"Name"`
 	Description string              `json:"Description" yaml:"Description"`
 	Tools       []tools.Description `json:"Tools,omitempty" yaml:"Tools,omitempty"`
 }
 
+// Descriptions is a renderable collection of assistant descriptions.
 type Descriptions []Description
 
+// ToMarkdown renders the descriptions as a markdown list, with each
+// description collapsed to a single line.
 func (d Descriptions) ToMarkdown() string {
 	var ts strings.Builder
 	for _, assis := range d {
@@ -164,6 +183,8 @@ func (d Descriptions) ToMarkdown() string {
 	return ts.String()
 }
 
+// Render renders the descriptions in the requested format; markdown uses
+// ToMarkdown, other formats delegate to llmutils.RenderToString.
 func (d Descriptions) Render(format llmutils.RenderFormat) string {
 	if format == llmutils.RenderFormatMarkdown {
 		return d.ToMarkdown()
@@ -171,6 +192,8 @@ func (d Descriptions) Render(format llmutils.RenderFormat) string {
 	return llmutils.RenderToString(format, d)
 }
 
+// GetDescriptions returns the name and description of each assistant, without
+// their tools.
 func GetDescriptions(list ...IAssistant) Descriptions {
 	var d Descriptions
 	for _, item := range list {
@@ -184,6 +207,9 @@ func GetDescriptions(list ...IAssistant) Descriptions {
 	return d
 }
 
+// GetDescriptionsWithTools returns the name and description of each assistant
+// together with its tools, for prompts where the tool set informs the routing
+// decision.
 func GetDescriptionsWithTools(list ...IAssistant) Descriptions {
 	var d Descriptions
 	for _, item := range list {
@@ -203,6 +229,8 @@ func GetDescriptionsWithTools(list ...IAssistant) Descriptions {
 	return d
 }
 
+// MapAssistants indexes the assistants by Name for dispatching by name in
+// code-driven routing. Returns nil for an empty list.
 func MapAssistants(list ...IAssistant) map[string]IAssistant {
 	if len(list) == 0 {
 		return nil
@@ -214,6 +242,8 @@ func MapAssistants(list ...IAssistant) map[string]IAssistant {
 	return m
 }
 
+// String returns the response content, joining multiple choices with a blank
+// line.
 func (r *Response) String() string {
 	if r == nil {
 		return ""
@@ -232,6 +262,8 @@ func (r *Response) String() string {
 	return b.String()
 }
 
+// NewResponse builds a Response with a single choice holding the stringified
+// value. Useful for assistants that implement IAssistant themselves.
 func NewResponse(val any) *Response {
 	// Create a new ContentResponse with the given idRes1
 	return &Response{
