@@ -27,6 +27,8 @@ type MCPInputRequest struct {
 	Input string `json:"input" yaml:"input" jsonschema:"title=Input,description=The message sent by the user to the assistant."`
 }
 
+// ParseInput decodes the request from raw JSON, tolerating the prose and code
+// fences models add. Satisfies InputParser.
 func (o *MCPInputRequest) ParseInput(input string) error {
 	err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), o)
 	if err != nil {
@@ -35,6 +37,7 @@ func (o *MCPInputRequest) ParseInput(input string) error {
 	return nil
 }
 
+// JSONSchemaExtend adds the title and description to the generated schema.
 func (o MCPInputRequest) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Title = "MCP Input Request"
 	schema.Description = "The input request from the user to the AI assistant."
@@ -46,6 +49,7 @@ type InputRequest struct {
 	Input string `json:"input" yaml:"input" jsonschema:"title=Input,description=The message sent by the user to the assistant."`
 }
 
+// JSONSchemaExtend adds the title and description to the generated schema.
 func (o InputRequest) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Title = "Input Request"
 	schema.Description = "The input request from the user to the AI assistant."
@@ -56,6 +60,8 @@ func (o InputRequest) GetContent() string {
 	return o.Input
 }
 
+// ParseInput decodes the request from raw JSON, tolerating the prose and code
+// fences models add. Satisfies InputParser.
 func (o *InputRequest) ParseInput(input string) error {
 	err := json.Unmarshal(llmutils.CleanJSON([]byte(input)), o)
 	if err != nil {
@@ -105,14 +111,18 @@ type IBaseResult interface {
 	SetReasoning(string)
 }
 
+// SetConfidence sets the confidence level. Satisfies IBaseResult.
 func (b *BaseClarificationResult) SetConfidence(confidence string) {
 	b.Confidence = confidence
 }
 
+// SetClarification sets the clarification. AssistantTool uses this to hand a
+// failure back to a calling assistant as recoverable data rather than an error.
 func (b *BaseClarificationResult) SetClarification(clarification string) {
 	b.Clarification = clarification
 }
 
+// SetReasoning sets the reasoning. Satisfies IBaseResult.
 func (b *BaseClarificationResult) SetReasoning(reasoning string) {
 	b.Reasoning = reasoning
 }

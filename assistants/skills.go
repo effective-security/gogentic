@@ -43,6 +43,10 @@ Available Skills:
 Use exact skill names when calling the ` + "`{{.ActivateSkillToolName}}`" + ` tool.
 `
 
+// DefaultPromptProvider renders the skills catalog appended to an assistant's
+// system prompt: the name and description of each skill, plus instructions on
+// when to activate one via the activate_skill tool. Override it per assistant
+// with Assistant.WithSkillsPromptProvider.
 func DefaultPromptProvider(ctx context.Context, list skills.Skills) (string, error) {
 	return prompts.RenderTemplate(promptTemplate, prompts.TemplateFormatGoTemplate, map[string]any{
 		"ActivateSkillToolName": skills.ActivateSkillToolName,

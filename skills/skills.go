@@ -49,8 +49,10 @@ type Skill struct {
 	resources map[string][]byte
 }
 
+// Skills is a list of parsed skills, ordered by name when returned by a Loader.
 type Skills []*Skill
 
+// Names returns the skill names.
 func (s Skills) Names() []string {
 	if len(s) == 0 {
 		return nil
@@ -62,6 +64,8 @@ func (s Skills) Names() []string {
 	return names
 }
 
+// NamesEnum returns the skill names as a JSON Schema enum value, so the model
+// receives concrete choices for the activate_skill tool's name parameter.
 func (s Skills) NamesEnum() []any {
 	if len(s) == 0 {
 		return nil
@@ -127,6 +131,9 @@ func (s *Skill) ListResources() []string {
 	return files
 }
 
+// LoadResources reads and caches every file returned by ListResources, keyed by
+// its relative path. Unreadable files are skipped. Resources are for your own
+// tools to consume; they are not returned by the activate_skill tool.
 func (s *Skill) LoadResources() map[string][]byte {
 	if s.resources != nil {
 		return s.resources

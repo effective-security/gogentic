@@ -22,6 +22,9 @@ type ActivateSkillRequest struct {
 	Name string `json:"name" jsonschema:"required,title=Name,description=The name of the skill to activate."`
 }
 
+// ActivateSkillResponse is the successful tool result: the skill's full
+// instructions plus the directory they were loaded from, so file-reading tools
+// can resolve bundled resource paths.
 type ActivateSkillResponse struct {
 	Skill        string `json:"skill,omitempty"`
 	Instructions string `json:"instructions,omitempty"`
@@ -29,9 +32,14 @@ type ActivateSkillResponse struct {
 	//Resources    []string `json:"resources,omitempty"`
 }
 
+// ActivateSkillErrorResponse is returned instead of an error when the named
+// skill does not exist, so the model can retry with a valid name.
 type ActivateSkillErrorResponse struct {
 	Error ActivateSkillError `json:"error,omitempty"`
 }
+
+// ActivateSkillError describes why activation failed and lists the names that
+// would have worked.
 type ActivateSkillError struct {
 	Code            string `json:"code,omitempty"`
 	Message         string `json:"message,omitempty"`
@@ -76,14 +84,18 @@ func NewActivateSkillTool(skills Skills) (*ActivateSkillTool, error) {
 	return t, nil
 }
 
+// Name returns ActivateSkillToolName.
 func (t *ActivateSkillTool) Name() string {
 	return ActivateSkillToolName
 }
 
+// Description returns the prompt-facing description of the tool.
 func (t *ActivateSkillTool) Description() string {
 	return "Load the skill by name when the user's request matches a skill description, then follow the instructions."
 }
 
+// Parameters returns the input schema, whose name property enumerates the
+// available skill names.
 func (t *ActivateSkillTool) Parameters() *jsonschema.Schema {
 	return t.funcParams
 }

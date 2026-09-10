@@ -13,8 +13,6 @@
 //
 // Example: Generate format instructions and parse JSON output
 //
-//	package encoding
-//
 //	// Define the expected shape of the model response.
 //	type Weather struct {
 //		City string `json:"city" jsonschema:"description=City name"`
@@ -41,8 +39,10 @@
 //
 // Example: Switch to YAML or TOML while keeping the same Go type
 //
-//	_ = func() error {
-//		_, err := NewTypedOutputParser(Weather{}, ModeYAML) // or ModeTOML
-//		return err
-//	}
+//	parser, err = NewTypedOutputParser(Weather{}, ModeYAML) // or ModeTOML
+//
+// Assistants construct a TypedOutputParser for their output type
+// automatically, so the usual way to select a mode is assistants.WithMode.
+// The mode also decides whether the schema is enforced by the provider or
+// described in the prompt: see Documentation/structured-output.md.
 package encoding

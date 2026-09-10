@@ -156,6 +156,11 @@ func NewFromContext(ctx context.Context) context.Context {
 	return WithChatContext(context.Background(), chatCtx)
 }
 
+// SetChatID updates the chat ID on the ChatContext already carried by ctx, so
+// an inbound request can continue an existing conversation. Returns
+// ErrInvalidChatContext when ctx carries no chat context.
+//
+// Note that this mutates the shared ChatContext rather than deriving a new one.
 func SetChatID(ctx context.Context, chatID string) (context.Context, error) {
 	if v, ok := ctx.Value(keyChatContext).(ChatContext); ok {
 		v.SetChatID(chatID)

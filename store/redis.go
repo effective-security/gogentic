@@ -32,6 +32,8 @@ type redisStore struct {
 	mu     sync.RWMutex // Protects concurrent access to chat metadata operations
 }
 
+// NewRedisStore returns a Redis-backed MessageStore. All keys are namespaced
+// under prefix; see the key layout documented at the top of this file.
 func NewRedisStore(client *redis.Client, prefix string) MessageStore {
 	return &redisStore{
 		client: client,
@@ -293,6 +295,8 @@ func (m *redisStore) getChatInfo(ctx context.Context, id string) (*ChatInfo, err
 	return chat, nil
 }
 
+// NewRedisStoreManager returns a manager over the same keyspace as
+// NewRedisStore.
 func NewRedisStoreManager(client *redis.Client, prefix string) MessageStoreManager {
 	return &redisStore{
 		client: client,

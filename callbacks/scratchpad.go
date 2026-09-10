@@ -20,8 +20,13 @@ import (
 // ensure ScratchpadCallback implements assistants.Callback
 var _ assistants.Callback = (*Scratchpad)(nil)
 
+// TimeNowFn is the clock used for run timing. Override it in tests for
+// deterministic durations.
 var TimeNowFn = time.Now
 
+// RunStats summarizes one run: duration, token and byte usage, and the
+// assistant and tool call counts, including failures and calls to tools that
+// were not registered. Usage covers nested assistants as well.
 type RunStats struct {
 	ChatID string
 	RunID  string
@@ -45,6 +50,8 @@ type Scratchpad struct {
 	lock sync.Mutex
 }
 
+// NewScratchpad returns a handler that accumulates a transcript and RunStats
+// per run, keyed by chat ID. Bracket a run with StartRun and EndRun.
 func NewScratchpad(mode Mode) *Scratchpad {
 	return &Scratchpad{
 		runs: make(map[string]*run),
@@ -52,6 +59,8 @@ func NewScratchpad(mode Mode) *Scratchpad {
 	}
 }
 
+// StartRun begins recording for the chat on ctx. It is a no-op when ctx carries
+// no chatmodel.ChatContext.
 func (l *Scratchpad) StartRun(ctx context.Context) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
@@ -75,6 +84,8 @@ func (l *Scratchpad) StartRun(ctx context.Context) {
 	l.runs[chatID].printEntry(fmt.Sprintf("=== Run Started: %s ===", chatID))
 }
 
+// EndRun stops recording, appends the summary, and returns the stats and the
+// transcript. Returns (nil, nil) when no run is active for the chat on ctx.
 func (l *Scratchpad) EndRun(ctx context.Context) (*RunStats, []byte) {
 	run := l.getRun(ctx)
 	if run == nil {

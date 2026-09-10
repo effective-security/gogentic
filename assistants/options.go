@@ -21,6 +21,9 @@ const (
 	DefaultMaxRetries     = 2
 )
 
+// Config holds an assistant's settings: the model and its call parameters, the
+// tool set, the output mode and the history behavior. It is copied per call by
+// Apply, so per-call options never leak into subsequent calls.
 type Config struct {
 	// Model is the model to use in an LLM call.
 	Model     llms.Model
@@ -117,6 +120,8 @@ type Config struct {
 	PromptCachePolicy *llms.PromptCachePolicy
 }
 
+// NewConfig returns a Config with the default mode and limits, then applies the
+// given options.
 func NewConfig(opts ...Option) *Config {
 	cfg := &Config{
 		Mode:         encoding.ModeDefault,
@@ -136,6 +141,8 @@ func (c *Config) Apply(opts ...Option) *Config {
 	return &cfg
 }
 
+// AddTool appends a provider-native tool definition, ignoring duplicates keyed
+// by type and function name.
 func (c *Config) AddTool(tool llms.Tool) {
 	if c.toolsByName == nil {
 		c.toolsByName = make(map[string]bool)
@@ -147,12 +154,15 @@ func (c *Config) AddTool(tool llms.Tool) {
 	}
 }
 
+// WithModelOptions registers a callback that derives extra options from the
+// resolved model, for settings that depend on which provider was selected.
 func WithModelOptions(onModelOptions func(model llms.Model) []Option) Option {
 	return func(o *Config) {
 		o.OnModelOptions = onModelOptions
 	}
 }
 
+// WithReasoningEffort sets the reasoning budget on models that support it.
 func WithReasoningEffort(effort llms.ReasoningEffort) Option {
 	return func(o *Config) {
 		o.ReasoningEffort = effort
@@ -166,18 +176,24 @@ func WithPromptCachePolicy(promptCachePolicy *llms.PromptCachePolicy) Option {
 	}
 }
 
+// WithResponseFormat overrides the response format derived from the output type
+// and the provider's capabilities.
 func WithResponseFormat(responseFormat *schema.ResponseFormat) Option {
 	return func(o *Config) {
 		o.ResponseFormat = responseFormat
 	}
 }
 
+// WithMaxToolCalls caps the total tool calls per run; exceeding it fails the
+// run. Defaults to DefaultMaxToolCalls.
 func WithMaxToolCalls(maxToolCalls int) Option {
 	return func(o *Config) {
 		o.MaxToolCalls = maxToolCalls
 	}
 }
 
+// WithMaxMessages caps the total messages per run, including history;
+// exceeding it fails the run. Defaults to DefaultMaxMessages.
 func WithMaxMessages(maxMessages int) Option {
 	return func(o *Config) {
 		o.MaxMessages = maxMessages
@@ -362,6 +378,10 @@ func WithToolChoice(choice any) Option {
 	}
 }
 
+// GetCallOptions translates the config into provider call options. Only values
+// that were explicitly set are forwarded, so an unset temperature is not sent
+// as zero. Tools the provider does not support, such as web search, are
+// dropped.
 func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
 	c := *cfg
 	for _, opt := range options {

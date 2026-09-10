@@ -29,6 +29,7 @@ const (
 	RoleTool Role = "tool"
 )
 
+// ContentPartType identifies the kind of a ContentPart.
 type ContentPartType string
 
 const (
@@ -53,8 +54,11 @@ type Message struct {
 	Source *MessageSource `json:"source,omitempty"`
 }
 
+// Messages is an alias for a message slice, used for readability in signatures.
 type Messages = []Message
 
+// MessageSource records which assistant, run and action produced a message.
+// It is what makes a stored multi-agent transcript attributable.
 type MessageSource struct {
 	// Name is the name of the source of the message.
 	Name string `json:"name"`
@@ -179,6 +183,8 @@ type ToolCall struct {
 	FunctionCall *FunctionCall `json:"function,omitempty"`
 }
 
+// GetFunctionCallName returns the called function's name, or the tool type for
+// provider-native tools such as web_search.
 func (tc ToolCall) GetFunctionCallName() string {
 	if tc.Type != "function" || tc.FunctionCall == nil {
 		return tc.Type
@@ -186,6 +192,8 @@ func (tc ToolCall) GetFunctionCallName() string {
 	return tc.FunctionCall.Name
 }
 
+// GetFunctionCallArguments returns the raw arguments JSON, or an empty string
+// for provider-native tools.
 func (tc ToolCall) GetFunctionCallArguments() string {
 	if tc.Type != "function" || tc.FunctionCall == nil {
 		return ""
@@ -235,6 +243,9 @@ func (tc ToolCallResponse) ContentLength() int {
 	return len(tc.ToolCallID) + len(tc.Name) + len(tc.Content)
 }
 
+// Usage counts the tokens consumed by one or more LLM calls. CacheWriteTokens
+// and CacheReadTokens report prompt-cache effectiveness on providers that
+// support it.
 type Usage struct {
 	InputTokens      uint64
 	OutputTokens     uint64
@@ -244,6 +255,7 @@ type Usage struct {
 	TotalTokens      uint64
 }
 
+// Add accumulates other into r. Both nil receiver and nil argument are no-ops.
 func (r *Usage) Add(other *Usage) {
 	if r != nil && other != nil {
 		r.InputTokens += other.InputTokens
@@ -255,6 +267,9 @@ func (r *Usage) Add(other *Usage) {
 	}
 }
 
+// UsageStats aggregates token usage per model together with payload sizes and
+// the number of GenerateContent calls made. An assistant's Response.Usage is
+// the total for its whole subtree, including nested assistants.
 type UsageStats struct {
 	ModelUsage map[string]*Usage
 
@@ -266,6 +281,7 @@ type UsageStats struct {
 	LlmCallCount uint32
 }
 
+// AddModelUsage accumulates usage attributed to the named model.
 func (r *UsageStats) AddModelUsage(model string, other *Usage) {
 	if r != nil && other != nil {
 		if r.ModelUsage == nil {
@@ -278,6 +294,8 @@ func (r *UsageStats) AddModelUsage(model string, other *Usage) {
 	}
 }
 
+// Add accumulates other into r, merging the per-model usage. Both nil receiver
+// and nil argument are no-ops.
 func (r *UsageStats) Add(other *UsageStats) {
 	if r != nil && other != nil {
 		for model, usage := range other.ModelUsage {
@@ -322,6 +340,7 @@ type ContentChoice struct {
 	ReasoningContent string `json:"reasoning_content"`
 }
 
+// Usage sums the usage across all choices. Never returns nil.
 func (r *ContentResponse) Usage() *Usage {
 	res := &Usage{}
 	if r == nil {
@@ -335,6 +354,8 @@ func (r *ContentResponse) Usage() *Usage {
 	return res
 }
 
+// ContentSize returns the byte size of the choice's content, reasoning content
+// and tool calls.
 func (r *ContentChoice) ContentSize() uint64 {
 	if r == nil {
 		return 0
@@ -357,6 +378,7 @@ func (r *ContentChoice) ContentSize() uint64 {
 	return size
 }
 
+// ContentSize returns the total byte size of all choices.
 func (r *ContentResponse) ContentSize() uint64 {
 	if r == nil {
 		return 0
@@ -368,6 +390,8 @@ func (r *ContentResponse) ContentSize() uint64 {
 	return size
 }
 
+// String returns the response content, joining multiple choices with a blank
+// line.
 func (r *ContentResponse) String() string {
 	if r == nil {
 		return ""
@@ -439,6 +463,8 @@ func MessageFromToolResponse(role Role, toolResponse ToolCallResponse) Message {
 	})
 }
 
+// String renders the source as "runID.name", or "runID.actionID.name" when an
+// action ID is set.
 func (m *MessageSource) String() string {
 	if m == nil {
 		return ""
@@ -449,6 +475,9 @@ func (m *MessageSource) String() string {
 	return fmt.Sprintf("%s.%s.%s", m.RunID, m.ActionID, m.Name)
 }
 
+// WithSource returns a copy of the message tagged with src, leaving an existing
+// source untouched so attribution set by a sub-agent survives as messages flow
+// upward.
 func (m Message) WithSource(src *MessageSource) Message {
 	res := m
 	if res.Source == nil {
