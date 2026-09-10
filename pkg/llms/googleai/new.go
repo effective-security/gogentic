@@ -47,6 +47,12 @@ func New(ctx context.Context, opts ...Option) (*GoogleAI, error) {
 	if err != nil {
 		return gi, err
 	}
+	// Wrap the resolved transport once so the portable Infer path can read raw
+	// response bytes without constructing a client per request.
+	client, err = wrapInferenceTransport(ctx, client)
+	if err != nil {
+		return gi, err
+	}
 	gi.client = client
 	// gi.generativeModel = &genai.Model{
 	// 	Name: clientOptions.DefaultModel,

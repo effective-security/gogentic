@@ -2,6 +2,7 @@ package llmfactory
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -201,7 +202,7 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 	provType := strings.ToUpper(cfg.OpenAI.APIType)
 	switch provType {
 	case string(llms.ProviderOpenAI), "OPEN_AI":
-		return newOpenAI(cfg, preferredModels)
+		return newOpenAI(cfg, preferredModels, opts)
 	case string(llms.ProviderOpenRouter):
 		return newOpenRouter(cfg, preferredModels, opts)
 	case string(llms.ProviderOpenAIBedrock):
@@ -213,7 +214,7 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 	case string(llms.ProviderAnthropic):
 		return newAnthropic(cfg, preferredModels, opts)
 	case string(llms.ProviderGoogleAI):
-		return newGoogleAI(cfg, preferredModels)
+		return newGoogleAI(cfg, preferredModels, opts)
 	case string(llms.ProviderBedrock):
 		return newBedrock(cfg, preferredModels, opts)
 	case string(llms.ProviderAnthropicBedrock):
@@ -224,13 +225,21 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 	return nil, errors.Errorf("unsupported provider type: %s", provType)
 }
 
-func newOpenAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error) {
+func newOpenAI(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
 	var opts []openai.Option
 	model, err := cfg.FindModel(preferredModels...)
 	if err != nil {
 		return nil, err
 	}
 	opts = append(opts, openai.WithProvider(llms.ProviderOpenAI), openai.WithModel(model))
+	if options != nil && options.HTTPClient != nil {
+		opts = append(opts, openai.WithHTTPClient(options.HTTPClient))
+	}
+	inferenceAPI, err := inferenceAPIOption(cfg)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, inferenceAPI)
 
 	if cfg.Token != "" {
 		opts = append(opts, openai.WithToken(cfg.Token))
@@ -362,13 +371,16 @@ func newAnthropic(cfg *ProviderConfig, preferredModels []string, options *Option
 	return anthropic.New(opts...)
 }
 
-func newGoogleAI(cfg *ProviderConfig, preferredModels []string) (llms.Model, error) {
+func newGoogleAI(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
 	var opts []googleai.Option
 	model, err := cfg.FindModel(preferredModels...)
 	if err != nil {
 		return nil, err
 	}
 	opts = append(opts, googleai.WithDefaultModel(model))
+	if options != nil && options.HTTPClient != nil {
+		opts = append(opts, googleai.WithHTTPClient(&http.Client{Transport: factoryTransport{client: options.HTTPClient}}))
+	}
 	if cfg.Token != "" {
 		opts = append(opts, googleai.WithAPIKey(cfg.Token))
 	}
@@ -382,6 +394,9 @@ func newBedrock(cfg *ProviderConfig, preferredModels []string, options *Options)
 		return nil, err
 	}
 	opts = append(opts, bedrock.WithModel(model))
+	if cfg.OpenAI.Converse {
+		opts = append(opts, bedrock.WithConverse())
+	}
 	if options != nil && options.AwsConfigFactory != nil {
 		cfg, err := options.AwsConfigFactory()
 		if err != nil {
@@ -626,4 +641,25 @@ func (f *factory) Skills(agent string, tags ...string) skills.Skills {
 		return nil
 	}
 	return f.skillsLoader.Skills(agent, tags...)
+}
+
+// inferenceAPIOption validates the configured portable inference API selection.
+func inferenceAPIOption(cfg *ProviderConfig) (openai.Option, error) {
+	api := openai.InferenceAPI(strings.ToLower(cfg.OpenAI.InferenceAPI))
+	switch api {
+	case openai.InferenceAPIDefault, openai.InferenceAPIResponses, openai.InferenceAPIChat:
+		return openai.WithInferenceAPI(api), nil
+	}
+	return nil, errors.Errorf("provider %s: unsupported inference_api %q", cfg.Name, cfg.OpenAI.InferenceAPI)
+}
+
+// factoryTransport adapts the factory Doer to SDKs requiring an http.Client.
+type factoryTransport struct{ client HTTPClient }
+
+func (t factoryTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	res, err := t.client.Do(r)
+	if err != nil {
+		return nil, errors.WithMessage(err, "perform provider HTTP request")
+	}
+	return res, nil
 }

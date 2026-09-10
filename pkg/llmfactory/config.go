@@ -52,8 +52,13 @@ type ProviderConfig struct {
 // OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType
 // selects the provider family: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY.
 type OpenAIConfig struct {
-	BaseURL    string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
-	APIVersion string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
+	// Converse enables the optional Bedrock portable inference connector.
+	Converse bool `json:"converse,omitempty" yaml:"converse,omitempty"`
+	// InferenceAPI selects the upstream API for the OpenAI portable inference
+	// connector: "responses", "chat", or empty for the provider default.
+	InferenceAPI string `json:"inference_api,omitempty" yaml:"inference_api,omitempty"`
+	BaseURL      string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	APIVersion   string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
 	// APIType specifies the type of API to use:
 	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`

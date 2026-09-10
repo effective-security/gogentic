@@ -332,3 +332,24 @@ OpenAI-on-Bedrock — `openai.WithProvider` selects the dialect, and the
 capability table keys off that same `ProviderType`. See
 [`pkg/llmfactory/factory.go`](../pkg/llmfactory/factory.go) for the exact
 option wiring per `api_type`.
+
+## Portable single-turn inference
+
+The optional `llms.InferenceModel` interface supplies `ValidateInference` and
+`Infer` for presence-aware text requests with ordered blocks, raw schemas,
+reasoning passthrough and request-level usage. OpenAI, Anthropic, GoogleAI, and
+explicitly enabled Bedrock Converse implement it alongside the unchanged `Model`
+interface. The new paths make one SDK attempt and do not change legacy
+generation defaults.
+
+Use the typed enums when constructing Go requests: `llms.InferenceRole*` roles,
+`llms.Block*` block types, `llms.ToolChoice*` modes (via `InferenceToolChoice`),
+`llms.Format*` output formats, `llms.Finish*` finish reasons and `llms.Effort*`
+reasoning efforts. Reasoning blocks carry a summary in `Text` and provider state in
+`Opaque`; `Source` names the router target that produced the state and is checked
+by the router before replay. `InferenceRequest.Clone` is an explicit deep copy.
+
+Connector obligations (validation, role and tool-result merging, finish-reason and
+usage normalization, one attempt, reasoning mapping) are specified in
+[router/DESIGN.md](../router/DESIGN.md) sections 3.1, 5 and 6; per-connector
+restrictions are listed in [the router guide](router.md).

@@ -14,8 +14,10 @@ const defaultModel = ModelAmazonTitanTextLiteV1
 
 // LLM is a Bedrock LLM implementation.
 type LLM struct {
-	modelID string
-	client  *bedrockclient.Client
+	modelID       string
+	client        *bedrockclient.Client
+	runtimeClient *bedrockruntime.Client
+	converse      bool
 }
 
 // New creates a new Bedrock LLM implementation.
@@ -25,8 +27,10 @@ func New(opts ...Option) (*LLM, error) {
 		return nil, err
 	}
 	return &LLM{
-		client:  c,
-		modelID: o.modelID,
+		client:        c,
+		modelID:       o.modelID,
+		runtimeClient: o.client,
+		converse:      o.converse,
 	}, nil
 }
 

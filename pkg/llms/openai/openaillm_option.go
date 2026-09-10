@@ -39,6 +39,30 @@ type options struct {
 
 	// AWSCfg is used with Bedrock
 	AWSCfg *aws.Config
+
+	// inferenceAPI selects the upstream API used by the portable Infer path.
+	inferenceAPI InferenceAPI
+}
+
+// InferenceAPI selects which upstream OpenAI API the portable Infer method uses.
+type InferenceAPI string
+
+const (
+	// InferenceAPIDefault selects Responses for ProviderOpenAI and Chat
+	// Completions for every other OpenAI-compatible provider type.
+	InferenceAPIDefault InferenceAPI = ""
+	// InferenceAPIResponses uses POST /responses upstream.
+	InferenceAPIResponses InferenceAPI = "responses"
+	// InferenceAPIChat uses POST /chat/completions upstream.
+	InferenceAPIChat InferenceAPI = "chat"
+)
+
+// WithInferenceAPI selects the upstream API for the portable Infer path.
+// Legacy GenerateContent is unaffected.
+func WithInferenceAPI(api InferenceAPI) Option {
+	return func(opts *options) {
+		opts.inferenceAPI = api
+	}
 }
 
 // Option is a functional option for the OpenAI client.

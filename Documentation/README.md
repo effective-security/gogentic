@@ -24,6 +24,13 @@ If you are new to the repo, read in this order:
 | 11 | [LLM Providers](llms.md) | `llms.Model`, messages, call options, prompt caching, batch API |
 | 12 | [Observability](observability.md) | Callbacks, scratchpad run reports, metrics |
 
+## Inference routing
+
+[Semantic router](router.md) documents the embeddable inference router: the
+portable contract, semantic selection and admission hooks, the OpenAI Chat,
+OpenAI Responses and Anthropic Messages codecs, reasoning passthrough, provider
+restrictions, tools, JSON output, error kinds and exact factory resolution.
+
 ## Quick reference
 
 | I want to... | Go to |

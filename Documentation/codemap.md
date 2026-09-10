@@ -240,3 +240,24 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 
 `Makefile` exports fake provider credentials, so unit tests run without
 secrets. Provider integration tests are guarded by env vars or `t.Skip`.
+
+## Semantic inference router
+
+| Concept | Entry points | Files |
+|---------|--------------|-------|
+| Routing and policy | `router.New`, `Router.Generate`, `Selector`, `SelectorFunc`, `Admission`, `ConcurrencyLimit`, `Config`, `Target`, `Features`, `Request`, `Result`, `Decision`, `SelectionInput`, `Candidate`, `Observation`, `Connector` | `router/router.go`, `router/admission.go` |
+| Request/result validation | `validateRequest`, `supports`, `normalizeResponse` (unexported) | `router/validate.go` |
+| Typed errors | `Error`, `Kind`, `Kind*` constants, `NewError`, `Invalid`, `Unsupported`, `AsError` | `router/errors.go` |
+| Codec helpers | `DecodeOptions`, `EncodeOptions`, `Inspect`, `ParseObject`, `Object`, `SealOpaque`, `OpenOpaque`, `HTTPStatus`, `MetadataUser` | `router/dialect/dialect.go`, `router/dialect/json.go` |
+| OpenAI codecs | `DecodeChat`, `EncodeChat`, `DecodeResponses`, `EncodeResponses`, `EncodeError` | `router/dialect/openai/` |
+| Anthropic codec | `DecodeMessages`, `EncodeMessages`, `EncodeError` | `router/dialect/anthropic/` |
+| Exact factory lookup | `ExactResolver`, `ResolveExact`, `ErrModelNotFound`, `GetModelExact` | `pkg/llmfactory/exact.go` |
+| Portable inference contract | `InferenceModel`, `InferenceRequest`, `InferenceMessage`, `InferenceBlock`, `InferenceTool`, `InferenceToolChoice`, `InferenceFormat`, `InferenceReasoning`, `InferenceResponse`, `InferenceError`, `UnsupportedInference`, `InferenceFailure`, `ReasoningBudget`; typed enums `InferenceRole`, `BlockType`, `FinishReason`, `FormatType`, `ToolChoiceMode`, `Effort` | `pkg/llms/inference.go` |
+| Provider connectors | `Infer`, `ValidateInference`; `openai.WithInferenceAPI`, `bedrock.WithConverse` | `pkg/llms/{openai,anthropic,googleai,bedrock}/inference.go` |
+| Bounded JSON Schema | `ValidatePortableSchema`, `ValidatePortableJSON` | `pkg/schema/portable.go` |
+
+See [router.md](router.md) for the field ledgers, reasoning passthrough and the
+host handler pattern. Tests: `router/router_test.go`, `router/conformance_test.go`,
+`router/dialect/**/*_test.go`, `pkg/llms/*/inference_test.go`,
+`pkg/llmfactory/exact_test.go`, `pkg/schema/portable_test.go`. Portable inference is
+additive: legacy `GenerateContent` and `GetModel` fallback remain unchanged.

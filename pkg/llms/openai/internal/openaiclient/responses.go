@@ -15,6 +15,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
+var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "openai")
+
 func unexpectedResponsesStatusError(r *http.Response, requestURL string) error {
 	msg := fmt.Sprintf("API returned unexpected status code: %d", r.StatusCode)
 	if r.StatusCode == http.StatusNotFound {
@@ -48,8 +50,6 @@ func failedResponseError(resp *responses.Response) error {
 		return errors.New("responses API failed")
 	}
 }
-
-var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "openai")
 
 // createResponse sends the request to /responses and parses a non-streaming reply.
 func (c *Client) createResponse(ctx context.Context, payload *responses.ResponseNewParams) (*responses.Response, error) { //nolint:lll
