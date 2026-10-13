@@ -18,6 +18,7 @@ coverage.out
 debug.log
 CLAUDE.md
 AGENT.md
+.codebase-memory
 
 __debug_bin
 __debug_bin*
