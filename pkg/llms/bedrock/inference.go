@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	smithydocument "github.com/aws/smithy-go/document"
+	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -36,6 +38,9 @@ const (
 	maxConverseAttempts     = 1
 	opConverse              = "bedrock converse inference"
 	opDecode                = "decode bedrock inference"
+	captureConverseBodyID   = "gogentic.captureConverseBody"
+	operationDeserializerID = "OperationDeserializer"
+	jsonObjectPrefix        = '{'
 	paramTemperature        = "temperature"
 	paramTopP               = "top_p"
 	paramConverse           = "provider.converse"
@@ -111,7 +116,17 @@ func (l *LLM) Infer(ctx context.Context, r llms.InferenceRequest) (*llms.Inferen
 	if err != nil {
 		return nil, err
 	}
-	response, err := l.runtimeClient.Converse(ctx, in, func(o *bedrockruntime.Options) { o.RetryMaxAttempts = maxConverseAttempts })
+	var raw []byte
+	ctx = context.WithValue(ctx, converseBodyKey{}, &raw)
+	response, err := l.runtimeClient.Converse(ctx, in, func(o *bedrockruntime.Options) {
+		o.RetryMaxAttempts = maxConverseAttempts
+		// Copy before append so this call cannot alias the client's option slice.
+		options := make([]func(*middleware.Stack) error, len(o.APIOptions), len(o.APIOptions)+1)
+		copy(options, o.APIOptions)
+		o.APIOptions = append(options, func(stack *middleware.Stack) error {
+			return stack.Deserialize.Insert(captureConverseBody{}, operationDeserializerID, middleware.After)
+		})
+	})
 	if err != nil {
 		status := http.StatusBadGateway
 		var apiErr *smithyhttp.ResponseError
@@ -123,7 +138,45 @@ func (l *LLM) Infer(ctx context.Context, r llms.InferenceRequest) (*llms.Inferen
 	if response == nil {
 		return nil, llms.InferenceFailure(errors.New("empty response"), http.StatusBadGateway, opDecode)
 	}
-	return converseOutput(response)
+	return converseOutput(response, raw)
+}
+
+// converseBodyKey carries the raw Converse response for this call.
+// smithy-go's schema JSON parser decodes document numbers as float64, which
+// rounds integers above 2^53. Tool arguments must stay the original JSON bytes.
+type converseBodyKey struct{}
+
+// captureConverseBody copies the response body before OperationDeserializer reads it.
+type captureConverseBody struct{}
+
+func (captureConverseBody) ID() string { return captureConverseBodyID }
+
+func (captureConverseBody) HandleDeserialize(
+	ctx context.Context,
+	in middleware.DeserializeInput,
+	next middleware.DeserializeHandler,
+) (middleware.DeserializeOutput, middleware.Metadata, error) {
+	out, metadata, err := next.HandleDeserialize(ctx, in)
+	if err != nil {
+		return out, metadata, err
+	}
+	resp, ok := out.RawResponse.(*smithyhttp.Response)
+	if !ok || resp == nil || resp.Body == nil {
+		return out, metadata, nil
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return out, metadata, errors.WithMessage(readErr, "read bedrock converse body")
+	}
+	if closeErr != nil {
+		return out, metadata, errors.WithMessage(closeErr, "close bedrock converse body")
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	if dst, ok := ctx.Value(converseBodyKey{}).(*[]byte); ok {
+		*dst = body
+	}
+	return out, metadata, nil
 }
 
 func converseInput(r llms.InferenceRequest) (*bedrockruntime.ConverseInput, error) {
@@ -316,7 +369,7 @@ func reasoningBlock(opaque json.RawMessage) (types.ContentBlock, error) {
 	return nil, llms.InferenceFailure(errors.New("unknown reasoning state"), http.StatusBadRequest, "decode reasoning state")
 }
 
-func converseOutput(response *bedrockruntime.ConverseOutput) (*llms.InferenceResponse, error) {
+func converseOutput(response *bedrockruntime.ConverseOutput, raw []byte) (*llms.InferenceResponse, error) {
 	out := &llms.InferenceResponse{}
 	finish, err := converseFinishReason(response.StopReason)
 	if err != nil {
@@ -327,28 +380,34 @@ func converseOutput(response *bedrockruntime.ConverseOutput) (*llms.InferenceRes
 	if !ok {
 		return nil, llms.InferenceFailure(errors.New("missing message"), http.StatusBadGateway, opDecode)
 	}
-	for _, b := range msg.Value.Content {
+	inputs, err := converseToolInputs(raw, len(msg.Value.Content))
+	if err != nil {
+		return nil, llms.InferenceFailure(err, http.StatusBadGateway, opDecode)
+	}
+	for i, b := range msg.Value.Content {
 		switch v := b.(type) {
 		case *types.ContentBlockMemberText:
+			if inputs[i] != nil {
+				return nil, llms.InferenceFailure(errors.New("unexpected tool input"), http.StatusBadGateway, opDecode)
+			}
 			out.Content = append(out.Content, llms.InferenceBlock{
 				Type: llms.BlockText,
 				Text: v.Value,
 			})
 		case *types.ContentBlockMemberToolUse:
-			if v.Value.Input == nil {
-				return nil, llms.InferenceFailure(errors.New("missing tool input"), http.StatusBadGateway, opDecode)
-			}
-			data, err := v.Value.Input.MarshalSmithyDocument()
-			if err != nil {
-				return nil, llms.InferenceFailure(err, http.StatusBadGateway, "encode bedrock tool input")
+			if !jsonObject(inputs[i]) {
+				return nil, llms.InferenceFailure(errors.New("missing or invalid tool input"), http.StatusBadGateway, opDecode)
 			}
 			out.Content = append(out.Content, llms.InferenceBlock{
 				Type:      llms.BlockFunctionCall,
 				ID:        aws.ToString(v.Value.ToolUseId),
 				Name:      aws.ToString(v.Value.Name),
-				Arguments: string(data),
+				Arguments: string(inputs[i]),
 			})
 		case *types.ContentBlockMemberReasoningContent:
+			if inputs[i] != nil {
+				return nil, llms.InferenceFailure(errors.New("unexpected tool input"), http.StatusBadGateway, opDecode)
+			}
 			block, err := reasoningOutput(v.Value)
 			if err != nil {
 				return nil, err
@@ -401,6 +460,41 @@ func reasoningOutput(content types.ReasoningContentBlock) (llms.InferenceBlock, 
 	}
 	block.Opaque = raw
 	return block, nil
+}
+
+// converseToolInputs returns toolUse.input bytes aligned with Converse content blocks.
+// A nil entry is a block that is not a tool call.
+func converseToolInputs(raw []byte, n int) ([]json.RawMessage, error) {
+	var wire struct {
+		Output struct {
+			Message struct {
+				Content []struct {
+					ToolUse *struct {
+						Input json.RawMessage `json:"input"`
+					} `json:"toolUse"`
+				} `json:"content"`
+			} `json:"message"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, errors.WithMessage(err, "decode bedrock converse body")
+	}
+	content := wire.Output.Message.Content
+	if len(content) != n {
+		return nil, errors.New("bedrock content length mismatch")
+	}
+	inputs := make([]json.RawMessage, n)
+	for i, block := range content {
+		if block.ToolUse == nil {
+			continue
+		}
+		inputs[i] = block.ToolUse.Input
+	}
+	return inputs, nil
+}
+
+func jsonObject(raw json.RawMessage) bool {
+	return len(raw) > 0 && raw[0] == jsonObjectPrefix
 }
 
 func converseFinishReason(reason types.StopReason) (llms.FinishReason, error) {
