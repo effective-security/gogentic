@@ -18,10 +18,10 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/errors v1.14.0
 	github.com/diverged/tavily-go v1.0.0
-	github.com/effective-security/metrics v0.10.153
-	github.com/effective-security/porto v1.0.449
-	github.com/effective-security/x v0.18.106
-	github.com/effective-security/xdb v0.25.164
+	github.com/effective-security/metrics v0.10.154
+	github.com/effective-security/porto v1.0.450
+	github.com/effective-security/x v1.0.109
+	github.com/effective-security/xdb v0.25.165
 	github.com/effective-security/xlog v1.0.69
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/google/go-cmp v0.7.0
@@ -91,7 +91,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/effective-security/xpki v1.0.313 // indirect
+	github.com/effective-security/xpki v1.0.314 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/getsentry/sentry-go v0.50.0 // indirect
@@ -116,7 +116,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kaptinlin/jsonrepair v0.4.9 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
