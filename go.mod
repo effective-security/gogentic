@@ -20,8 +20,8 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/effective-security/metrics v0.10.155
 	github.com/effective-security/porto v1.0.452
-	github.com/effective-security/x v1.0.109
-	github.com/effective-security/xdb v1.0.166
+	github.com/effective-security/x v1.0.110
+	github.com/effective-security/xdb v1.0.168
 	github.com/effective-security/xlog v1.0.69
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/google/go-cmp v0.7.0
