@@ -29,13 +29,13 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/moby/moby/api v1.56.1
 	github.com/nikolalohinski/gonja v1.5.3
-	github.com/openai/openai-go/v3 v3.97.0
+	github.com/openai/openai-go/v3 v3.98.0
 	github.com/pb33f/ordered-map/v2 v2.3.2
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.45.0
-	github.com/tidwall/sjson v1.2.8
+	github.com/tidwall/sjson v1.2.9
 	go.uber.org/config v1.4.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0
@@ -91,7 +91,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.3 // indirect
-	github.com/effective-security/xpki v1.1.321 // indirect
+	github.com/effective-security/xpki v1.1.322 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/getsentry/sentry-go v0.50.0 // indirect
@@ -175,9 +175,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto v0.0.0-20261104224025-d1e00e9f33ab // indirect
