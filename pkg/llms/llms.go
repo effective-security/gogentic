@@ -2,6 +2,7 @@ package llms
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 )
@@ -10,29 +11,62 @@ import (
 type ProviderType string
 
 const (
-	// ProviderAnthropic is the type of provider.
+	// ProviderAnthropic is the type of provider for Anthropic models.
 	ProviderAnthropic ProviderType = "ANTHROPIC"
-	// ProviderAnthropicBedrock is the type of provider.
+	// ProviderAnthropicBedrock is the type of provider for Anthropic models on Bedrock Mantle.
 	ProviderAnthropicBedrock ProviderType = "ANTHROPIC_BEDROCK"
-	// ProviderAzure is the type of provider.
+	// ProviderAzure is the type of provider for Azure OpenAI models.
 	ProviderAzure ProviderType = "AZURE"
-	// ProviderAzureAD is the type of provider.
+	// ProviderAzureAD is the type of provider for Azure OpenAI models with Azure AD authentication.
 	ProviderAzureAD ProviderType = "AZURE_AD"
-	// ProviderBedrock is the type of provider.
+	// ProviderBedrock is the type of provider for Bedrock Mantle models.
 	ProviderBedrock ProviderType = "BEDROCK"
-	// ProviderCloudflare is the type of provider.
+	// ProviderCloudflare is the type of provider for Cloudflare models.
 	ProviderCloudflare ProviderType = "CLOUDFLARE"
-	// ProviderGoogleAI is the type of provider.
+	// ProviderGoogleAI is the type of provider for Google AI models.
 	ProviderGoogleAI ProviderType = "GOOGLEAI"
-	// ProviderOpenAI is the type of provider.
+	// ProviderOpenAI is the type of provider for OpenAI models.
 	ProviderOpenAI ProviderType = "OPENAI"
-	// ProviderOpenAIBedrock is the type of provider.
+	// ProviderOpenAIBedrock is the type of provider for OpenAI models on Bedrock Mantle.
 	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
-	// ProviderOpenRouter is the type of provider.
+	// ProviderOpenRouter is the type of provider for OpenRouter models.
 	ProviderOpenRouter ProviderType = "OPENROUTER"
-	// ProviderPerplexity is the type of provider.
+	// ProviderPerplexity is the type of provider for Perplexity models.
 	ProviderPerplexity ProviderType = "PERPLEXITY"
 )
+
+// ParseProviderType converts a provider type name or one of its common aliases
+// into a ProviderType. Matching ignores case, so callers that must tell a
+// provider prefix from a lower-case vendor prefix in a model ID (for example
+// "openai/gpt-oss-120b") have to check the case themselves before calling it.
+func ParseProviderType(s string) (ProviderType, error) {
+	switch strings.ToUpper(s) {
+	case "ANTHROPIC", "CLAUDE":
+		return ProviderAnthropic, nil
+	case "ANTHROPIC_BEDROCK", "BEDROCK_ANTHROPIC":
+		return ProviderAnthropicBedrock, nil
+	case "AZURE", "AZURE_OPENAI":
+		return ProviderAzure, nil
+	case "AZURE_AD":
+		return ProviderAzureAD, nil
+	case "BEDROCK":
+		return ProviderBedrock, nil
+	case "CLOUDFLARE":
+		return ProviderCloudflare, nil
+	case "GOOGLEAI", "GOOGLE_AI", "GEMINI":
+		return ProviderGoogleAI, nil
+	case "OPENAI", "OPEN_AI":
+		return ProviderOpenAI, nil
+	case "OPENAI_BEDROCK", "BEDROCK_OPENAI":
+		return ProviderOpenAIBedrock, nil
+	case "OPENROUTER":
+		return ProviderOpenRouter, nil
+	case "PERPLEXITY":
+		return ProviderPerplexity, nil
+	default:
+		return "", errors.Errorf("invalid provider type: %s", s)
+	}
+}
 
 // Model is an interface multi-modal models implement.
 type Model interface {
@@ -89,6 +123,10 @@ const (
 	// Asynchronous batch processing via the provider's Batch API.
 	// Providers that advertise this capability also implement [Batcher].
 	CapabilityBatch
+
+	// The provider can list the models an account may call.
+	// Providers that advertise this capability implement a model lister.
+	CapabilityModels
 )
 
 var providerCapabilities = map[ProviderType]Capability{
@@ -103,7 +141,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityVision |
 		CapabilityWebSearchTool |
 		CapabilityPromptCaching |
-		CapabilityBatch,
+		CapabilityBatch |
+		CapabilityModels,
 
 	ProviderOpenAIBedrock: CapabilityText |
 		CapabilityJSONResponse |
@@ -127,7 +166,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityToolCallStreaming |
 		CapabilitySystemPrompt |
 		CapabilityVision |
-		CapabilityWebSearchTool,
+		CapabilityWebSearchTool |
+		CapabilityModels,
 
 	ProviderAnthropic: CapabilityText |
 		CapabilityJSONResponse |
@@ -136,7 +176,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt |
 		CapabilityWebSearchTool |
-		CapabilityPromptCaching,
+		CapabilityPromptCaching |
+		CapabilityModels,
 
 	ProviderAnthropicBedrock: CapabilityText |
 		CapabilityJSONResponse |
@@ -154,7 +195,8 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilityVision |
-		CapabilityWebSearchTool,
+		CapabilityWebSearchTool |
+		CapabilityModels,
 
 	// Use Bedrock with Anthropic models
 	ProviderBedrock: CapabilityText |

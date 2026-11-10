@@ -37,29 +37,6 @@ const (
 	DefaultMaxTokens = 4096
 )
 
-// modelIsOlderThan4_6 returns true for models that are 4.5-era or older (e.g. claude-sonnet-4-5,
-// claude-sonnet-4-20250929). These models do not support OutputConfig.Effort and need legacy
-// tool type versions (e.g. web_fetch_20250910 instead of web_fetch_20260209).
-func modelIsOlderThan4_6(model string) bool {
-	return !strings.Contains(model, "-4-6") &&
-		!strings.Contains(model, "-4-7") &&
-		!strings.Contains(model, "-4-8") &&
-		!strings.Contains(model, "-4-9")
-}
-
-// modelSupportsOutputEffort returns true for models that accept the OutputConfig.Effort field.
-// Only claude-4.6+ models support it.
-func modelSupportsOutputEffort(model string) bool {
-	return !modelIsOlderThan4_6(model)
-}
-
-// modelNeedsLegacyToolVersions returns true for models that only support older tool type
-// versions (e.g. web_fetch_20250910 instead of web_fetch_20260209). Same notion as
-// "older than 4.6": 4.5-era models and below need legacy tool versions.
-func modelNeedsLegacyToolVersions(model string) bool {
-	return modelIsOlderThan4_6(model)
-}
-
 type LLM struct {
 	Client  *anthropic.Client
 	Options *Options
@@ -252,29 +229,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		Messages:  sdkMessages,
 		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
 	}
-	if modelSupportsOutputEffort(opts.Model) {
-		params.OutputConfig = anthropic.OutputConfigParam{
-			Effort: anthropic.OutputConfigEffortLow,
-		}
-	}
-
-	reasoningTokens := int64(0)
-	switch opts.ReasoningEffort {
-	case llms.ReasoningEffortLow:
-		reasoningTokens = 1000
-	case llms.ReasoningEffortMedium:
-		reasoningTokens = 5000
-	case llms.ReasoningEffortHigh:
-		reasoningTokens = 10000
-	}
-
-	if reasoningTokens > 0 {
-		params.Thinking = anthropic.ThinkingConfigParamUnion{
-			OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-				BudgetTokens: reasoningTokens,
-			},
-		}
-	}
+	profile := effortProfileFor(opts.Model)
+	level := o.Options.Effort.Resolve(opts.ReasoningEffort, profile.levels, profile.implicit)
+	profile.apply(&params, level)
 
 	if len(systemBlocks) > 0 {
 		params.System = systemBlocks
@@ -302,9 +259,9 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	}
 
 	if opts.ResponseFormat != nil {
-		outputConfig := toAnthropicOutputConfig(opts.ResponseFormat, opts.Model)
+		outputConfig := toAnthropicOutputConfig(opts.ResponseFormat)
 		if outputConfig != nil {
-			params.OutputConfig = *outputConfig
+			params.OutputConfig.Format = outputConfig.Format
 		}
 	}
 
@@ -500,7 +457,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 
 // toAnthropicOutputConfig converts schema.ResponseFormat to Anthropic's OutputConfigParam
 // for structured JSON outputs. Returns nil if the response format is not a valid json_schema.
-func toAnthropicOutputConfig(rf *schema.ResponseFormat, model string) *anthropic.OutputConfigParam {
+func toAnthropicOutputConfig(rf *schema.ResponseFormat) *anthropic.OutputConfigParam {
 	if rf == nil || rf.Type != "json_schema" || rf.JSONSchema == nil || rf.JSONSchema.Schema == nil {
 		return nil
 	}
@@ -508,16 +465,12 @@ func toAnthropicOutputConfig(rf *schema.ResponseFormat, model string) *anthropic
 	if len(schemaMap) == 0 {
 		return nil
 	}
-	cfg := &anthropic.OutputConfigParam{
+	return &anthropic.OutputConfigParam{
 		Format: anthropic.JSONOutputFormatParam{
 			Type:   constant.JSONSchema("json_schema"),
 			Schema: schemaMap,
 		},
 	}
-	if modelSupportsOutputEffort(model) {
-		cfg.Effort = anthropic.OutputConfigEffortLow
-	}
-	return cfg
 }
 
 // convertToAnthropicSchema converts ResponseFormatJSONSchemaProperty to map[string]any

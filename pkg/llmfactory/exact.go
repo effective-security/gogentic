@@ -48,7 +48,7 @@ func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID stri
 	if !f.isModelAllowed(ctx, orgID, "", path) || !f.isModelAllowed(ctx, orgID, "", model) {
 		return nil, errors.WithStack(ErrModelNotFound)
 	}
-	selected, err := f.exactProvider(provider, model)
+	policy, err := f.exactProvider(provider, model)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +60,14 @@ func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID stri
 		return cached, nil
 	}
 	// Construct outside the lock: SDK construction may load credentials.
-	cfg := *selected
-	cfg.AvailableModels = slices.Clone(selected.AvailableModels)
+	// The copy lists the model by name, so the constructor selects it even
+	// when only the default model or a pattern admitted it.
+	cfg := *policy.cfg
+	cfg.AvailableModels = slices.Clone(policy.cfg.AvailableModels)
 	if !slices.Contains(cfg.AvailableModels, model) {
 		cfg.AvailableModels = append(cfg.AvailableModels, model)
 	}
-	m, err := NewLLM(&cfg, []string{model}, f.options)
+	m, err := NewLLM(&cfg, []string{model}, f.optionsFor(policy.effortPolicy(llms.ReasoningEffortDefault, model)))
 	if err != nil {
 		return nil, errors.WithMessage(err, "construct exact model")
 	}
@@ -81,23 +83,30 @@ func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID stri
 	return m, nil
 }
 
-// exactProvider finds the single provider configuration named provider that
-// offers model. Duplicate provider names are a configuration error.
-func (f *factory) exactProvider(provider, model string) (*ProviderConfig, error) {
+// exactProvider finds the single provider named provider and checks that its
+// model policy admits model: an available_models entry or the default model
+// must match it, and no disabled_models entry may. Duplicate provider names
+// are a configuration error.
+func (f *factory) exactProvider(provider, model string) (*providerPolicy, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	var selected *ProviderConfig
-	for _, cfg := range f.cfg.Providers {
-		if cfg.Name != provider {
+	var selected *providerPolicy
+	for _, policy := range f.policies {
+		if policy.cfg.Name != provider {
 			continue
 		}
 		if selected != nil {
 			return nil, errors.Errorf("ambiguous provider configuration %q", provider)
 		}
-		selected = cfg
+		selected = policy
 	}
-	if selected == nil || (!slices.Contains(selected.AvailableModels, model) && selected.DefaultModel != model) {
+	if selected == nil || selected.denied(model) {
 		return nil, errors.WithStack(ErrModelNotFound)
+	}
+	if _, listed := selected.allowEntry(model); !listed {
+		if name, _, ok := selected.defaultModel(); !ok || name != model {
+			return nil, errors.WithStack(ErrModelNotFound)
+		}
 	}
 	return selected, nil
 }

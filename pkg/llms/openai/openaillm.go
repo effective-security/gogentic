@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -22,6 +21,8 @@ type LLM struct {
 	client       *openaiclient.Client
 	providerType llms.ProviderType
 	inferenceAPI InferenceAPI
+	// effort is the default and the ceiling applied to every call.
+	effort llms.EffortPolicy
 }
 
 const (
@@ -47,6 +48,7 @@ func New(opts ...Option) (*LLM, error) {
 		client:       c,
 		providerType: popts.provider,
 		inferenceAPI: popts.inferenceAPI,
+		effort:       popts.effort,
 	}, err
 }
 
@@ -178,6 +180,16 @@ func (o *LLM) buildChatRequestBody(messages []llms.Message, options ...llms.Call
 		ResponseFormat: opts.ResponseFormat,
 	}
 	applyPromptCacheToChatRequest(req, o.client.Provider, &opts)
+
+	// Chat Completions gets an effort only when a call or the configuration
+	// asks for one, or when the model's own default is above the configured
+	// ceiling; without it the model keeps its own default.
+	chatModel := values.StringsCoalesce(opts.Model, o.client.Model)
+	chatProfile := effortProfileFor(chatModel)
+	chatLevel := chatProfile.resolveOmitted(o.effort, opts.ReasoningEffort)
+	if chatLevel != llms.ReasoningEffortDefault {
+		req.ReasoningEffort = string(chatProfile.wire(chatLevel))
+	}
 
 	for _, tool := range opts.Tools {
 		t, err := o.toolFromTool(tool)
@@ -345,26 +357,9 @@ func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms
 	}
 	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
 
-	effort := opts.ReasoningEffort
-	if strings.HasPrefix(o.client.Model, "gpt-5-pro") || strings.HasPrefix(o.client.Model, "gpt-5.6-sol") {
-		effort = llms.ReasoningEffortHigh
-	}
-
-	if modelSupportsReasoning(o.client.Model) {
-		switch effort {
-		case llms.ReasoningEffortLow:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
-		case llms.ReasoningEffortMedium:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortMedium}
-		case llms.ReasoningEffortHigh:
-			req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortHigh}
-		default:
-			if strings.HasPrefix(o.client.Model, "gpt-5.1") {
-				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortNone}
-			} else {
-				req.Reasoning = shared.ReasoningParam{Effort: responses.ReasoningEffortLow}
-			}
-		}
+	profile := effortProfileFor(string(req.Model))
+	if level := profile.resolve(o.effort, opts.ReasoningEffort); level != llms.ReasoningEffortDefault {
+		req.Reasoning = shared.ReasoningParam{Effort: profile.wire(level)}
 	}
 
 	if opts.ToolChoice != nil {
@@ -581,15 +576,6 @@ func enforceStrictSchema(m map[string]any) {
 	if items, ok := m["items"].(map[string]any); ok {
 		enforceStrictSchema(items)
 	}
-}
-
-// modelSupportsReasoning returns true for models that accept the reasoning.effort parameter.
-// gpt-4o and older chat models do not support it.
-func modelSupportsReasoning(model string) bool {
-	return strings.HasPrefix(model, "o1") ||
-		strings.HasPrefix(model, "o3") ||
-		strings.HasPrefix(model, "o4") ||
-		strings.HasPrefix(model, "gpt-5")
 }
 
 // convertMetadata converts map[string]any to shared.Metadata (map[string]string).

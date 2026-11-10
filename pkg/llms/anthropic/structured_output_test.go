@@ -80,7 +80,7 @@ func TestToAnthropicOutputConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := toAnthropicOutputConfig(tt.rf, tt.model)
+			got := toAnthropicOutputConfig(tt.rf)
 			if tt.nonNil {
 				require.NotNil(t, got)
 				assert.NotEmpty(t, got.Format.Schema)

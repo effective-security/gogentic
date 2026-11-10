@@ -42,6 +42,9 @@ type options struct {
 
 	// inferenceAPI selects the upstream API used by the portable Infer path.
 	inferenceAPI InferenceAPI
+
+	// effort is the reasoning effort default and ceiling for every call.
+	effort llms.EffortPolicy
 }
 
 // InferenceAPI selects which upstream OpenAI API the portable Infer method uses.
@@ -62,6 +65,16 @@ const (
 func WithInferenceAPI(api InferenceAPI) Option {
 	return func(opts *options) {
 		opts.inferenceAPI = api
+	}
+}
+
+// WithEffortPolicy sets the reasoning effort used when a call requests none,
+// and the highest effort any call may use. Each call still sends the nearest
+// level its model accepts. Legacy GenerateContent only; the portable Infer
+// path is unaffected.
+func WithEffortPolicy(policy llms.EffortPolicy) Option {
+	return func(opts *options) {
+		opts.effort = policy
 	}
 }
 

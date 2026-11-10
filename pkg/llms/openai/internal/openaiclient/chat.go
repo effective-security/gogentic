@@ -41,6 +41,9 @@ type ChatRequest struct {
 	FrequencyPenalty    float64        `json:"frequency_penalty,omitempty"`
 	PresencePenalty     float64        `json:"presence_penalty,omitempty"`
 	Seed                int            `json:"seed,omitempty"`
+	// ReasoningEffort is the reasoning effort for models that have such a
+	// control. Empty leaves the model's own default in place.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 
 	// ResponseFormat is the format of the response.
 	ResponseFormat *schema.ResponseFormat `json:"response_format,omitempty"`

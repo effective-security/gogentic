@@ -10,14 +10,29 @@ import (
 // CallOption is a function that configures a CallOptions.
 type CallOption func(*CallOptions)
 
+// ReasoningEffort is a provider-independent request for how much a model
+// should reason before it answers. Levels are ordered, so they can be compared
+// with < and >. Each provider sends the closest level the selected model
+// accepts; see [EffortSet.Nearest].
 type ReasoningEffort int
 
 const (
-	ReasoningEffortDefault = iota
+	// ReasoningEffortDefault means no level was requested. The provider then
+	// behaves as it does without any effort setting.
+	ReasoningEffortDefault ReasoningEffort = iota
+	// ReasoningEffortNone asks for the least reasoning the model allows.
 	ReasoningEffortNone
+	// ReasoningEffortLow asks for light reasoning.
 	ReasoningEffortLow
+	// ReasoningEffortMedium asks for moderate reasoning.
 	ReasoningEffortMedium
+	// ReasoningEffortHigh asks for extensive reasoning.
 	ReasoningEffortHigh
+	// ReasoningEffortXHigh asks for more reasoning than high, on models that
+	// have such a level.
+	ReasoningEffortXHigh
+	// ReasoningEffortMax asks for the most reasoning the model allows.
+	ReasoningEffortMax
 )
 
 // PromptCacheRetention specifies provider request-level prompt cache retention.

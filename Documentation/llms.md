@@ -147,8 +147,53 @@ _, err := model.GenerateContent(ctx, messages,
 )
 ```
 
-`ReasoningEffort` is an enum: `ReasoningEffortDefault` (not sent),
-`ReasoningEffortNone`, `Low`, `Medium`, `High`.
+### Reasoning effort
+
+`ReasoningEffort` is an ordered enum: `ReasoningEffortDefault` (no level
+requested), then `ReasoningEffortNone`, `Low`, `Medium`, `High`, `XHigh` and
+`Max`. `None` asks for the least reasoning the model allows and `Max` for the
+most. `ParseReasoningEffort` and `String` convert to and from the names used in
+configuration: `none`, `low`, `medium`, `high`, `xhigh`, `max`.
+
+A provider never sends a level the model rejects. Each provider package knows
+which levels a model accepts as an `EffortSet`, and sends
+`EffortSet.Nearest(level)`: the level itself, else the nearest one below, else
+the nearest one above.
+
+```go
+supported := llms.NewEffortSet(llms.ReasoningEffortLow, llms.ReasoningEffortMedium, llms.ReasoningEffortHigh)
+supported.Nearest(llms.ReasoningEffortXHigh) // ReasoningEffortHigh
+supported.Nearest(llms.ReasoningEffortNone)  // ReasoningEffortLow
+```
+
+A client can carry an `EffortPolicy`: a default used when a call requests no
+level, and a ceiling no call may exceed. The factory sets it from the
+configuration; when constructing a provider directly, pass it yourself:
+
+```go
+model, err := openai.New(
+    openai.WithModel("gpt-5.5"),
+    openai.WithEffortPolicy(llms.EffortPolicy{
+        Default: llms.ReasoningEffortMedium,
+        Max:     llms.ReasoningEffortHigh,
+    }),
+)
+```
+
+`anthropic.WithEffortPolicy` and `googleai.WithEffortPolicy` do the same. With
+no policy and no requested level, a provider sends what it always sent. What
+each provider puts on the wire is listed in
+[LLM Factory → Reasoning effort](llm-factory.md#reasoning-effort).
+
+The supported levels are looked up by model family and version.
+`llms.ParseModelName` does the split, and is usable on its own:
+
+```go
+name := llms.ParseModelName("us.anthropic.claude-opus-4-20250514-v1:0")
+// name.Prefix "us.anthropic."  name.Family "claude-opus"
+// name.Version [4]             name.Snapshot "20250514-v1:0"
+name.VersionAtLeast(4, 6) // false
+```
 
 ## Capabilities
 
@@ -171,6 +216,7 @@ provider family supports.
 | `CapabilityWebSearchTool` | Provider-native web search grounding |
 | `CapabilityPromptCaching` | Provider-native prompt caching |
 | `CapabilityBatch` | Implements `Batcher` |
+| `CapabilityModels` | The provider can list the models an account may call. Listing itself is not implemented yet, see [LLM Factory](llm-factory.md#design-dynamic-model-lists-and-family-fallback) |
 
 **Two different checks, do not mix them up:**
 

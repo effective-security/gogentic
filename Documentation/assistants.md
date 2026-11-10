@@ -245,7 +245,7 @@ Options are `func(*Config)`; `Config` is copied per call.
 | `WithTemperature`, `WithTopK`, `WithTopP`, `WithSeed` | Sampling controls |
 | `WithMaxTokens`, `WithMinLength`, `WithMaxLength` | Length controls (`MaxLength` also caps prompt bytes) |
 | `WithStopWords`, `WithRepetitionPenalty` | Decoding controls |
-| `WithReasoningEffort(llms.ReasoningEffort)` | Reasoning budget on models that support it |
+| `WithReasoningEffort(llms.ReasoningEffort)` | Reasoning effort for the run. Overrides the effort configured for the model, is still capped by the provider's `max_effort`, and is sent as the nearest level the model accepts — see [LLM Factory → Reasoning effort](llm-factory.md#reasoning-effort) |
 | `WithPromptCachePolicy(*llms.PromptCachePolicy)` | Provider-native prompt caching, see [LLM Providers](llms.md#prompt-caching) |
 
 Only options you set are forwarded — each has a "was set" flag, so an unset

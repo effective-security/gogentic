@@ -80,8 +80,41 @@
 //	tenantFactory := fac.WithModelFilter(filter)
 //
 // The assistantName argument is normalized to "default" when empty, and
-// modelName may arrive bare or provider-qualified as "PROVIDER/model".
+// modelName may arrive bare or provider-qualified as "PROVIDER/model". It is
+// always a concrete model ID, never a pattern, and carries no effort suffix.
 //
-// See Documentation/llm-factory.md for the full resolution rules, the skills
-// section, and testing hooks such as the overridable [NewLLM] variable.
+// # 5. Effort, patterns and the deny-list
+//
+// A model reference is [PROVIDER/]MODEL[,EFFORT]. The effort after the comma
+// (none, low, medium, high, xhigh or max) is used when a call does not set one
+// with WithReasoningEffort. "*" and "?" turn a model name into a pattern.
+//
+//	providers:
+//	  - name: ANTHROPIC
+//	    token: env://ANTHROPIC_API_KEY
+//	    default_model: claude-sonnet-4-8,medium
+//	    available_models:
+//	      - claude-opus-4-8,high
+//	      - claude-sonnet-4-8
+//	      - claude-haiku-*,low
+//	    disabled_models:
+//	      - "*-preview"
+//	    max_effort: xhigh
+//	    open_ai:
+//	      api_type: ANTHROPIC
+//	assistant_models:
+//	  coder:
+//	    - ANTHROPIC/claude-sonnet-*,high
+//
+// available_models stays the allow-list, disabled_models wins over it, and
+// max_effort caps every call to the provider. A pattern in assistant_models
+// selects the best match among the models listed by name in available_models.
+// Each level is sent as the nearest one the selected model accepts.
+//
+// [LoadConfig] validates the references and effort levels. [New] cannot fail,
+// so for a Config built in code call [Config.Validate] first.
+//
+// See Documentation/llm-factory.md for the full resolution rules, the effort
+// mapping per provider, the skills section, and testing hooks such as the
+// overridable [NewLLM] variable.
 package llmfactory
