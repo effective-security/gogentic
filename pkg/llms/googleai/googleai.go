@@ -146,6 +146,7 @@ func convertCandidates(candidates []*genai.Candidate, usage *genai.GenerateConte
 						return nil, err
 					}
 					toolCall := llms.ToolCall{
+						Type: llms.ToolTypeFunction,
 						FunctionCall: &llms.FunctionCall{
 							Name:      part.FunctionCall.Name,
 							Arguments: string(b),

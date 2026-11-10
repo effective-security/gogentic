@@ -248,6 +248,7 @@ func TestGenerateContent_ConvertsTheConversation(t *testing.T) {
 	assert.Equal(t, "hello world", choice.Content)
 	assert.Equal(t, string(genai.FinishReasonStop), choice.StopReason)
 	wantCalls := []llms.ToolCall{{
+		Type: llms.ToolTypeFunction,
 		FunctionCall: &llms.FunctionCall{
 			Name:      toolName,
 			Arguments: `{"q":"x"}`,

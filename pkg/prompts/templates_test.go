@@ -3,6 +3,7 @@ package prompts
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,6 +155,10 @@ func TestRenderTemplate(t *testing.T) {
 	})
 }
 
+// renderTimeout bounds a jinja2 render in tests, so a lexer that loops
+// forever fails the test instead of hanging it (F-010).
+const renderTimeout = 5 * time.Second
+
 func TestInterpolateJinja2Errors(t *testing.T) {
 	t.Parallel()
 
@@ -165,23 +170,69 @@ func TestInterpolateJinja2Errors(t *testing.T) {
 		{
 			name:     "ParseErrored",
 			template: "{% if %}",
-			wantErr:  `Unable to parse statement "if": Expected either a number, string, keyword or identifier. (Line: 0 Col: 0, near "")`,
+			wantErr:  `failed to parse jinja2 template: failed to parse template '{% if %}': Unable to parse controlStructure "if": expected either a number, string, keyword or identifier.`,
 		},
 		{
 			name:     "ExecuteErrored",
 			template: "{{ x() }}",
-			wantErr:  "Unable to Execute template: Unable to render expression at line 1: call([], map[]): x is not callable",
+			wantErr:  "failed to render jinja2 template: unable to execute template: Unable to render expression at line 1: call([], map[]): x is not callable",
+		},
+		{
+			name:     "UnterminatedVariable",
+			template: "{{ x ",
+			wantErr:  `failed to parse jinja2 template: failed to parse template '{{ x ': '}}' expected here (Line: 1 Col: 6, near "")`,
+		},
+		{
+			name:     "UnterminatedBlock",
+			template: "{% if x ",
+			wantErr:  `failed to parse jinja2 template: failed to parse template '{% if x ': Expected end of block "%}" (Line: 1 Col: 9, near "")`,
+		},
+		{
+			name:     "OpenVariableOnly",
+			template: "{{",
+			wantErr:  `failed to parse jinja2 template: failed to parse template '{{': expected either a number, string, keyword or identifier. (Line: 1 Col: 3, near "")`,
+		},
+		{
+			name:     "OpenBlockOnly",
+			template: "{%",
+			wantErr:  `failed to parse jinja2 template: failed to parse template '{%': ControlStructure '' not found (or beginning not provided) (Line: 1 Col: 3, near "")`,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			out, err := RenderTemplate(tc.template, TemplateFormatJinja2, map[string]any{
-				"x": 1,
-			})
-			require.EqualError(t, err, tc.wantErr)
-			assert.Empty(t, out)
+			type result struct {
+				out string
+				err error
+			}
+			done := make(chan result, 1)
+			go func() {
+				out, err := RenderTemplate(tc.template, TemplateFormatJinja2, map[string]any{
+					"x": 1,
+				})
+				done <- result{
+					out: out,
+					err: err,
+				}
+			}()
+			select {
+			case res := <-done:
+				require.EqualError(t, res.err, tc.wantErr)
+				assert.Empty(t, res.out)
+			case <-time.After(renderTimeout):
+				require.FailNow(t, "jinja2 render did not return", "template %q", tc.template)
+			}
 		})
 	}
+}
+
+func TestInterpolateJinja2Raw(t *testing.T) {
+	t.Parallel()
+
+	out, err := RenderTemplate("{% raw %}{{ {% endraw %}{{ x }}", TemplateFormatJinja2, map[string]any{
+		"x": 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "{{ 1", out)
 }

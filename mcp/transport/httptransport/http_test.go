@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -193,6 +195,37 @@ func TestHTTPTransport_HandleRequest_OriginalIDRestored(t *testing.T) {
 	var rpcResp transport.BaseJSONRPCResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rpcResp))
 	assert.Equal(t, transport.RequestId(clientID), rpcResp.Id)
+}
+
+func TestHTTPTransport_HandleRequest_ErrorReplyRestoresOriginalID(t *testing.T) {
+	// Error replies must carry the client-supplied ID too, or the client
+	// cannot match them to its pending request.
+	tr := httptransport.NewHTTPTransport(mcpPath)
+	tr.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+		go func() {
+			_ = tr.Send(ctx, transport.NewBaseMessageError(&transport.BaseJSONRPCError{
+				Jsonrpc: "2.0",
+				Id:      msg.JsonRpcRequest.Id, // the remapped (internal) id
+				Error: transport.BaseJSONRPCErrorInner{
+					Code:    -32000,
+					Message: "unknown tool: missing",
+				},
+			}))
+		}()
+	})
+
+	server := httptest.NewServer(tr)
+	defer server.Close()
+
+	const clientID = 999
+	resp, err := http.Post(server.URL+mcpPath, "application/json", bytes.NewReader(marshalRequest(t, "tools/call", clientID, nil)))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":999,"error":{"code":-32000,"message":"unknown tool: missing"}}`, string(body))
 }
 
 func TestHTTPTransport_HandleRequest_InvalidJSON(t *testing.T) {
@@ -922,4 +955,56 @@ func TestHTTPClientTransport_SendDispatchFallbacks(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Concurrent requests register, look up and delete response channels from the
+// HTTP handler goroutines while the protocol layer calls Send from others, so
+// this test reports a data race on responseMap unless every access is locked.
+func TestHTTPTransport_ConcurrentRequests(t *testing.T) {
+	const requests = 32
+
+	tr := httptransport.NewHTTPTransport(mcpPath)
+	tr.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+		if msg.Type != transport.BaseMessageTypeJSONRPCRequestType {
+			return
+		}
+		req := msg.JsonRpcRequest
+		go func() {
+			_ = tr.Send(ctx, transport.NewBaseMessageResponse(&transport.BaseJSONRPCResponse{
+				Jsonrpc: "2.0",
+				Id:      req.Id,
+				Result:  req.Params,
+			}))
+		}()
+	})
+
+	server := httptest.NewServer(tr)
+	defer server.Close()
+
+	bodies := make([][]byte, requests)
+	for i := range bodies {
+		bodies[i] = marshalRequest(t, "ping", i, map[string]int{
+			"n": i,
+		})
+	}
+
+	var wg sync.WaitGroup
+	for i, body := range bodies {
+		wg.Go(func() {
+			resp, err := http.Post(server.URL+mcpPath, "application/json", bytes.NewReader(body))
+			if !assert.NoError(t, err) {
+				return
+			}
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var rpcResp transport.BaseJSONRPCResponse
+			if !assert.NoError(t, json.NewDecoder(resp.Body).Decode(&rpcResp)) {
+				return
+			}
+			assert.Equal(t, transport.RequestId(i), rpcResp.Id)
+			assert.JSONEq(t, `{"n":`+strconv.Itoa(i)+`}`, string(rpcResp.Result))
+		})
+	}
+	wg.Wait()
 }

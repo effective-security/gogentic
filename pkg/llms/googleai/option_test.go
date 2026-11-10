@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	// envGoogleAPIKey is the variable EnsureAuthPresent reads.
-	envGoogleAPIKey = "GOOGLE_API_KEY" //nolint:gosec
 	// envGeminiAPIKey is the other variable the SDK reads a key from.
 	envGeminiAPIKey = "GEMINI_API_KEY" //nolint:gosec
 	// envKey is the key the environment holds in a test.
 	envKey = "env-key"
+	// explicitKey is the key a test passes with WithAPIKey.
+	explicitKey = "explicit-key"
 )
 
 // Every option sets its field, and only that one.
@@ -83,6 +83,15 @@ func TestEnsureAuthPresent(t *testing.T) {
 		opts := DefaultOptions()
 		opts.EnsureAuthPresent()
 		assert.Equal(t, envKey, opts.APIKey)
+	})
+
+	t.Run("explicit key wins over the environment", func(t *testing.T) {
+		// F-009: the environment must not replace a key given by option.
+		t.Setenv(envGoogleAPIKey, envKey)
+		opts := DefaultOptions()
+		WithAPIKey(explicitKey)(&opts)
+		opts.EnsureAuthPresent()
+		assert.Equal(t, explicitKey, opts.APIKey)
 	})
 
 	t.Run("credentials keep the environment out", func(t *testing.T) {

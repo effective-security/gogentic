@@ -46,6 +46,13 @@ if err := tr.Start(ctx); err != nil {
 Server options: `WithName`, `WithVersion`, `WithInstructions`,
 `WithPaginationLimit(n)`, `WithProtocol(p)`.
 
+`WithPaginationLimit(n)` pages `tools/list`, `prompts/list`, `resources/list`
+and `resources/templates/list`, which are ordered by tool name, prompt name,
+resource URI and URI template respectively. Every full page carries a
+`nextCursor`; following cursors until none is returned yields every item
+exactly once. When the item count is a multiple of `n`, the last page is
+empty. A non-positive `n` disables pagination.
+
 ### Handler signatures
 
 The server reflects your handler to derive the JSON Schema, so the signature is
@@ -112,8 +119,33 @@ mcp.NewResourceResponse(
 
 `Content.WithAnnotations` attaches audience/priority hints.
 
+Content goes on the wire in the MCP schema shape, with `annotations` as a
+nested object:
+
+```json
+{"type":"text","text":"plain text"}
+{"type":"image","data":"<base64>","mimeType":"image/png"}
+{"type":"resource","resource":{"uri":"file:///report.md","mimeType":"text/markdown","text":"..."}}
+{"type":"resource","resource":{"uri":"file:///report.pdf","mimeType":"application/pdf","blob":"<base64>"}}
+```
+
+The client decodes the same three types. Content with a missing required
+field (`text`; `data` or `mimeType`; `resource`, `resource.uri`, or both
+`resource.text` and `resource.blob`) or of another type fails the call with an
+error such as `invalid image content: missing required field "mimeType"`.
+
+### Errors
+
 An error returned by a tool handler becomes a **tool error result**, not a
 JSON-RPC protocol error, so the calling model can see and react to it.
+Likewise a prompt handler error comes back as a prompt response described as
+`error`, and a resource handler error as a text resource holding the message.
+
+A request the server cannot route is a **JSON-RPC error**: an unknown tool,
+prompt or resource is reported as `unknown tool: <name>`,
+`unknown prompt: <name>` or `unknown resource: <uri>`, and so are malformed
+request params and list cursors. The client returns these as errors, for example
+`failed to call tool: RPC error -32000: unknown tool: <name>`.
 
 ## Exposing assistants and tools
 
@@ -200,7 +232,8 @@ caps := cli.GetCapabilities() // populated by Initialize
 
 `Initialize` must be called before anything else — the other methods rely on
 the negotiated capabilities. Paginated calls take a `*string` cursor; pass the
-`NextCursor` from the previous response to continue.
+`NextCursor` from the previous response to continue, and stop when it is nil
+(see `WithPaginationLimit` above).
 
 ## Transports
 

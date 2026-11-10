@@ -173,11 +173,17 @@ type FunctionCall struct {
 	Arguments string `json:"arguments"`
 }
 
+// ToolTypeFunction is the ToolCall.Type of a call to a function tool.
+// Providers set it on every function call they return, so that
+// GetFunctionCallName and GetFunctionCallArguments see the function.
+const ToolTypeFunction = "function"
+
 // ToolCall is a call to a tool (as requested by the model) that should be executed.
 type ToolCall struct {
 	// ID is the unique identifier of the tool call.
 	ID string `json:"id"`
-	// Type is the type of the tool call. Typically, this would be "function".
+	// Type is the type of the tool call: ToolTypeFunction for function tools,
+	// or the tool type for provider-native tools such as web_search.
 	Type string `json:"type"`
 	// FunctionCall is the function call to be executed.
 	FunctionCall *FunctionCall `json:"function,omitempty"`
@@ -186,7 +192,7 @@ type ToolCall struct {
 // GetFunctionCallName returns the called function's name, or the tool type for
 // provider-native tools such as web_search.
 func (tc ToolCall) GetFunctionCallName() string {
-	if tc.Type != "function" || tc.FunctionCall == nil {
+	if tc.Type != ToolTypeFunction || tc.FunctionCall == nil {
 		return tc.Type
 	}
 	return tc.FunctionCall.Name
@@ -195,7 +201,7 @@ func (tc ToolCall) GetFunctionCallName() string {
 // GetFunctionCallArguments returns the raw arguments JSON, or an empty string
 // for provider-native tools.
 func (tc ToolCall) GetFunctionCallArguments() string {
-	if tc.Type != "function" || tc.FunctionCall == nil {
+	if tc.Type != ToolTypeFunction || tc.FunctionCall == nil {
 		return ""
 	}
 	return tc.FunctionCall.Arguments
@@ -336,7 +342,9 @@ type ContentChoice struct {
 	// ToolCalls is a list of tool calls the model asks to invoke.
 	ToolCalls []ToolCall `json:"tool_calls"`
 
-	// This field is only used with the deepseek-reasoner model and represents the reasoning contents of the assistant message before the final answer.
+	// ReasoningContent is the model's reasoning before the final answer, when
+	// the provider returns it: deepseek-reasoner's reasoning_content, or
+	// Anthropic thinking blocks (empty when the thinking display omits them).
 	ReasoningContent string `json:"reasoning_content"`
 }
 

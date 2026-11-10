@@ -185,7 +185,8 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 	}
 	toolCalls := []llms.ToolCall{
 		{
-			ID: anthropicToolID,
+			ID:   anthropicToolID,
+			Type: llms.ToolTypeFunction,
 			FunctionCall: &llms.FunctionCall{
 				Name:      anthropicToolName,
 				Arguments: anthropicToolInput,
@@ -255,6 +256,13 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 			}, llms.CallOptions{})
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, res.Choices)
+			for _, choice := range res.Choices {
+				for _, tc := range choice.ToolCalls {
+					// F-001: callers read the tool call through these accessors.
+					assert.Equal(t, anthropicToolName, tc.GetFunctionCallName())
+					assert.Equal(t, anthropicToolInput, tc.GetFunctionCallArguments())
+				}
+			}
 		})
 	}
 }

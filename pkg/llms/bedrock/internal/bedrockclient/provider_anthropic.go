@@ -259,7 +259,8 @@ func createAnthropicCompletion(ctx context.Context,
 				return nil, errors.Wrap(err, "failed to marshal tool arguments")
 			}
 			toolCalls = append(toolCalls, llms.ToolCall{
-				ID: c.ID,
+				ID:   c.ID,
+				Type: llms.ToolTypeFunction,
 				FunctionCall: &llms.FunctionCall{
 					Name:      c.Name,
 					Arguments: string(argumentsJSON),

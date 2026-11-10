@@ -60,7 +60,7 @@ p := prompts.PromptTemplate{
 | Format | Syntax | Notes |
 |--------|--------|-------|
 | `TemplateFormatGoTemplate` (default) | `{{.name}}` | `text/template` with the full [sprig](https://masterminds.github.io/sprig/) function set; `missingkey=error` |
-| `TemplateFormatJinja2` | `{{ name }}` | via `gonja` |
+| `TemplateFormatJinja2` | `{{ name }}` | via [`gonja/v2`](https://github.com/NikolaLohinski/gonja); `{% include %}` reads local files, so do not render untrusted templates (see F-054 in `FINDINGS.md`) |
 | `TemplateFormatFString` | `{name}` | Python-style, minimal |
 
 `missingkey=error` on the Go engine means **every referenced variable must be

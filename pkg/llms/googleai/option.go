@@ -43,10 +43,15 @@ func DefaultOptions() Options {
 	}
 }
 
-// EnsureAuthPresent attempts to ensure that the client has authentication information. If it does not, it will attempt to use the GOOGLE_API_KEY environment variable.
+// envGoogleAPIKey is the environment variable EnsureAuthPresent falls back to.
+const envGoogleAPIKey = "GOOGLE_API_KEY" //nolint:gosec // variable name, not a secret
+
+// EnsureAuthPresent fills in the API key from the GOOGLE_API_KEY environment
+// variable when neither an API key nor credentials were configured. An
+// explicit WithAPIKey or WithCredentials always wins over the environment.
 func (o *Options) EnsureAuthPresent() {
-	if o.Credentials == nil {
-		if key := os.Getenv("GOOGLE_API_KEY"); key != "" {
+	if o.Credentials == nil && o.APIKey == "" {
+		if key := os.Getenv(envGoogleAPIKey); key != "" {
 			WithAPIKey(key)(o)
 		}
 	}

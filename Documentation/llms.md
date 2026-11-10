@@ -113,6 +113,17 @@ type ContentChoice struct {
 }
 ```
 
+`ToolCall.Type` is `llms.ToolTypeFunction` for function tools on every
+provider; `GetFunctionCallName` and `GetFunctionCallArguments` read the
+function only for that type.
+
+`ReasoningContent` carries the model's reasoning when the provider returns it:
+deepseek-reasoner's `reasoning_content`, or the text of Anthropic `thinking`
+blocks (streaming and non-streaming; empty when the thinking display omits
+it). Anthropic thinking blocks are not yet kept in the message history, so a
+multi-turn tool loop with thinking enabled loses them (F-055 in
+`FINDINGS.md`).
+
 `Usage` counts tokens (`InputTokens`, `OutputTokens`, `CacheWriteTokens`,
 `CacheReadTokens`, `ReasoningTokens`, `TotalTokens`).
 `ContentResponse.Usage()` sums across choices.

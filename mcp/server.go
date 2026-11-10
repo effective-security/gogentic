@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/internal/protocol"
@@ -173,6 +174,10 @@ func WithProtocol(protocol *protocol.Protocol) ServerOptions {
 	}
 }
 
+// WithPaginationLimit caps the number of items returned per page by tools/list,
+// prompts/list, resources/list and resources/templates/list. A full page
+// carries a nextCursor; a non-positive limit disables pagination.
+//
 // Beware: As of 2024-12-13, it looks like Claude does not support pagination yet
 func WithPaginationLimit(limit int) ServerOptions {
 	return func(s *Server) {
@@ -652,77 +657,23 @@ func (s *Server) handleInitialize(ctx context.Context, request *transport.BaseJS
 }
 
 func (s *Server) handleListTools(ctx context.Context, request *transport.BaseJSONRPCRequest, _ protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	type toolRequestParams struct {
-		Cursor *string `json:"cursor"`
-	}
-	var params toolRequestParams
-	if request.Params == nil {
-		params = toolRequestParams{}
-	} else {
-		err := json.Unmarshal(request.Params, &params)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal arguments")
-		}
+	page, nextCursor, err := paginate(request, s.tools, s.paginationLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	// Order by name for pagination
-	var orderedTools []*tool
-	s.tools.Range(func(k string, t *tool) bool {
-		orderedTools = append(orderedTools, t)
-		return true
-	})
-	sort.Slice(orderedTools, func(i, j int) bool {
-		return orderedTools[i].Name < orderedTools[j].Name
-	})
-
-	startPosition := 0
-	if params.Cursor != nil {
-		// Base64 decode the cursor
-		c, err := base64.StdEncoding.DecodeString(*params.Cursor)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to decode cursor")
-		}
-		cString := string(c)
-		// Iterate through the tools until we find an entry > the cursor
-		found := false
-		for i := 0; i < len(orderedTools); i++ {
-			if orderedTools[i].Name > cString {
-				startPosition = i
-				found = true
-				break
-			}
-		}
-		if !found {
-			startPosition = len(orderedTools)
-		}
-	}
-	endPosition := len(orderedTools)
-	if s.paginationLimit != nil {
-		// Make sure we don't go out of bounds
-		if len(orderedTools) > startPosition+*s.paginationLimit {
-			endPosition = startPosition + *s.paginationLimit
-		}
-	}
-
-	toolsToReturn := make([]ToolRetType, 0)
-
-	for i := startPosition; i < endPosition; i++ {
+	toolsToReturn := make([]ToolRetType, 0, len(page))
+	for _, t := range page {
 		toolsToReturn = append(toolsToReturn, ToolRetType{
-			Name:        orderedTools[i].Name,
-			Description: &orderedTools[i].Description,
-			InputSchema: orderedTools[i].ToolInputSchema,
+			Name:        t.Name,
+			Description: &t.Description,
+			InputSchema: t.ToolInputSchema,
 		})
 	}
 
 	return ToolsResponse{
-		Tools: toolsToReturn,
-		NextCursor: func() *string {
-			if s.paginationLimit != nil && len(toolsToReturn) >= *s.paginationLimit {
-				toString := base64.StdEncoding.EncodeToString([]byte(toolsToReturn[len(toolsToReturn)-1].Name))
-				return &toString
-			}
-			return nil
-		}(),
+		Tools:      toolsToReturn,
+		NextCursor: nextCursor,
 	}, nil
 }
 
@@ -762,122 +713,33 @@ func (s *Server) generateCapabilities() ServerCapabilities {
 	}
 }
 func (s *Server) handleListPrompts(ctx context.Context, request *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	type promptRequestParams struct {
-		Cursor *string `json:"cursor"`
-	}
-	var params promptRequestParams
-	if len(request.Params) > 0 {
-		err := json.Unmarshal(request.Params, &params)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal arguments")
-		}
+	page, nextCursor, err := paginate(request, s.prompts, s.paginationLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	// Order by name for pagination
-	var orderedPrompts []*prompt
-	s.prompts.Range(func(k string, p *prompt) bool {
-		orderedPrompts = append(orderedPrompts, p)
-		return true
-	})
-	sort.Slice(orderedPrompts, func(i, j int) bool {
-		return orderedPrompts[i].Name < orderedPrompts[j].Name
-	})
-
-	startPosition := 0
-	if params.Cursor != nil {
-		// Base64 decode the cursor
-		c, err := base64.StdEncoding.DecodeString(*params.Cursor)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to decode cursor")
-		}
-		cString := string(c)
-		// Iterate through the prompts until we find an entry > the cursor
-		for i := 0; i < len(orderedPrompts); i++ {
-			if orderedPrompts[i].Name > cString {
-				startPosition = i
-				break
-			}
-		}
-	}
-	endPosition := len(orderedPrompts)
-	if s.paginationLimit != nil {
-		// Make sure we don't go out of bounds
-		if len(orderedPrompts) > startPosition+*s.paginationLimit {
-			endPosition = startPosition + *s.paginationLimit
-		}
-	}
-
-	promptsToReturn := make([]*PromptSchema, 0)
-	for i := startPosition; i < endPosition; i++ {
-		schema := orderedPrompts[i].PromptInputSchema
-		schema.Description = &orderedPrompts[i].Description
-		schema.Name = orderedPrompts[i].Name
+	promptsToReturn := make([]*PromptSchema, 0, len(page))
+	for _, p := range page {
+		schema := p.PromptInputSchema
+		schema.Description = &p.Description
+		schema.Name = p.Name
 		promptsToReturn = append(promptsToReturn, schema)
 	}
 
 	return ListPromptsResponse{
-		Prompts: promptsToReturn,
-		NextCursor: func() *string {
-			if s.paginationLimit != nil && len(promptsToReturn) >= *s.paginationLimit {
-				toString := base64.StdEncoding.EncodeToString([]byte(promptsToReturn[len(promptsToReturn)-1].Name))
-				return &toString
-			}
-			return nil
-		}(),
+		Prompts:    promptsToReturn,
+		NextCursor: nextCursor,
 	}, nil
 }
 
 func (s *Server) handleListResources(ctx context.Context, request *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	type resourceRequestParams struct {
-		Cursor *string `json:"cursor"`
-	}
-	var params resourceRequestParams
-	if request.Params == nil {
-		params = resourceRequestParams{}
-	} else {
-		err := json.Unmarshal(request.Params, &params)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal arguments")
-		}
+	page, nextCursor, err := paginate(request, s.resources, s.paginationLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	// Order by URI for pagination
-	var orderedResources []*resource
-	s.resources.Range(func(k string, r *resource) bool {
-		orderedResources = append(orderedResources, r)
-		return true
-	})
-	sort.Slice(orderedResources, func(i, j int) bool {
-		return orderedResources[i].Uri < orderedResources[j].Uri
-	})
-
-	startPosition := 0
-	if params.Cursor != nil {
-		// Base64 decode the cursor
-		c, err := base64.StdEncoding.DecodeString(*params.Cursor)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to decode cursor")
-		}
-		cString := string(c)
-		// Iterate through the resources until we find an entry > the cursor
-		for i := 0; i < len(orderedResources); i++ {
-			if orderedResources[i].Uri > cString {
-				startPosition = i
-				break
-			}
-		}
-	}
-	endPosition := len(orderedResources)
-	if s.paginationLimit != nil {
-		// Make sure we don't go out of bounds
-		if len(orderedResources) > startPosition+*s.paginationLimit {
-			endPosition = startPosition + *s.paginationLimit
-		}
-	}
-
-	resourcesToReturn := make([]*ResourceSchema, 0)
-	for i := startPosition; i < endPosition; i++ {
-		r := orderedResources[i]
+	resourcesToReturn := make([]*ResourceSchema, 0, len(page))
+	for _, r := range page {
 		resourcesToReturn = append(resourcesToReturn, &ResourceSchema{
 			Annotations: nil,
 			Description: &r.Description,
@@ -888,68 +750,19 @@ func (s *Server) handleListResources(ctx context.Context, request *transport.Bas
 	}
 
 	return ListResourcesResponse{
-		Resources: resourcesToReturn,
-		NextCursor: func() *string {
-			if s.paginationLimit != nil && len(resourcesToReturn) >= *s.paginationLimit {
-				toString := base64.StdEncoding.EncodeToString([]byte(resourcesToReturn[len(resourcesToReturn)-1].Uri))
-				return &toString
-			}
-			return nil
-		}(),
+		Resources:  resourcesToReturn,
+		NextCursor: nextCursor,
 	}, nil
 }
 
 func (s *Server) handleListResourceTemplates(ctx context.Context, request *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	type resourceTemplateRequestParams struct {
-		Cursor *string `json:"cursor"`
-	}
-	var params resourceTemplateRequestParams
-	if request.Params == nil {
-		params = resourceTemplateRequestParams{}
-	} else {
-		err := json.Unmarshal(request.Params, &params)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal arguments")
-		}
+	page, nextCursor, err := paginate(request, s.resourceTemplates, s.paginationLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	// Order by URI template for pagination
-	var orderedTemplates []*resourceTemplate
-	s.resourceTemplates.Range(func(k string, t *resourceTemplate) bool {
-		orderedTemplates = append(orderedTemplates, t)
-		return true
-	})
-	sort.Slice(orderedTemplates, func(i, j int) bool {
-		return orderedTemplates[i].UriTemplate < orderedTemplates[j].UriTemplate
-	})
-
-	startPosition := 0
-	if params.Cursor != nil {
-		// Base64 decode the cursor
-		c, err := base64.StdEncoding.DecodeString(*params.Cursor)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to decode cursor")
-		}
-		cString := string(c)
-		// Iterate through the templates until we find an entry > the cursor
-		for i := 0; i < len(orderedTemplates); i++ {
-			if orderedTemplates[i].UriTemplate > cString {
-				startPosition = i
-				break
-			}
-		}
-	}
-	endPosition := len(orderedTemplates)
-	if s.paginationLimit != nil {
-		// Make sure we don't go out of bounds
-		if len(orderedTemplates) > startPosition+*s.paginationLimit {
-			endPosition = startPosition + *s.paginationLimit
-		}
-	}
-
-	templatesToReturn := make([]*ResourceTemplateSchema, 0)
-	for i := startPosition; i < endPosition; i++ {
-		t := orderedTemplates[i]
+	templatesToReturn := make([]*ResourceTemplateSchema, 0, len(page))
+	for _, t := range page {
 		templatesToReturn = append(templatesToReturn, &ResourceTemplateSchema{
 			Annotations: nil,
 			Description: &t.Description,
@@ -960,15 +773,74 @@ func (s *Server) handleListResourceTemplates(ctx context.Context, request *trans
 	}
 
 	return ListResourceTemplatesResponse{
-		Templates: templatesToReturn,
-		NextCursor: func() *string {
-			if s.paginationLimit != nil && len(templatesToReturn) >= *s.paginationLimit {
-				toString := base64.StdEncoding.EncodeToString([]byte(templatesToReturn[len(templatesToReturn)-1].UriTemplate))
-				return &toString
-			}
-			return nil
-		}(),
+		Templates:  templatesToReturn,
+		NextCursor: nextCursor,
 	}, nil
+}
+
+// paginate returns the page of a */list request: the values of items ordered
+// by key that follow the request's cursor, at most limit of them, and the
+// cursor of the next page. A nil or non-positive limit returns every remaining
+// value and no cursor.
+//
+// The cursor is the base64-encoded key of the last value of the previous page.
+// A full page always carries a cursor, and a cursor at or past the last key
+// yields an empty page without one, so following cursors until none is
+// returned visits every value exactly once.
+func paginate[V any](request *transport.BaseJSONRPCRequest, items *maps.SyncMap[string, V], limit *int) ([]V, *string, error) {
+	var params struct {
+		Cursor *string `json:"cursor"`
+	}
+	if len(request.Params) > 0 {
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			return nil, nil, errors.WithMessage(err, "failed to unmarshal arguments")
+		}
+	}
+
+	type entry struct {
+		key   string
+		value V
+	}
+	var entries []entry
+	items.Range(func(key string, value V) bool {
+		entries = append(entries, entry{
+			key:   key,
+			value: value,
+		})
+		return true
+	})
+	slices.SortFunc(entries, func(a, b entry) int {
+		return strings.Compare(a.key, b.key)
+	})
+
+	start := 0
+	if params.Cursor != nil {
+		c, err := base64.StdEncoding.DecodeString(*params.Cursor)
+		if err != nil {
+			return nil, nil, errors.WithMessage(err, "failed to decode cursor")
+		}
+		last := string(c)
+		start = sort.Search(len(entries), func(i int) bool {
+			return entries[i].key > last
+		})
+	}
+
+	end := len(entries)
+	paged := limit != nil && *limit > 0
+	if paged {
+		end = min(end, start+*limit)
+	}
+
+	page := make([]V, 0, end-start)
+	for _, e := range entries[start:end] {
+		page = append(page, e.value)
+	}
+
+	if !paged || len(page) < *limit {
+		return page, nil, nil
+	}
+	nextCursor := base64.StdEncoding.EncodeToString([]byte(entries[end-1].key))
+	return page, &nextCursor, nil
 }
 
 func (s *Server) handlePromptCalls(ctx context.Context, req *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
@@ -979,17 +851,9 @@ func (s *Server) handlePromptCalls(ctx context.Context, req *transport.BaseJSONR
 		return nil, errors.Wrap(err, "failed to unmarshal arguments")
 	}
 
-	var promptToUse *prompt
-	s.prompts.Range(func(k string, p *prompt) bool {
-		if k != params.Name {
-			return true
-		}
-		promptToUse = p
-		return false
-	})
-
-	if promptToUse == nil {
-		return nil, errors.Wrapf(err, "unknown prompt: %s", req.Method)
+	promptToUse, ok := s.prompts.Load(params.Name)
+	if !ok {
+		return nil, errors.Errorf("unknown prompt: %s", params.Name)
 	}
 	return promptToUse.Handler(ctx, params), nil
 }
@@ -1002,17 +866,9 @@ func (s *Server) handleResourceCalls(ctx context.Context, req *transport.BaseJSO
 		return nil, errors.Wrap(err, "failed to unmarshal arguments")
 	}
 
-	var resourceToUse *resource
-	s.resources.Range(func(k string, r *resource) bool {
-		if k != params.Uri {
-			return true
-		}
-		resourceToUse = r
-		return false
-	})
-
-	if resourceToUse == nil {
-		return nil, errors.Wrapf(err, "unknown prompt: %s", req.Method)
+	resourceToUse, ok := s.resources.Load(params.Uri)
+	if !ok {
+		return nil, errors.Errorf("unknown resource: %s", params.Uri)
 	}
 	return resourceToUse.Handler(ctx), nil
 }

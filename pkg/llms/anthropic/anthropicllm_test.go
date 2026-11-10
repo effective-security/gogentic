@@ -1146,7 +1146,8 @@ func TestGenerateContent_Request(t *testing.T) {
 				Content: "Let me check. Done.",
 				ToolCalls: []llms.ToolCall{
 					{
-						ID: "toolu_1",
+						ID:   "toolu_1",
+						Type: llms.ToolTypeFunction,
 						FunctionCall: &llms.FunctionCall{
 							Name:      weatherToolName,
 							Arguments: `{"location":"Paris"}`,
@@ -1203,6 +1204,58 @@ func TestGenerateContent_Request(t *testing.T) {
 			}
 		]
 	}`, sentBody(t, api))
+}
+
+// F-007: thinking is on whenever reasoning effort enables it (and always on
+// for models where it cannot be disabled), so thinking blocks and the results
+// of server-side tools must not fail a non-streaming call.
+func TestGenerateContent_ThinkingAndServerToolBlocks(t *testing.T) {
+	t.Parallel()
+
+	const reply = `{"id":"msg_1","type":"message","role":"assistant","content":[
+		{"type":"thinking","thinking":"Paris is in France.","signature":"sig_1"},
+		{"type":"redacted_thinking","data":"opaque"},
+		{"type":"thinking","thinking":"","signature":"sig_2"},
+		{"type":"bash_code_execution_tool_result","tool_use_id":"srvtoolu_1","content":{"type":"bash_code_execution_result","stdout":"","stderr":"","return_code":0,"content":[]}},
+		{"type":"text_editor_code_execution_tool_result","tool_use_id":"srvtoolu_2","content":{"type":"text_editor_code_execution_view_result","content":"","file_type":"text","num_lines":0,"start_line":1,"total_lines":0}},
+		{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_3","content":{"type":"tool_search_tool_search_result","tool_references":[]}},
+		{"type":"container_upload","file_id":"file_1"},
+		{"type":"text","text":"Paris."}
+	],"stop_reason":"end_turn","usage":{"input_tokens":4,"output_tokens":6}}`
+	_, llm := newMessagesAPI(t, http.StatusOK, contentTypeJSON, reply)
+
+	resp, err := llm.GenerateContent(context.Background(), hiMessages())
+	require.NoError(t, err)
+	require.Len(t, resp.Choices, 1)
+	choice := resp.Choices[0]
+	assert.Equal(t, "Paris.", choice.Content)
+	assert.Equal(t, "Paris is in France.", choice.ReasoningContent)
+	assert.Empty(t, choice.ToolCalls)
+	assert.Equal(t, "end_turn", choice.StopReason)
+}
+
+// Streamed thinking deltas land in ReasoningContent, as in the
+// non-streaming path, and are not passed to the streaming function.
+func TestGenerateContent_StreamingThinking(t *testing.T) {
+	t.Parallel()
+
+	streamThinking := sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`) +
+		sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Paris is "}}`) +
+		sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"in France."}}`) +
+		sseEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_1"}}`) +
+		sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`)
+	_, llm := newMessagesAPI(t, http.StatusOK, contentTypeSSE, streamStart+streamThinking+streamText+streamEnd)
+	var chunks []string
+
+	resp, err := llm.GenerateContent(context.Background(), hiMessages(), llms.WithStreamingFunc(func(_ context.Context, chunk []byte) error {
+		chunks = append(chunks, string(chunk))
+		return nil
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Choices, 1)
+	assert.Equal(t, "Hello", resp.Choices[0].Content)
+	assert.Equal(t, "Paris is in France.", resp.Choices[0].ReasoningContent)
+	assert.Equal(t, []string{"Hel", "lo"}, chunks)
 }
 
 func TestGenerateContent_UnknownContentBlock(t *testing.T) {
@@ -1308,7 +1361,8 @@ func TestGenerateContent_Streaming(t *testing.T) {
 				Content: "Hello",
 				ToolCalls: []llms.ToolCall{
 					{
-						ID: "toolu_1",
+						ID:   "toolu_1",
+						Type: llms.ToolTypeFunction,
 						FunctionCall: &llms.FunctionCall{
 							Name:      weatherToolName,
 							Arguments: `{"location":"Paris"}`,

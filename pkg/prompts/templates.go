@@ -8,7 +8,8 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/prompts/internal/fstring"
-	"github.com/nikolalohinski/gonja"
+	"github.com/nikolalohinski/gonja/v2"
+	"github.com/nikolalohinski/gonja/v2/exec"
 	"golang.org/x/exp/maps"
 )
 
@@ -57,15 +58,15 @@ func interpolateGoTemplate(tmpl string, values map[string]any) (string, error) {
 }
 
 // interpolateJinja2 interpolates the given template with the given values by using
-// jinja2(impl by https://github.com/NikolaLohinski/gonja).
+// jinja2 (implemented by https://github.com/NikolaLohinski/gonja).
 func interpolateJinja2(tmpl string, values map[string]any) (string, error) {
 	tpl, err := gonja.FromString(tmpl)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "failed to parse jinja2 template")
 	}
-	out, err := tpl.Execute(values)
+	out, err := tpl.ExecuteToString(exec.NewContext(values))
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "failed to render jinja2 template")
 	}
 	return out, nil
 }
