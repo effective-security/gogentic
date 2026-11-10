@@ -83,6 +83,11 @@ func (s EffortSet) Empty() bool {
 	return s == 0
 }
 
+// With returns the set extended by the given levels.
+func (s EffortSet) With(levels ...ReasoningEffort) EffortSet {
+	return s | NewEffortSet(levels...)
+}
+
 // Levels returns the levels in the set, lowest first.
 func (s EffortSet) Levels() []ReasoningEffort {
 	var levels []ReasoningEffort
@@ -123,17 +128,30 @@ func (s EffortSet) Nearest(e ReasoningEffort) ReasoningEffort {
 
 // EffortPolicy is the reasoning effort configuration a provider client applies
 // to every call it makes. The zero value changes nothing.
+//
+// Default and Max come from configuration. Supported and Implicit describe the
+// model the client was built for, as its provider's model list reports it;
+// they are empty unless the list was read.
 type EffortPolicy struct {
 	// Default is used when a call does not request a level.
 	Default ReasoningEffort
 	// Max is the highest level a call may use. ReasoningEffortDefault means
 	// there is no ceiling.
 	Max ReasoningEffort
+	// Supported holds the levels the provider reports for the client's model.
+	// When it is not empty, the client uses it in place of its own table for
+	// that model. The empty set means the provider reported none.
+	Supported EffortSet
+	// Implicit is the level the provider reports the client's model applies
+	// to a request that names none. ReasoningEffortDefault means the provider
+	// did not report it.
+	Implicit ReasoningEffort
 }
 
-// IsZero reports whether the policy has neither a default nor a ceiling.
+// IsZero reports whether the policy changes nothing: it has no default, no
+// ceiling, and nothing reported by the provider.
 func (p EffortPolicy) IsZero() bool {
-	return p.Default == ReasoningEffortDefault && p.Max == ReasoningEffortDefault
+	return p == EffortPolicy{}
 }
 
 // Resolve returns the level to send for one call.

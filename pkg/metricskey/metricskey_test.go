@@ -22,6 +22,8 @@ func TestMetricsDefinitions(t *testing.T) {
 		&StatsLLMBytesTotal,
 		&StatsLLMInputTokens,
 		&StatsLLMMessagesSent,
+		&StatsLLMModelListFailed,
+		&StatsLLMModelSubstituted,
 		&StatsLLMOutputTokens,
 		&StatsLLMCachedWriteTokens,
 		&StatsLLMCachedReadTokens,
@@ -66,6 +68,16 @@ func TestMetricsDefinitions(t *testing.T) {
 		}
 		for _, m := range llmMetrics {
 			assert.Contains(t, m.RequiredTags, "agent", "LLM metric should have agent tag: %s", m.Name)
+		}
+	})
+
+	t.Run("Model routing metrics have provider tag", func(t *testing.T) {
+		routingMetrics := []*metrics.Describe{
+			&StatsLLMModelListFailed,
+			&StatsLLMModelSubstituted,
+		}
+		for _, m := range routingMetrics {
+			assert.Contains(t, m.RequiredTags, "provider", "Model routing metric should have provider tag: %s", m.Name)
 		}
 	})
 

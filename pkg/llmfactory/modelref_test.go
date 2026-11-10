@@ -189,7 +189,7 @@ func TestRankModels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			in := append([]string(nil), tt.in...)
-			assert.Equal(t, tt.want, rankModels(tt.in))
+			assert.Equal(t, tt.want, rankModels(tt.in, nil))
 			assert.Equal(t, in, tt.in, "the input must not be reordered")
 		})
 	}

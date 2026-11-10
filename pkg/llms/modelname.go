@@ -11,6 +11,9 @@ const (
 	modelPathSeparator   = "/"
 	modelVendorSeparator = "."
 	versionSeparator     = "."
+	// modelVariantSeparator starts the variant of a routed model ID, as in
+	// openai/gpt-5.5:batch.
+	modelVariantSeparator = ":"
 
 	// snapshotMinDigits is the length from which an all-digit token is a
 	// snapshot (a date such as 20250514 or a build such as 1106) rather than a
@@ -65,6 +68,11 @@ type ModelName struct {
 	// Stage is the release stage word, such as "preview". Empty for a
 	// generally available model.
 	Stage string
+	// Variant is the offering a router appends to an ID after a colon, such
+	// as "batch" in openai/gpt-5.5:batch or "free". It is the same model
+	// served on other terms, so it is not part of the family, but it is part
+	// of [ModelName.Key]. Empty for most IDs.
+	Variant string
 }
 
 // ParseModelName splits a model ID into family, version, snapshot and stage.
@@ -79,6 +87,7 @@ type ModelName struct {
 //	gemini-3-pro-preview               family gemini-pro     version 3    stage preview
 //	us.anthropic.claude-opus-4-20250514-v1:0
 //	                                   prefix us.anthropic.  family claude-opus  version 4
+//	openai/gpt-5.5:batch               prefix openai/        family gpt          version 5.5  variant batch
 func ParseModelName(id string) ModelName {
 	name := ModelName{
 		ID: id,
@@ -87,6 +96,15 @@ func ParseModelName(id string) ModelName {
 	if i := strings.LastIndex(rest, modelPathSeparator); i >= 0 {
 		name.Prefix = rest[:i+1]
 		rest = rest[i+1:]
+	}
+	// A colon followed by a word is a variant. A colon followed by digits
+	// belongs to a revision such as v1:0 and stays in the snapshot.
+	if i := strings.LastIndex(rest, modelVariantSeparator); i >= 0 {
+		variant := rest[i+1:]
+		if variant != "" && !digitsToken.MatchString(variant) {
+			name.Variant = variant
+			rest = rest[:i]
+		}
 	}
 	tokens := strings.Split(rest, modelTokenSeparator)
 
@@ -130,10 +148,15 @@ func ParseModelName(id string) ModelName {
 	return name
 }
 
-// Key identifies the family across versions, including the prefix, so that
-// models reached through different routes are not mixed up.
+// Key identifies the family across versions, including the prefix and the
+// variant, so that models reached through different routes or served on
+// different terms are not mixed up.
 func (n ModelName) Key() string {
-	return n.Prefix + n.Family
+	key := n.Prefix + n.Family
+	if n.Variant != "" {
+		key += modelVariantSeparator + n.Variant
+	}
+	return key
 }
 
 // HasVersion reports whether the ID carried a version.

@@ -204,6 +204,26 @@ func familyEffortProfile(name llms.ModelName) effortProfile {
 	}
 }
 
+// withReported returns the profile corrected by what the provider's model
+// list reports for the model: its levels replace those of the table, and the
+// level it applies on its own replaces the table's. A policy that carries
+// neither leaves the profile as it is.
+func (p effortProfile) withReported(policy llms.EffortPolicy) effortProfile {
+	if !policy.Supported.Empty() {
+		levels := policy.Supported
+		if p.minimalFloor {
+			// The list has no portable name for "minimal", the level this
+			// model takes for the portable none.
+			levels = levels.With(llms.ReasoningEffortNone)
+		}
+		p.levels = levels
+	}
+	if policy.Implicit != llms.ReasoningEffortDefault {
+		p.upstream = policy.Implicit
+	}
+	return p
+}
+
 // resolve returns the level to put on a Responses request for one call, or
 // ReasoningEffortDefault when no setting should be sent.
 func (p effortProfile) resolve(policy llms.EffortPolicy, requested llms.ReasoningEffort) llms.ReasoningEffort {

@@ -9,4 +9,7 @@
 //	    anthropic.WithModel("claude-3-5-sonnet-20240620"),
 //	)
 //	_ = mdl; _ = err
+//
+// The models an account can call are listed with [NewModelLister], which
+// needs no model name, or with [LLM.ListModels].
 package anthropic

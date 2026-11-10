@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
 	"github.com/effective-security/gogentic/pkg/schema"
-	"github.com/effective-security/x/values"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
@@ -44,12 +44,28 @@ func New(opts ...Option) (*LLM, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newLLM(popts, c), nil
+}
+
+// effortProfile returns the reasoning control of the model a request names.
+// For the model the client was built for, the levels reported by the
+// provider's model list take the place of the table's.
+func (o *LLM) effortProfile(model string) effortProfile {
+	profile := effortProfileFor(model)
+	if model == o.client.Model {
+		profile = profile.withReported(o.effort)
+	}
+	return profile
+}
+
+// newLLM wraps an internal client built from the given options.
+func newLLM(popts *options, c *openaiclient.Client) *LLM {
 	return &LLM{
 		client:       c,
 		providerType: popts.provider,
 		inferenceAPI: popts.inferenceAPI,
 		effort:       popts.effort,
-	}, err
+	}
 }
 
 // GetName implements the Model interface.
@@ -184,8 +200,8 @@ func (o *LLM) buildChatRequestBody(messages []llms.Message, options ...llms.Call
 	// Chat Completions gets an effort only when a call or the configuration
 	// asks for one, or when the model's own default is above the configured
 	// ceiling; without it the model keeps its own default.
-	chatModel := values.StringsCoalesce(opts.Model, o.client.Model)
-	chatProfile := effortProfileFor(chatModel)
+	chatModel := cmp.Or(opts.Model, o.client.Model)
+	chatProfile := o.effortProfile(chatModel)
 	chatLevel := chatProfile.resolveOmitted(o.effort, opts.ReasoningEffort)
 	if chatLevel != llms.ReasoningEffortDefault {
 		req.ReasoningEffort = string(chatProfile.wire(chatLevel))
@@ -350,14 +366,14 @@ func (o *LLM) buildResponsesRequestBody(messages []llms.Message, options ...llms
 	}
 
 	req := &responses.ResponseNewParams{
-		Model:           values.StringsCoalesce(opts.Model, o.client.Model, openaiclient.DefaultChatModel),
+		Model:           cmp.Or(opts.Model, o.client.Model, openaiclient.DefaultChatModel),
 		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
-		MaxOutputTokens: param.NewOpt(int64(values.NumbersCoalesce(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
+		MaxOutputTokens: param.NewOpt(int64(cmp.Or(opts.MaxTokens, openaiclient.DefaultMaxTokens))),
 		Metadata:        convertMetadata(opts.Metadata),
 	}
 	applyPromptCacheToResponsesRequest(req, o.client.Provider, &opts)
 
-	profile := effortProfileFor(string(req.Model))
+	profile := o.effortProfile(string(req.Model))
 	if level := profile.resolve(o.effort, opts.ReasoningEffort); level != llms.ReasoningEffortDefault {
 		req.Reasoning = shared.ReasoningParam{Effort: profile.wire(level)}
 	}

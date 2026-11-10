@@ -69,9 +69,24 @@ type ProviderConfig struct {
 	DisabledModels []string `json:"disabled_models,omitempty" yaml:"disabled_models,omitempty"`
 	// MaxEffort is the highest reasoning effort a call to this provider may
 	// use: none, low, medium, high, xhigh or max. Empty means no ceiling.
-	MaxEffort string            `json:"max_effort,omitempty" yaml:"max_effort,omitempty"`
+	MaxEffort string `json:"max_effort,omitempty" yaml:"max_effort,omitempty"`
+	// Discovery turns on reading the model list from the provider, so that
+	// patterns see models nobody listed and a retired model gives way to a
+	// newer one of its family. Nil means off.
+	Discovery *DiscoveryConfig  `json:"discovery,omitempty" yaml:"discovery,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
 	OpenAI    OpenAIConfig      `json:"open_ai" yaml:"open_ai"`
+}
+
+// DiscoveryConfig controls reading the model list from a provider. It is
+// accepted for the provider types that advertise llms.CapabilityModels:
+// OPENAI, OPENROUTER, ANTHROPIC and GOOGLEAI.
+type DiscoveryConfig struct {
+	// Enabled turns discovery on.
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	// Refresh is how long a fetched list is trusted, as a duration string
+	// such as "6h". Empty means one hour; the minimum is one minute.
+	Refresh string `json:"refresh,omitempty" yaml:"refresh,omitempty"`
 }
 
 // OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType

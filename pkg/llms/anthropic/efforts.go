@@ -185,6 +185,18 @@ func thinkingOffFor(name llms.ModelName) thinkingOff {
 	return thinkingOffOmit
 }
 
+// withReported returns the profile corrected by the effort levels the model
+// list reports for the model. They replace those of the table; none stays,
+// since the API never names it and every model can be asked for its least. A
+// model the list reports no levels for keeps the table's.
+func (p effortProfile) withReported(policy llms.EffortPolicy) effortProfile {
+	if policy.Supported.Empty() || !p.outputEffort {
+		return p
+	}
+	p.levels = policy.Supported.With(llms.ReasoningEffortNone)
+	return p
+}
+
 // apply writes the thinking and effort settings of one call into params.
 // level is the outcome of [llms.EffortPolicy.Resolve]: ReasoningEffortDefault
 // when the call and the configuration requested nothing.

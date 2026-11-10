@@ -185,6 +185,13 @@ no policy and no requested level, a provider sends what it always sent. What
 each provider puts on the wire is listed in
 [LLM Factory → Reasoning effort](llm-factory.md#reasoning-effort).
 
+A policy can also carry what the provider's model list reports for the
+client's model: `Supported`, the levels (`ModelInfo.Efforts`), and `Implicit`,
+the level applied when a request names none (`ModelInfo.DefaultEffort`). When
+they are set, the OpenAI and Anthropic clients use them in place of their own
+table for that model. The factory fills them from the list when discovery is
+on; `EffortPolicy.IsZero` is true only when all four fields are empty.
+
 The supported levels are looked up by model family and version.
 `llms.ParseModelName` does the split, and is usable on its own:
 
@@ -194,6 +201,10 @@ name := llms.ParseModelName("us.anthropic.claude-opus-4-20250514-v1:0")
 // name.Version [4]             name.Snapshot "20250514-v1:0"
 name.VersionAtLeast(4, 6) // false
 ```
+
+A router variant after a colon, as in `openai/gpt-5.5:batch`, is kept in
+`name.Variant`: the family and version are those of `gpt-5.5`, so the variant
+gets the same effort levels.
 
 ## Capabilities
 
@@ -216,7 +227,7 @@ provider family supports.
 | `CapabilityWebSearchTool` | Provider-native web search grounding |
 | `CapabilityPromptCaching` | Provider-native prompt caching |
 | `CapabilityBatch` | Implements `Batcher` |
-| `CapabilityModels` | The provider can list the models an account may call. Listing itself is not implemented yet, see [LLM Factory](llm-factory.md#design-dynamic-model-lists-and-family-fallback) |
+| `CapabilityModels` | Implements `ModelLister`, see [Listing models](#listing-models) |
 
 **Two different checks, do not mix them up:**
 
@@ -238,6 +249,69 @@ Capabilities are consumed in three places: the factory filters candidate
 providers, `Assistant.setResponseFormat` decides whether to send a JSON Schema
 response format or fall back to prompt instructions, and
 `Config.GetCallOptions` drops `web_search` tools for providers that lack it.
+
+## Listing models
+
+A provider that advertises `CapabilityModels` can list the models an account
+may call. Its client implements `llms.ModelLister`:
+
+```go
+type ModelLister interface {
+    ListModels(ctx context.Context) ([]ModelInfo, error)
+}
+```
+
+Assert the interface on a model, or build a lister with the `NewModelLister`
+function of the provider package, which takes the options of `New` and needs no
+model name:
+
+```go
+lister, err := anthropic.NewModelLister(anthropic.WithToken(token))
+if err != nil {
+    return err
+}
+models, err := lister.ListModels(ctx)
+if err != nil {
+    return err
+}
+for _, m := range models {
+    if m.Lifecycle == llms.ModelLifecycleDeprecated {
+        fmt.Printf("%s retires on %s\n", m.ID, m.RetiresAt.Format(time.DateOnly))
+    }
+}
+```
+
+`ModelInfo` holds what every provider can be asked for. A field the provider
+does not report stays at its zero value:
+
+| Field | Meaning |
+|-------|---------|
+| `ID` | The name to use in a request |
+| `DisplayName` | Human-readable name |
+| `Family` | The family as the provider names it; when empty, use `llms.ParseModelName(ID).Family` |
+| `Created` | Release time |
+| `Lifecycle` | `ModelLifecycleActive`, `ModelLifecycleDeprecated`, `ModelLifecycleRetired`, or empty when not reported |
+| `RetiresAt` | Announced end of service; zero when none is announced |
+| `Efforts` | Reasoning effort levels the provider reports for the model; empty when it reports none |
+| `DefaultEffort` | The level the provider reports the model applies when a request names none; `ReasoningEffortDefault` when it reports none |
+
+What each provider reports:
+
+| Lister | Lifecycle | Family | Efforts | Remarks |
+|--------|-----------|--------|---------|---------|
+| `openai.NewModelLister(opts...)` (`OPENAI`) | `deprecated` with `RetiresAt` for a model with an announced shutdown date, else `active` | — | — | Holds embedding, image and audio models as well as chat models |
+| `openai.NewModelLister` with `openai.WithProvider(llms.ProviderOpenRouter)` | `deprecated` with `RetiresAt` for a model with an expiration date, else `active` | — | Per model, where OpenRouter names the levels, with `DefaultEffort`. Its `minimal` level has no portable name and is left out. | Also fills `DisplayName`. A list that says it is truncated is an error. |
+| `anthropic.NewModelLister(opts...)` | `active`, `deprecated` or `retired`, with `RetiresAt` | The model line: `opus`, `sonnet`, `haiku`, `fable`, `mythos` | Per model | Retired models are asked for, but the API may leave them out: treat a model that is not listed as gone |
+| `googleai.NewModelLister(ctx, opts...)` | — | — | — | Only models that support `generateContent`; the `models/` prefix is removed |
+
+The other provider types return `llms.ErrModelListNotSupported` (test with
+`errors.Is`): `AZURE` and `AZURE_AD`, where requests name deployments;
+`PERPLEXITY`; `OPENAI_BEDROCK`; and the Anthropic client built with
+`NewBedrock`. No request is made in that case.
+
+The factory reads these lists for the providers with `discovery` enabled, to
+resolve patterns and to replace retired models; see
+[LLM Factory → Model discovery](llm-factory.md#model-discovery).
 
 ## Prompt caching
 

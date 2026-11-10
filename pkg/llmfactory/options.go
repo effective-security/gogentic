@@ -18,9 +18,10 @@ type Options struct {
 	// ModelFilter reports whether a model may be used for an org,
 	// e.g. to enforce per-org / per-model quota.
 	ModelFilter ModelFilterFunc
-	// Effort is the reasoning effort default and ceiling of the model being
-	// constructed. The factory sets it for each model from the configuration;
-	// a value given to New is not used.
+	// Effort holds the reasoning effort settings of the model being
+	// constructed: the default and the ceiling from the configuration and,
+	// with discovery, the levels the provider reports for the model. The
+	// factory sets it for each model; a value given to New is not used.
 	Effort llms.EffortPolicy
 }
 

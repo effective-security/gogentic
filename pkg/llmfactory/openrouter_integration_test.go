@@ -18,7 +18,7 @@ import (
 // are set, so normal unit-test and CI runs remain offline and free of charges.
 func TestIntegrationOpenRouter(t *testing.T) {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if apiKey == "" {
+	if apiKey == "" || apiKey == "fakekey" {
 		t.Skip("OPENROUTER_API_KEY is not set; skipping billed OpenRouter smoke test")
 	}
 	modelName := os.Getenv("OPENROUTER_MODEL")

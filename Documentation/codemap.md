@@ -23,8 +23,10 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 | Write a tool | `tools/tools.go` (contract), `tools/tavily/tavily.go` (example) |
 | Chain assistants | `assistants/assistant_tool.go` → `AssistantTool.CallAssistant` |
 | Add a provider | `pkg/llmfactory/factory.go` → `CreateLLM` + a `new<Provider>` func; then `pkg/llms/llms.go` → `providerCapabilities` |
-| Change model selection | `pkg/llmfactory/factory.go` → `GetModel`, `getModelByName`, `resolveDefault`; `pkg/llmfactory/policy.go` → `providerPolicy.candidates` |
+| Change model selection | `pkg/llmfactory/resolve.go` → `GetModel`, `selections`, `referenceSelections`, `defaultSelections`; `pkg/llmfactory/policy.go` → `providerPolicy.candidates`, `family` |
+| Change how a provider's model list is read or cached | `pkg/llmfactory/catalog.go` → `modelCatalog.current`, `fetch`; `modelList.lookup` |
 | Change which effort levels a model accepts | `pkg/llms/<provider>/efforts.go` → `effortProfileFor` |
+| Change what a provider's model list returns | `pkg/llms/<provider>/models.go` → `ListModels`; for OpenAI and OpenRouter `pkg/llms/openai/internal/openaiclient/models.go` |
 | Change the request/response types | `pkg/llms/generatecontent.go` |
 | Add a call option | `pkg/llms/options.go` → `CallOptions` + `WithXxx`; then `assistants/options.go` → `GetCallOptions` |
 | Change how output schemas are produced | `pkg/schema/schema.go`, `pkg/schema/response_format.go` |
@@ -136,8 +138,9 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 | Providers | `ProviderType`, `ProviderOpenAI`, `ProviderAnthropic`, ... | `llms.go` |
 | Capabilities | `Capability`, `providerCapabilities`, `ProviderCapabilities`, `ProviderType.Supports` | `llms.go` |
 | Provider type parsing | `ParseProviderType` | `llms.go` |
-| Reasoning effort | `ReasoningEffort`, `ParseReasoningEffort`, `EffortSet`, `NewEffortSet`, `EffortPolicy` | `options.go`, `effort.go` |
+| Reasoning effort | `ReasoningEffort`, `ParseReasoningEffort`, `EffortSet`, `NewEffortSet`, `EffortSet.With`, `EffortPolicy` (`Default`, `Max`, `Supported`, `Implicit`) | `options.go`, `effort.go` |
 | Model names | `ModelName`, `ParseModelName`, `CompareVersions` | `modelname.go` |
+| Model listing | `ModelLister`, `ModelInfo`, `ModelLifecycle`, `ErrModelListNotSupported` | `models.go` |
 | Single prompt helper | `GenerateFromSinglePrompt` | `llms.go` |
 | Messages | `Message`, `Messages`, `Role`, `MessageSource`, `MessageFromTextParts`, `MessageFromToolCalls`, `MessageFromToolResponse` | `generatecontent.go` |
 | Content parts | `ContentPart`, `TextContent`, `ImageURLContent`, `BinaryContent`, `ToolCall`, `ToolCallResponse` | `generatecontent.go` |
@@ -156,19 +159,25 @@ Perplexity, OpenAI-on-Bedrock), `pkg/llms/anthropic` (`New`, `NewBedrock`),
 details live under each provider's `internal/` directory. The OpenAI, Anthropic
 and Google packages each have an `efforts.go` that maps a reasoning effort to
 the levels a model accepts (`effortProfileFor`), and a `WithEffortPolicy`
-option that sets the default and the ceiling for a client.
+option that sets the default and the ceiling for a client. Each also has a
+`models.go` with `ListModels` on the client and a `NewModelLister` constructor
+that needs no model name.
 
 ### `pkg/llmfactory` — config to model
 | Concept | Symbol | File |
 |---------|--------|------|
 | Factory contract | `Factory`, `ModelOptions` | `factory.go` |
 | Construction | `Load`, `New`, `LoadConfig` | `factory.go`, `config.go` |
-| Config types | `Config`, `ProviderConfig`, `OpenAIConfig`, `OrgConfig` | `config.go` |
+| Config types | `Config`, `ProviderConfig`, `DiscoveryConfig`, `OpenAIConfig`, `OrgConfig` | `config.go` |
 | Validation | `Config.Validate` | `config.go` |
 | Model references | `refSpec`, `parseRefSpec`, `modelMatcher`, `newModelMatcher` | `modelref.go` |
-| Provider model policy | `providerPolicy` (`allowed`, `denied`, `candidates`, `defaultModel`, `effortPolicy`) | `policy.go` |
-| Ordering of pattern matches | `rankModels` | `rank.go` |
-| Model selection | `GetModel`, `getModelByType`, `getModelByName`, `resolveDefault`, `splitProvider`, `providerScope`, `instance`, `FindModel` | `factory.go`, `config.go` |
+| Provider model policy | `providerPolicy` (`allowed`, `denied`, `known`, `candidates`, `family`, `defaultCandidates`, `effortPolicy`) | `policy.go` |
+| Ordering of matches | `rankModels` | `rank.go` |
+| Model selection | `GetModel`, `selections`, `referenceSelections`, `defaultSelections`, `getModelByType`, `isCandidateAllowed`, `instance` | `resolve.go` |
+| Provider scope of a reference | `splitProvider`, `providerScope`; `FindModel` | `factory.go`, `config.go` |
+| Model discovery | `modelCatalog` (`current`, `refreshNow`, `fetch`), `modelList` (`lookup`, `serves`) | `catalog.go` |
+| Model lister | `CreateModelLister`, `NewModelLister` (overridable var) | `lister.go` |
+| Inspecting resolution | `Catalog` (`Resolve`, `Refresh`), `Resolution`, `ResolutionReason`, `Resolve`, `RefreshModels` | `resolution.go` |
 | Capability filtering | `supportsCapabilities`, `configProviderType` | `factory.go` |
 | Provider construction | `CreateLLM`, `NewLLM` (overridable var), `newOpenAI`, `newAnthropic`, ... | `factory.go` |
 | Options | `Options` (incl. the per-model `Effort`), `WithHTTPClient`, `WithAWSConfigFactory`, `WithModelFilter`, `ModelFilterFunc` | `options.go` |
@@ -247,10 +256,15 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | `assistants/assistant_tool_test.go` | Assistant-as-tool, including input parsing and MCP registration |
 | `pkg/llmfactory/factory_test.go` | Model resolution, org overrides, capability filtering |
 | `pkg/llmfactory/resolve_test.go` | Effort from configuration, patterns, deny-list, provider prefixes, and the effort on the wire with the real provider constructors |
+| `pkg/llmfactory/catalog_test.go` | Discovery with a fake lister (`NewModelLister`): the resolution matrix, family fallback, floating IDs, refresh, failures, concurrency; run it with `-race` |
+| `pkg/llmfactory/discovery_test.go` | `discovery` configuration and validation, `CreateModelLister`, and discovery end to end with the real listers and clients over recorded model lists |
+| `pkg/llmfactory/discovery_integration_test.go` | Discovery against the live provider APIs; skipped under `make test`. `TestIntegrationRetiredModelStillAnswers` makes one billed request |
 | `pkg/llmfactory/policy_test.go`, `modelref_test.go` | Provider model policy, config validation, reference parsing, pattern matching, ordering |
-| `pkg/llmfactory/doc_samples_test.go` | The YAML samples in `Documentation/llm-factory.md` and `README.md` load and validate |
+| `pkg/llmfactory/doc_samples_test.go` | The YAML samples in `Documentation/llm-factory.md`, `Documentation/RELEASE_NOTES_1.0.md` and `README.md` load and validate |
 | `pkg/llms/effort_test.go`, `modelname_test.go` | Effort levels, snapping, policy; model ID parsing |
 | `pkg/llms/{openai,anthropic,googleai}/effort_test.go` | The reasoning fields each provider puts on the wire, per model and level |
+| `pkg/llms/{openai,anthropic,googleai}/models_test.go` | Model listing against lists recorded from each API (`testdata/models_*.json`): pages, lifecycle stages, errors. `TestIntegrationListModels*` call the live APIs and are skipped under `make test` |
+| `pkg/llms/anthropic/efforts_recorded_test.go` | The Anthropic effort table agrees with the capabilities in the recorded model list |
 | `skills/loader_test.go` | Discovery from folders and tar archives |
 | `mcp/server_test.go` | Registration, notifications, handler validation |
 

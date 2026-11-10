@@ -115,6 +115,31 @@ func TestEffortSet(t *testing.T) {
 	}
 }
 
+func TestEffortPolicy_IsZero(t *testing.T) {
+	assert.True(t, llms.EffortPolicy{}.IsZero())
+	for _, policy := range []llms.EffortPolicy{
+		{Default: llms.ReasoningEffortLow},
+		{Max: llms.ReasoningEffortHigh},
+		{Supported: llms.NewEffortSet(llms.ReasoningEffortLow)},
+		{Implicit: llms.ReasoningEffortMedium},
+	} {
+		assert.False(t, policy.IsZero(), "%+v", policy)
+	}
+}
+
+func TestEffortSet_With(t *testing.T) {
+	low := llms.NewEffortSet(llms.ReasoningEffortLow)
+	extended := low.With(llms.ReasoningEffortNone, llms.ReasoningEffortHigh)
+	assert.Equal(t, []llms.ReasoningEffort{
+		llms.ReasoningEffortNone,
+		llms.ReasoningEffortLow,
+		llms.ReasoningEffortHigh,
+	}, extended.Levels())
+	// The receiver is not changed, and a value that is no level adds nothing.
+	assert.Equal(t, []llms.ReasoningEffort{llms.ReasoningEffortLow}, low.Levels())
+	assert.Equal(t, low, low.With(llms.ReasoningEffortDefault))
+}
+
 func TestEffortPolicy_Resolve(t *testing.T) {
 	lowToHigh := llms.NewEffortSet(
 		llms.ReasoningEffortLow,

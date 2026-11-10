@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -34,7 +35,15 @@ const (
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
 
-	DefaultMaxTokens = 4096
+	// DefaultMaxTokens is the max_tokens sent when a call sets none. It is
+	// the 8192-token output limit of Claude 3.5 Sonnet, so that model and
+	// every later one accept it. Claude 3 Haiku and Opus, which are
+	// deprecated, stop at 4096 tokens and reject it: pass llms.WithMaxTokens
+	// for them.
+	DefaultMaxTokens = 8 * 1024
+
+	// DefaultBaseURL is the endpoint of the Anthropic API.
+	DefaultBaseURL = "https://api.anthropic.com"
 )
 
 type LLM struct {
@@ -69,15 +78,7 @@ var (
 //	// Generate content
 //	resp, err := llm.GenerateContent(ctx, messages)
 func New(opts ...Option) (*LLM, error) {
-	options := &Options{
-		Token:      os.Getenv(TokenEnvVarName),
-		BaseURL:    "https://api.anthropic.com",
-		HttpClient: http.DefaultClient,
-	}
-
-	for _, opt := range opts {
-		opt(options)
-	}
+	options := newOptions(opts...)
 
 	if len(options.Token) == 0 {
 		return nil, ErrMissingToken
@@ -94,6 +95,20 @@ func New(opts ...Option) (*LLM, error) {
 		Client:  c,
 		Options: options,
 	}, nil
+}
+
+// newOptions returns the options of a client for the Anthropic API, with the
+// token read from the environment unless an option sets it.
+func newOptions(opts ...Option) *Options {
+	options := &Options{
+		Token:      os.Getenv(TokenEnvVarName),
+		BaseURL:    DefaultBaseURL,
+		HttpClient: http.DefaultClient,
+	}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
 }
 
 func NewBedrock(opts ...Option) (*LLM, error) {
@@ -227,9 +242,12 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		Messages:  sdkMessages,
-		MaxTokens: values.NumbersCoalesce(int64(opts.MaxTokens), DefaultMaxTokens),
+		MaxTokens: cmp.Or(int64(opts.MaxTokens), DefaultMaxTokens),
 	}
 	profile := effortProfileFor(opts.Model)
+	if opts.Model == o.Options.Model {
+		profile = profile.withReported(o.Options.Effort)
+	}
 	level := o.Options.Effort.Resolve(opts.ReasoningEffort, profile.levels, profile.implicit)
 	profile.apply(&params, level)
 

@@ -14,7 +14,7 @@ var ErrModelNotFound = errors.New("model not found")
 
 // exactCachePrefix separates exact-resolution cache entries from legacy
 // preferred-name cache entries that share the same map.
-const exactCachePrefix = "exact\x00"
+const exactCachePrefix = "exact"
 
 // ExactResolver is an optional factory extension that never falls back.
 // Provider must identify one configured provider; model names may contain slashes.
@@ -36,7 +36,11 @@ func ResolveExact(ctx context.Context, f Factory, provider, model, orgID string)
 
 // GetModelExact resolves a configured provider and model without default fallback.
 // Organization filtering runs on every call before the cache is consulted, so
-// constructed instances are shared across organizations.
+// constructed instances are shared across organizations. When the model list
+// of the provider is read, a model the provider no longer serves is not found:
+// exact resolution never substitutes another model. Instances are cached per
+// provider, model and effort settings, so a model whose reported effort levels
+// change gets a new one.
 func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID string) (llms.Model, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, errors.WithMessage(err, "resolve exact model")
@@ -52,7 +56,18 @@ func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID stri
 	if err != nil {
 		return nil, err
 	}
-	key := exactCachePrefix + provider + "\x00" + model
+	// The list is read without the factory lock.
+	list := policy.models(ctx)
+	if list != nil && !list.serves(model) {
+		return nil, errors.WithStack(ErrModelNotFound)
+	}
+	effort := policy.effortPolicy(llms.ReasoningEffortDefault, model, list)
+	key := strings.Join([]string{
+		exactCachePrefix,
+		provider,
+		model,
+		effortKey(effort),
+	}, cacheKeySeparator)
 	f.lock.Lock()
 	cached, ok := f.byName[key]
 	f.lock.Unlock()
@@ -67,7 +82,7 @@ func (f *factory) GetModelExact(ctx context.Context, provider, model, orgID stri
 	if !slices.Contains(cfg.AvailableModels, model) {
 		cfg.AvailableModels = append(cfg.AvailableModels, model)
 	}
-	m, err := NewLLM(&cfg, []string{model}, f.optionsFor(policy.effortPolicy(llms.ReasoningEffortDefault, model)))
+	m, err := NewLLM(&cfg, []string{model}, f.optionsFor(effort))
 	if err != nil {
 		return nil, errors.WithMessage(err, "construct exact model")
 	}
