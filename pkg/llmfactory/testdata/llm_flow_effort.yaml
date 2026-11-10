@@ -1,0 +1,11 @@
+---
+# A flow sequence splits "MODEL,effort" at the comma; loading must fail.
+providers:
+  - name: OPENAI
+    token: fakekey
+    default_model: gpt-5.1
+    available_models: [gpt-5.1]
+    open_ai:
+      api_type: OPENAI
+assistant_models:
+  default: [OPENAI/gpt-5.1,medium]

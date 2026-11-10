@@ -114,6 +114,9 @@ type Config struct {
 	// MaxMessages is the maximum number of messages per run.
 	MaxMessages int
 
+	// ReasoningEffort is the reasoning effort requested for the run.
+	// ReasoningEffortDefault leaves the choice to the effort configured for
+	// the model, or to the provider when none is configured.
 	ReasoningEffort llms.ReasoningEffort
 
 	// PromptCachePolicy configures provider-native prompt caching for the underlying llm call.
@@ -162,7 +165,9 @@ func WithModelOptions(onModelOptions func(model llms.Model) []Option) Option {
 	}
 }
 
-// WithReasoningEffort sets the reasoning budget on models that support it.
+// WithReasoningEffort sets the reasoning effort for the run. It overrides the
+// effort configured for the model in the LLM factory, stays below the
+// provider's max_effort, and is sent as the nearest level the model accepts.
 func WithReasoningEffort(effort llms.ReasoningEffort) Option {
 	return func(o *Config) {
 		o.ReasoningEffort = effort

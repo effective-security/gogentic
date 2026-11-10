@@ -3,6 +3,7 @@ package anthropic
 import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/effective-security/gogentic/pkg/llms"
 )
 
 const (
@@ -20,6 +21,9 @@ type Options struct {
 
 	// AWSCfg is used with Bedrock
 	AWSCfg *aws.Config
+
+	// Effort is the reasoning effort default and ceiling for every call.
+	Effort llms.EffortPolicy
 }
 
 type Option func(*Options)
@@ -66,5 +70,15 @@ func WithAnthropicBetaHeader(value string) Option {
 func WithAWSConfig(cfg *aws.Config) Option {
 	return func(opts *Options) {
 		opts.AWSCfg = cfg
+	}
+}
+
+// WithEffortPolicy sets the reasoning effort used when a call requests none,
+// and the highest effort any call may use. Each call still sends the nearest
+// level its model accepts. Legacy GenerateContent only; the portable Infer
+// path is unaffected.
+func WithEffortPolicy(policy llms.EffortPolicy) Option {
+	return func(opts *Options) {
+		opts.Effort = policy
 	}
 }

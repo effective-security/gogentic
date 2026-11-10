@@ -1,12 +1,16 @@
 package llmfactory
 
 import (
-	"slices"
-
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/x/configloader"
 	yamlcfg "go.uber.org/config"
+)
+
+// Names of the assistant→model mappings in validation errors.
+const (
+	configScopeGlobal = "assistant_models"
+	configScopeOrg    = "orgs_override."
 )
 
 // Config is the top-level factory configuration for providers, defaults,
@@ -17,8 +21,11 @@ type Config struct {
 	// DefaultProvider specifies the default provider to use
 	DefaultProvider string `json:"default_provider" yaml:"default_provider"`
 	// AssistantModels specifies the mapping of assistants to models.
-	// key is the assistant name, value is the model name.
-	// The model name can be in the format of <provider_name>/<model_name>.
+	// key is the assistant name, value is the list of model references to
+	// try in order. A reference is [<provider>/]<model>[,<effort>]: the
+	// provider is a provider name or an upper-case provider type, the model
+	// may be a pattern with "*" and "?", and the effort is the default
+	// reasoning effort for that assistant.
 	// Use `default: <model_name>` as the default model for assistants.
 	AssistantModels map[string][]string `json:"assistant_models" yaml:"assistant_models"`
 	// Orgs specifies the organizations configuration to override the global configuration.
@@ -31,8 +38,11 @@ type Config struct {
 // a given organization.
 type OrgConfig struct {
 	// AssistantModels specifies the mapping of assistants to models.
-	// key is the assistant name, value is the model name.
-	// The model name can be in the format of <provider_name>/<model_name>.
+	// key is the assistant name, value is the list of model references to
+	// try in order. A reference is [<provider>/]<model>[,<effort>]: the
+	// provider is a provider name or an upper-case provider type, the model
+	// may be a pattern with "*" and "?", and the effort is the default
+	// reasoning effort for that assistant.
 	// Use `default: <model_name>` as the default model for assistants.
 	AssistantModels map[string][]string `json:"assistant_models" yaml:"assistant_models"`
 }
@@ -40,13 +50,28 @@ type OrgConfig struct {
 // ProviderConfig defines a single provider instance and its available models.
 // The OpenAI field conveys the API style for both OpenAI proper and
 // OpenAI‑compatible APIs (Azure, Perplexity, Cloudflare, etc.).
+//
+// Model names in DefaultModel and AvailableModels may carry a default
+// reasoning effort after a comma ("gpt-5.1,medium") and may be patterns in
+// which "*" matches any run of characters and "?" exactly one
+// ("claude-opus-*").
 type ProviderConfig struct {
-	Name            string            `json:"name" yaml:"name"`
-	Token           string            `json:"token,omitempty" yaml:"token,omitempty"`
-	DefaultModel    string            `json:"default_model,omitempty" yaml:"default_model,omitempty"`
-	AvailableModels []string          `json:"available_models,omitempty" yaml:"available_models,omitempty"`
-	Headers         map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
-	OpenAI          OpenAIConfig      `json:"open_ai" yaml:"open_ai"`
+	Name  string `json:"name" yaml:"name"`
+	Token string `json:"token,omitempty" yaml:"token,omitempty"`
+	// DefaultModel is the model used when no preferred model matches. It does
+	// not need to be listed in AvailableModels.
+	DefaultModel string `json:"default_model,omitempty" yaml:"default_model,omitempty"`
+	// AvailableModels is the allow-list of model IDs and patterns. A model
+	// can be selected by name only when an entry matches it.
+	AvailableModels []string `json:"available_models,omitempty" yaml:"available_models,omitempty"`
+	// DisabledModels is the deny-list of model IDs and patterns. It wins over
+	// AvailableModels and DefaultModel.
+	DisabledModels []string `json:"disabled_models,omitempty" yaml:"disabled_models,omitempty"`
+	// MaxEffort is the highest reasoning effort a call to this provider may
+	// use: none, low, medium, high, xhigh or max. Empty means no ceiling.
+	MaxEffort string            `json:"max_effort,omitempty" yaml:"max_effort,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
+	OpenAI    OpenAIConfig      `json:"open_ai" yaml:"open_ai"`
 }
 
 // OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType
@@ -68,19 +93,65 @@ type OpenAIConfig struct {
 	Project string `json:"project,omitempty" yaml:"project,omitempty"`
 }
 
-// FindModel selects the first name from models that is present in
-// AvailableModels. If none match, DefaultModel is returned when set.
-// Returns an error when no model can be selected.
+// FindModel selects the first name from models that AvailableModels allows
+// and DisabledModels does not deny. If none match, the default model is
+// returned when one is set and usable. Returns an error when no model can be
+// selected.
+//
+// The names in models are concrete model IDs. Entries of the configuration
+// that do not parse are ignored; [Config.Validate] reports them.
 func (c *ProviderConfig) FindModel(models ...string) (string, error) {
+	// Invalid entries are left out of the policy and reported by Validate.
+	policy, _ := newProviderPolicy(c, 0)
 	for _, model := range models {
-		if slices.Contains(c.AvailableModels, model) {
+		if policy.allowed(model) {
 			return model, nil
 		}
 	}
-	if c.DefaultModel != "" {
-		return c.DefaultModel, nil
+	if model, _, ok := policy.defaultModel(); ok {
+		return model, nil
 	}
 	return "", errors.New("no LLM model found")
+}
+
+// Validate checks the model references, effort levels and model policy of the
+// configuration, and returns every problem found. [LoadConfig] calls it, so a
+// configuration file with a mistyped effort or an unusable default model
+// fails at load time instead of being skipped silently during resolution.
+func (c *Config) Validate() error {
+	var errs []error
+	for index, provider := range c.Providers {
+		policy, err := newProviderPolicy(provider, index)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := policy.validate(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	errs = append(errs, validateAssistantModels(configScopeGlobal, c.AssistantModels)...)
+	for orgID, org := range c.Orgs {
+		if org == nil {
+			continue
+		}
+		errs = append(errs, validateAssistantModels(configScopeOrg+orgID, org.AssistantModels)...)
+	}
+	return errors.Join(errs...)
+}
+
+// validateAssistantModels checks that every reference of an assistant→model
+// mapping parses. scope names the mapping in error messages.
+func validateAssistantModels(scope string, assistants map[string][]string) []error {
+	var errs []error
+	for assistant, refs := range assistants {
+		for _, ref := range refs {
+			if _, err := parseRefSpec(ref); err != nil {
+				errs = append(errs, errors.WithMessagef(err, "%s: assistant %s", scope, assistant))
+			}
+		}
+	}
+	return errs
 }
 
 // LoadConfig from file
@@ -113,6 +184,9 @@ func LoadConfig(file string) (*Config, error) {
 
 			cfg.Orgs[orgID].AssistantModels = res
 		}
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, errors.WithMessagef(err, "invalid llm config %s", file)
 	}
 	return cfg, nil
 }

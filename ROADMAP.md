@@ -15,7 +15,9 @@ Where the library stands today, and what is still missing. See
   callback propagation and usage roll-up — [Orchestration](Documentation/orchestration.md)
 - Multi-provider factory (OpenAI, Anthropic, Azure, Bedrock, Google AI,
   OpenRouter, Perplexity, Cloudflare) with per-assistant and per-organization
-  model routing, capability filtering and a model allow/deny hook —
+  model routing, capability filtering and a model allow/deny hook; model
+  patterns, a deny-list, and a default reasoning effort and effort ceiling set
+  in configuration and mapped to the levels each model accepts —
   [LLM Factory](Documentation/llm-factory.md)
 - Provider-native prompt caching and asynchronous Batch APIs —
   [LLM Providers](Documentation/llms.md)
@@ -56,6 +58,15 @@ supervisor's model. Still missing:
 - [ ] Vector store / retriever interfaces and a RAG-oriented prompter
       (`Embedder` exists on providers that support embeddings, but there is no
       retrieval layer above it)
+
+### Model routing
+
+- [ ] Model lists read from the provider, and a retired model replaced by the
+      newest allowed model of its family — designed in
+      [LLM Factory](Documentation/llm-factory.md#design-dynamic-model-lists-and-family-fallback),
+      tracked in [PLAN.md](PLAN.md)
+- [ ] The configured effort default and ceiling on the portable `Infer` path
+      used by the router
 
 ### Observability
 

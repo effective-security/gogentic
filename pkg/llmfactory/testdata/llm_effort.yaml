@@ -1,0 +1,48 @@
+---
+# Fixture for model references with effort suffixes, patterns, a deny-list and
+# an effort ceiling.
+default_provider: OPENAI
+providers:
+  - name: OPENAI
+    token: fakekey
+    default_model: gpt-5.1,low
+    available_models:
+      - gpt-5.1,medium
+      - gpt-5.5
+      - gpt-5.6-luna,high
+      - gpt-5.6-sol
+    disabled_models:
+      - "*-sol"
+    max_effort: high
+    open_ai:
+      api_type: OPENAI
+
+  - name: ANTHROPIC
+    token: fakekey
+    default_model: claude-sonnet-*,medium
+    available_models:
+      - claude-fable-5-2,high
+      - claude-opus-4-8
+      - claude-sonnet-4-6
+      - claude-sonnet-5-5
+      - claude-opus-*
+    max_effort: xhigh
+    open_ai:
+      api_type: ANTHROPIC
+
+assistant_models:
+  default:
+    - OPENAI/gpt-5.1
+  orchestrator:
+    - ANTHROPIC/claude-fable-5-2
+    - OPENAI/gpt-5.5,high
+  summarizer:
+    - ANTHROPIC/claude-sonnet-*,low
+  planner:
+    - CLAUDE/claude-opus-*,max
+
+orgs_override:
+  "1000":
+    assistant_models:
+      orchestrator:
+        - OPENAI/gpt-5.6-*,xhigh

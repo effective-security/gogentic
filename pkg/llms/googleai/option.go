@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/auth"
+	"github.com/effective-security/gogentic/pkg/llms"
 	"google.golang.org/genai"
 )
 
@@ -23,6 +24,8 @@ type Options struct {
 	APIKey                string
 	Credentials           *auth.Credentials
 	HTTPClient            *http.Client
+	// Effort is the reasoning effort default and ceiling for every call.
+	Effort llms.EffortPolicy
 }
 
 func DefaultOptions() Options {
@@ -152,5 +155,15 @@ func WithDefaultTopP(defaultTopP float64) Option {
 func WithHarmThreshold(ht genai.HarmBlockThreshold) Option {
 	return func(opts *Options) {
 		opts.HarmThreshold = ht
+	}
+}
+
+// WithEffortPolicy sets the reasoning effort used when a call requests none,
+// and the highest effort any call may use. Each call still sends the nearest
+// thinking level its model accepts. Legacy GenerateContent only; the portable
+// Infer path is unaffected.
+func WithEffortPolicy(policy llms.EffortPolicy) Option {
+	return func(opts *Options) {
+		opts.Effort = policy
 	}
 }

@@ -25,8 +25,10 @@ type fixture struct {
 	bodies   []string
 }
 
-func (f *fixture) model() *GoogleAI {
-	client := &http.Client{
+// client returns an HTTP client that records each request and serves the
+// fixture's canned response.
+func (f *fixture) client() *http.Client {
+	return &http.Client{
 		Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(r.Body)
 			require.NoError(f.t, err)
@@ -48,7 +50,10 @@ func (f *fixture) model() *GoogleAI {
 			}, nil
 		}),
 	}
-	m, err := New(context.Background(), WithDefaultModel("fixture"), WithAPIKey("fixture"), WithHTTPClient(client))
+}
+
+func (f *fixture) model() *GoogleAI {
+	m, err := New(context.Background(), WithDefaultModel("fixture"), WithAPIKey("fixture"), WithHTTPClient(f.client()))
 	require.NoError(f.t, err)
 	return m
 }

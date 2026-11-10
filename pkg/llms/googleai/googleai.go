@@ -67,15 +67,12 @@ func (g *GoogleAI) GenerateContent(
 		TopK:            genaiutils.Float32Ptr(float32(opts.TopK)),
 		Seed:            genaiutils.Int32Ptr(int32(opts.Seed)),
 	}
-	switch opts.ReasoningEffort {
-	case llms.ReasoningEffortLow, llms.ReasoningEffortMedium:
-		callCfg.ThinkingConfig = &genai.ThinkingConfig{
-			ThinkingLevel: genai.ThinkingLevelLow,
-		}
-	case llms.ReasoningEffortHigh:
-		callCfg.ThinkingConfig = &genai.ThinkingConfig{
-			ThinkingLevel: genai.ThinkingLevelHigh,
-		}
+	// The request always goes to the client's model: a model named by a call
+	// option is not forwarded, so it must not select the thinking control.
+	profile := effortProfileFor(g.opts.DefaultModel)
+	level := g.opts.Effort.Resolve(opts.ReasoningEffort, profile.levels, profile.implicit)
+	if level != llms.ReasoningEffortDefault {
+		callCfg.ThinkingConfig = profile.thinkingConfig(level)
 	}
 
 	callCfg.SafetySettings = []*genai.SafetySetting{

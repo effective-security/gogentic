@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/effective-security/gogentic/pkg/llms"
 )
 
 // Options customize model construction for providers that need extra clients
@@ -17,6 +18,10 @@ type Options struct {
 	// ModelFilter reports whether a model may be used for an org,
 	// e.g. to enforce per-org / per-model quota.
 	ModelFilter ModelFilterFunc
+	// Effort is the reasoning effort default and ceiling of the model being
+	// constructed. The factory sets it for each model from the configuration;
+	// a value given to New is not used.
+	Effort llms.EffortPolicy
 }
 
 // ModelFilterFunc reports whether the given model may be used for the org.

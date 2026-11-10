@@ -28,9 +28,11 @@ type fixture struct {
 	calls  int
 }
 
-func newModel(t *testing.T, f *fixture) llms.InferenceModel {
+// client returns an HTTP client that records the request and serves the
+// fixture's canned reply.
+func (f *fixture) client(t *testing.T) *http.Client {
 	t.Helper()
-	client := &http.Client{
+	return &http.Client{
 		Transport: transport(func(r *http.Request) (*http.Response, error) {
 			f.calls++
 			f.path = r.URL.Path
@@ -53,7 +55,11 @@ func newModel(t *testing.T, f *fixture) llms.InferenceModel {
 			}, nil
 		}),
 	}
-	m, err := anthropic.New(anthropic.WithModel("fixture"), anthropic.WithToken("fixture"), anthropic.WithHTTPClient(client))
+}
+
+func newModel(t *testing.T, f *fixture) llms.InferenceModel {
+	t.Helper()
+	m, err := anthropic.New(anthropic.WithModel("fixture"), anthropic.WithToken("fixture"), anthropic.WithHTTPClient(f.client(t)))
 	require.NoError(t, err)
 	return m
 }
