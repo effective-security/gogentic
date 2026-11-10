@@ -490,3 +490,86 @@ func TestLocalMcpClientTransport_Headers(t *testing.T) {
 	err := client.Send(context.Background(), message)
 	assert.NoError(t, err)
 }
+
+func requestMessage() *transport.BaseJsonRpcMessage {
+	return transport.NewBaseMessageRequest(&transport.BaseJSONRPCRequest{
+		Jsonrpc: "2.0",
+		Method:  "test_method",
+		Id:      transport.RequestId(1),
+	})
+}
+
+func bodyHandler(body string) *mockHandler {
+	return &mockHandler{
+		handleFunc: func(ctx context.Context, req *localtransport.McpProxyRequest) (*localtransport.McpProxyResponse, error) {
+			return &localtransport.McpProxyResponse{
+				Status: http.StatusOK,
+				Body:   []byte(body),
+			}, nil
+		},
+	}
+}
+
+func TestLocalMcpClientTransport_SendDispatch(t *testing.T) {
+	t.Run("marshal failure", func(t *testing.T) {
+		called := false
+		client := localtransport.NewLocalClientTransport(&mockHandler{
+			handleFunc: func(ctx context.Context, req *localtransport.McpProxyRequest) (*localtransport.McpProxyResponse, error) {
+				called = true
+				return nil, nil
+			},
+		})
+		err := client.Send(context.Background(), &transport.BaseJsonRpcMessage{
+			Type: "bogus",
+		})
+		assert.EqualError(t, err, "failed to marshal message: json: error calling MarshalJSON for type *transport.BaseJsonRpcMessage: failed to marshal: unknown message type: bogus")
+		assert.False(t, called, "handler must not be called when marshaling fails")
+	})
+
+	// Any JSON object decodes as a BaseJSONRPCError, so the notification and
+	// request fallbacks are only reached when "error" is not an object.
+	t.Run("notification body", func(t *testing.T) {
+		client := localtransport.NewLocalClientTransport(bodyHandler(`{"jsonrpc":"2.0","method":"notifications/progress","error":"x"}`))
+		var got *transport.BaseJsonRpcMessage
+		client.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+			got = msg
+		})
+		require.NoError(t, client.Send(context.Background(), requestMessage()))
+		require.NotNil(t, got)
+		require.Equal(t, transport.BaseMessageTypeJSONRPCNotificationType, got.Type)
+		assert.Equal(t, "notifications/progress", got.JsonRpcNotification.Method)
+	})
+
+	t.Run("request body", func(t *testing.T) {
+		client := localtransport.NewLocalClientTransport(bodyHandler(`{"jsonrpc":"2.0","method":"sampling/createMessage","id":3,"error":"x"}`))
+		var got *transport.BaseJsonRpcMessage
+		client.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+			got = msg
+		})
+		require.NoError(t, client.Send(context.Background(), requestMessage()))
+		require.NotNil(t, got)
+		require.Equal(t, transport.BaseMessageTypeJSONRPCRequestType, got.Type)
+		assert.Equal(t, "sampling/createMessage", got.JsonRpcRequest.Method)
+		assert.Equal(t, transport.RequestId(3), got.JsonRpcRequest.Id)
+	})
+
+	t.Run("notification and request bodies without handler", func(t *testing.T) {
+		for _, body := range []string{
+			`{"jsonrpc":"2.0","method":"n","error":"x"}`,
+			`{"jsonrpc":"2.0","method":"r","id":1,"error":"x"}`,
+		} {
+			client := localtransport.NewLocalClientTransport(bodyHandler(body))
+			assert.NoError(t, client.Send(context.Background(), requestMessage()), body)
+		}
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		client := localtransport.NewLocalClientTransport(bodyHandler(`"just a string"`))
+		called := false
+		client.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+			called = true
+		})
+		assert.EqualError(t, client.Send(context.Background(), requestMessage()), "received invalid response")
+		assert.False(t, called)
+	})
+}

@@ -817,3 +817,95 @@ func Test_Assistant_ToolCallWithScratchpad(t *testing.T) {
 	assert.Equal(t, 2, int(stats.AssistantCallsSucceeded))
 	assert.Equal(t, 0, int(stats.AssistantCallsFailed))
 }
+
+const (
+	toolAssistantName = "researcher"
+	toolAssistantDesc = "Researches topics."
+)
+
+// clarifiedOutput embeds BaseClarificationResult, so a failed run is handed
+// back to the calling model as a clarification instead of an error.
+type clarifiedOutput struct {
+	chatmodel.BaseClarificationResult
+	Content string `json:"content"`
+}
+
+func (o clarifiedOutput) GetContent() string {
+	if o.Clarification != "" {
+		return o.Clarification
+	}
+	return o.Content
+}
+
+func newMockTypeableAssistant[O chatmodel.ContentProvider](ctrl *gomock.Controller) *mockassitants.MockTypeableAssistant[O] {
+	a := mockassitants.NewMockTypeableAssistant[O](ctrl)
+	a.EXPECT().Name().Return(toolAssistantName).AnyTimes()
+	a.EXPECT().Description().Return(toolAssistantDesc).AnyTimes()
+	return a
+}
+
+func Test_AssistantTool_CallAssistant_InputParser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockAssistant := newMockTypeableAssistant[chatmodel.OutputResult](ctrl)
+
+	// chatmodel.InputRequest implements InputParser, which takes precedence
+	// over plain JSON decoding.
+	tool, err := assistants.NewAssistantTool[chatmodel.InputRequest](mockAssistant)
+	require.NoError(t, err)
+
+	res, usage, err := tool.CallAssistant(newRunCtx(), "not json")
+	assert.Empty(t, res)
+	assert.Nil(t, usage)
+	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput), "err: %v", err)
+
+	mockAssistant.EXPECT().Run(gomock.Any(), gomock.Cond(func(in *assistants.CallInput) bool {
+		return in.Input == "hello"
+	}), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *assistants.CallInput, out *chatmodel.OutputResult) (*assistants.Response, error) {
+			out.Content = runAnswer
+			return &assistants.Response{
+				Usage: llms.UsageStats{
+					LlmCallCount: 1,
+				},
+			}, nil
+		}).Times(1)
+
+	res, usage, err = tool.CallAssistant(newRunCtx(), "Here you go: "+`{"input":"hello"}`)
+	require.NoError(t, err)
+	assert.Equal(t, runAnswer, res)
+	require.NotNil(t, usage)
+	assert.Equal(t, uint32(1), usage.LlmCallCount)
+}
+
+func Test_AssistantTool_CallAssistant_ErrorAsClarification(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockAssistant := newMockTypeableAssistant[clarifiedOutput](ctrl)
+	mockAssistant.EXPECT().Run(gomock.Any(), gomock.Cond(func(in *assistants.CallInput) bool {
+		return in.Input == "hello"
+	}), gomock.Any()).Return(nil, errRun).Times(1)
+
+	tool, err := assistants.NewAssistantTool[chatmodel.InputRequest](mockAssistant)
+	require.NoError(t, err)
+
+	// The run error is returned to the calling model as data, with no usage
+	// because the run produced no response.
+	res, usage, err := tool.CallAssistant(newRunCtx(), `{"input":"hello"}`)
+	require.NoError(t, err)
+	assert.Nil(t, usage)
+	assert.Equal(t, llmutils.AddComment("tool", toolAssistantName, "error", "boom"), res)
+}
+
+func Test_AssistantTool_CallAssistant_InvalidJSON(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockAssistant := newMockTypeableAssistant[chatmodel.OutputResult](ctrl)
+
+	// testInput has no InputParser, so the input is decoded as plain JSON and
+	// the wrapped assistant is never run.
+	tool, err := assistants.NewAssistantTool[testInput](mockAssistant)
+	require.NoError(t, err)
+
+	res, usage, err := tool.CallAssistant(newRunCtx(), "not json")
+	assert.Empty(t, res)
+	assert.Nil(t, usage)
+	assert.True(t, errors.Is(err, chatmodel.ErrFailedUnmarshalInput), "err: %v", err)
+}

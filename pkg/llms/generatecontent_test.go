@@ -8,6 +8,7 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llmutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTextParts(t *testing.T) {
@@ -205,4 +206,214 @@ func TestContentResponseContentSize(t *testing.T) {
 		}},
 	}}}
 	assert.Equal(t, uint64(21), cr.ContentSize())
+}
+
+func TestContentParts_TypeAndLength(t *testing.T) {
+	t.Parallel()
+
+	text := llms.TextContent{Text: "hello"}
+	assert.Equal(t, llms.ContentTypeText, text.ContentType())
+	assert.Equal(t, "hello", text.String())
+	assert.Equal(t, 5, text.ContentLength())
+
+	img := llms.ImageURLContent{
+		URL:    "https://example.com/a.png",
+		Detail: "low",
+	}
+	assert.Equal(t, llms.ContentTypeImageURL, img.ContentType())
+	assert.Equal(t, "https://example.com/a.png", img.String())
+	assert.Equal(t, len("https://example.com/a.png")+len("low"), img.ContentLength())
+
+	bin := llms.BinaryContent{
+		MIMEType: "image/png",
+		Data:     []byte("abc"),
+	}
+	assert.Equal(t, llms.ContentTypeBinary, bin.ContentType())
+	assert.Equal(t, "data:image/png;base64,YWJj", bin.String())
+	assert.Equal(t, len("image/png")+3, bin.ContentLength())
+
+	call := llms.ToolCall{
+		ID:   "call-1",
+		Type: "function",
+		FunctionCall: &llms.FunctionCall{
+			Name:      "lookup",
+			Arguments: `{"q":1}`,
+		},
+	}
+	assert.Equal(t, llms.ContentTypeToolCall, call.ContentType())
+	assert.Equal(t, "lookup", call.GetFunctionCallName())
+	assert.Equal(t, `{"q":1}`, call.GetFunctionCallArguments())
+	assert.Equal(t, `ToolCall: call-1 (lookup), input: {"q":1}`, call.String())
+
+	resp := llms.ToolCallResponse{
+		ToolCallID: "call-1",
+		Name:       "lookup",
+		Content:    "result",
+	}
+	assert.Equal(t, llms.ContentTypeToolResponse, resp.ContentType())
+	assert.Equal(t, "ToolCallResponse: call-1 (lookup), response size: 6", resp.String())
+	assert.Equal(t, len("call-1")+len("lookup")+len("result"), resp.ContentLength())
+}
+
+func TestToolCall_ProviderNative(t *testing.T) {
+	t.Parallel()
+
+	// Provider-native tools such as web_search have no function call: the
+	// name falls back to the tool type and there are no arguments.
+	webSearch := llms.ToolCall{
+		ID:   "ws-1",
+		Type: "web_search",
+	}
+	assert.Equal(t, "web_search", webSearch.GetFunctionCallName())
+	assert.Empty(t, webSearch.GetFunctionCallArguments())
+	assert.Equal(t, len("ws-1")+len("web_search"), webSearch.ContentLength())
+
+	// A non-function type ignores a function call even when present.
+	custom := llms.ToolCall{
+		Type: "custom",
+		FunctionCall: &llms.FunctionCall{
+			Name:      "ignored",
+			Arguments: "{}",
+		},
+	}
+	assert.Equal(t, "custom", custom.GetFunctionCallName())
+	assert.Empty(t, custom.GetFunctionCallArguments())
+}
+
+func TestContentResponse_NilAndSingle(t *testing.T) {
+	t.Parallel()
+
+	var nilResp *llms.ContentResponse
+	assert.Equal(t, &llms.Usage{}, nilResp.Usage())
+	assert.Equal(t, uint64(0), nilResp.ContentSize())
+	assert.Empty(t, nilResp.String())
+
+	var nilChoice *llms.ContentChoice
+	assert.Equal(t, uint64(0), nilChoice.ContentSize())
+
+	single := &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "  only choice\n",
+				Usage: llms.Usage{
+					InputTokens: 2,
+				},
+			},
+			nil,
+		},
+	}
+	// A nil choice is skipped when summing usage and counts zero bytes.
+	assert.Equal(t, &llms.Usage{InputTokens: 2}, single.Usage())
+	assert.Equal(t, uint64(len("  only choice\n")), single.ContentSize())
+
+	single.Choices = single.Choices[:1]
+	// A single choice is returned verbatim, without trimming.
+	assert.Equal(t, "  only choice\n", single.String())
+}
+
+func TestMessageSource_String(t *testing.T) {
+	t.Parallel()
+
+	var nilSource *llms.MessageSource
+	assert.Empty(t, nilSource.String())
+
+	assert.Equal(t, "run.agent", (&llms.MessageSource{
+		Name:  "agent",
+		RunID: "run",
+	}).String())
+	assert.Equal(t, "run.action.agent", (&llms.MessageSource{
+		Name:     "agent",
+		RunID:    "run",
+		ActionID: "action",
+	}).String())
+}
+
+func TestUsageStats_Add(t *testing.T) {
+	t.Parallel()
+
+	const (
+		modelA = "model-a"
+		modelB = "model-b"
+	)
+
+	var total llms.UsageStats
+	total.AddModelUsage(modelA, &llms.Usage{
+		InputTokens:  1,
+		OutputTokens: 2,
+	})
+	// nil usage is ignored and does not create an entry.
+	total.AddModelUsage(modelB, nil)
+	_, hasB := total.ModelUsage[modelB]
+	assert.False(t, hasB)
+
+	total.Add(&llms.UsageStats{
+		ModelUsage: map[string]*llms.Usage{
+			modelA: {
+				InputTokens: 10,
+			},
+			modelB: {
+				OutputTokens: 5,
+			},
+		},
+		BytesOut:     100,
+		BytesIn:      50,
+		LlmCallCount: 2,
+	})
+	total.Add(nil)
+
+	assert.Equal(t, llms.UsageStats{
+		ModelUsage: map[string]*llms.Usage{
+			modelA: {
+				InputTokens:  11,
+				OutputTokens: 2,
+			},
+			modelB: {
+				OutputTokens: 5,
+			},
+		},
+		BytesOut:     100,
+		BytesIn:      50,
+		LlmCallCount: 2,
+	}, total)
+
+	// A nil receiver is a no-op rather than a panic.
+	var nilStats *llms.UsageStats
+	nilStats.Add(&total)
+	nilStats.AddModelUsage(modelA, &llms.Usage{})
+	assert.Nil(t, nilStats)
+}
+
+func TestMessageFromToolCallsAndResponse(t *testing.T) {
+	t.Parallel()
+
+	call := llms.ToolCall{
+		ID:   "call-1",
+		Type: "function",
+		FunctionCall: &llms.FunctionCall{
+			Name:      "lookup",
+			Arguments: "{}",
+		},
+	}
+	msg := llms.MessageFromToolCalls(llms.RoleAI, call)
+	assert.Equal(t, llms.RoleAI, msg.Role)
+	require.Len(t, msg.Parts, 1)
+	got, ok := msg.Parts[0].(llms.ToolCall)
+	require.True(t, ok)
+	assert.Equal(t, call, got)
+	// The function call is copied, not shared with the input.
+	assert.NotSame(t, call.FunctionCall, got.FunctionCall)
+	assert.Equal(t, len("call-1")+len("function")+len("lookup")+len("{}"), got.ContentLength())
+
+	resp := llms.ToolCallResponse{
+		ToolCallID: "call-1",
+		Name:       "lookup",
+		Content:    "ok",
+	}
+	msg = llms.MessageFromToolResponse(llms.RoleTool, resp)
+	assert.Equal(t, llms.Message{
+		Role: llms.RoleTool,
+		Parts: []llms.ContentPart{
+			resp,
+		},
+	}, msg)
 }

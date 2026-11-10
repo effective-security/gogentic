@@ -3,10 +3,12 @@ package sse_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/gogentic/mcp/transport/sse/internal/sse"
 	"github.com/stretchr/testify/assert"
@@ -334,5 +336,151 @@ func TestSSETransport_WriteEvent(t *testing.T) {
 		assert.Contains(t, body, "/messages?session=")
 		assert.Contains(t, body, transport.SessionID())
 		assert.True(t, w.flushed)
+	})
+}
+
+// failingWriter is an http.ResponseWriter/http.Flusher whose writes start
+// failing after okWrites successful writes.
+type failingWriter struct {
+	header   http.Header
+	okWrites int
+	writes   int
+}
+
+func newFailingWriter(okWrites int) *failingWriter {
+	return &failingWriter{
+		header:   http.Header{},
+		okWrites: okWrites,
+	}
+}
+
+func (f *failingWriter) Header() http.Header { return f.header }
+func (f *failingWriter) WriteHeader(int)     {}
+func (f *failingWriter) Flush()              {}
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	f.writes++
+	if f.writes > f.okWrites {
+		return 0, errors.New("write failed")
+	}
+	return len(p), nil
+}
+
+func TestSSETransport_WriteFailures(t *testing.T) {
+	t.Run("start fails when endpoint event cannot be written", func(t *testing.T) {
+		tr, err := sse.NewSSETransport("/messages", newFailingWriter(0))
+		require.NoError(t, err)
+		assert.EqualError(t, tr.Start(context.Background()), "write failed")
+
+		// The transport did not connect, so sending is refused.
+		assert.EqualError(t, tr.Send(transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "n",
+		})), "not connected")
+	})
+
+	t.Run("send fails when message event cannot be written", func(t *testing.T) {
+		tr, err := sse.NewSSETransport("/messages", newFailingWriter(1))
+		require.NoError(t, err)
+		require.NoError(t, tr.Start(context.Background()))
+
+		assert.EqualError(t, tr.Send(transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "n",
+		})), "write failed")
+	})
+
+	t.Run("send fails when message cannot be marshaled", func(t *testing.T) {
+		w := newMockResponseWriter()
+		tr, err := sse.NewSSETransport("/messages", w)
+		require.NoError(t, err)
+		require.NoError(t, tr.Start(context.Background()))
+		before := w.Body.String()
+
+		err = tr.Send(&transport.BaseJsonRpcMessage{
+			Type: "bogus",
+		})
+		assert.EqualError(t, err, "json: error calling MarshalJSON for type *transport.BaseJsonRpcMessage: failed to marshal: unknown message type: bogus")
+		assert.Equal(t, before, w.Body.String(), "nothing must be written on marshal failure")
+	})
+}
+
+func TestSSETransport_HandleMessage_InvalidNotification(t *testing.T) {
+	tr, err := sse.NewSSETransport("/messages", newMockResponseWriter())
+	require.NoError(t, err)
+
+	var reported error
+	tr.SetErrorHandler(func(err error) {
+		reported = err
+	})
+	tr.SetMessageHandler(func(*transport.BaseJsonRpcMessage) {
+		t.Error("message handler must not be called")
+	})
+
+	err = tr.HandleMessage([]byte(`{"method":"notifications/initialized"}`))
+	assert.EqualError(t, err, "field jsonrpc in BaseJSONRPCNotification: required")
+	assert.Equal(t, err, reported)
+}
+
+// noFlushWriter is an http.ResponseWriter that does not support flushing.
+type noFlushWriter struct {
+	http.ResponseWriter
+}
+
+func TestNewSSETransport_RequiresFlusher(t *testing.T) {
+	tr, err := sse.NewSSETransport("/messages", noFlushWriter{ResponseWriter: httptest.NewRecorder()})
+	assert.EqualError(t, err, "streaming not supported")
+	assert.Nil(t, tr)
+}
+
+func TestSSETransport_HandleMessage_RequestsAndResponses(t *testing.T) {
+	newTransport := func(t *testing.T) (*sse.SSETransport, *[]*transport.BaseJsonRpcMessage, *[]error) {
+		t.Helper()
+		tr, err := sse.NewSSETransport("/messages", newMockResponseWriter())
+		require.NoError(t, err)
+		var msgs []*transport.BaseJsonRpcMessage
+		var errs []error
+		tr.SetMessageHandler(func(m *transport.BaseJsonRpcMessage) {
+			msgs = append(msgs, m)
+		})
+		tr.SetErrorHandler(func(err error) {
+			errs = append(errs, err)
+		})
+		return tr, &msgs, &errs
+	}
+
+	t.Run("response is dispatched", func(t *testing.T) {
+		tr, msgs, errs := newTransport(t)
+		require.NoError(t, tr.HandleMessage([]byte(`{"jsonrpc":"2.0","id":4,"result":{"ok":true}}`)))
+		assert.Empty(t, *errs)
+		require.Len(t, *msgs, 1)
+		got := (*msgs)[0]
+		require.Equal(t, transport.BaseMessageTypeJSONRPCResponseType, got.Type)
+		assert.Equal(t, transport.RequestId(4), got.JsonRpcResponse.Id)
+		assert.JSONEq(t, `{"ok":true}`, string(got.JsonRpcResponse.Result))
+	})
+
+	t.Run("malformed response", func(t *testing.T) {
+		tr, msgs, errs := newTransport(t)
+		err := tr.HandleMessage([]byte(`{"jsonrpc":"2.0","id":4}`))
+		assert.EqualError(t, err, "field result in BaseJSONRPCResponse: required")
+		assert.Equal(t, []error{err}, *errs)
+		assert.Empty(t, *msgs)
+	})
+
+	t.Run("malformed request", func(t *testing.T) {
+		tr, msgs, errs := newTransport(t)
+		err := tr.HandleMessage([]byte(`{"jsonrpc":"2.0","method":"m","id":"x"}`))
+		assert.EqualError(t, err, "json: cannot unmarshal string into Go struct field .id of type transport.RequestId")
+		assert.Equal(t, []error{err}, *errs)
+		assert.Empty(t, *msgs)
+	})
+
+	t.Run("malformed messages without error handler", func(t *testing.T) {
+		tr, err := sse.NewSSETransport("/messages", newMockResponseWriter())
+		require.NoError(t, err)
+		assert.Error(t, tr.HandleMessage([]byte(`{"jsonrpc":"2.0","id":4}`)))
+		assert.Error(t, tr.HandleMessage([]byte(`{"jsonrpc":"2.0","method":"m","id":"x"}`)))
+		assert.Error(t, tr.HandleMessage([]byte(`{"method":"m"}`)))
 	})
 }

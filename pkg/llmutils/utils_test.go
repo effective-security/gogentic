@@ -308,3 +308,94 @@ Tool: tool1: Response: {"type":"tool_response","tool_response":{"tool_call_id":"
 		})
 	}
 }
+
+func Test_CleanJSON_ArrayOnly(t *testing.T) {
+	// Only an array: no object braces to compete with the brackets.
+	assert.Equal(t, "[1, 2]", string(llmutils.CleanJSON([]byte("Result: [1, 2] done"))))
+	// No JSON at all: returned unchanged.
+	assert.Equal(t, "no json here", string(llmutils.CleanJSON([]byte("no json here"))))
+}
+
+func Test_TrimBackticks_NoClosingMarker(t *testing.T) {
+	// Without a closing marker the content after the opening line is returned
+	// as is, untrimmed.
+	assert.Equal(t, "{\"a\": 1}\n", llmutils.TrimBackticks("```json\n{\"a\": 1}\n"))
+}
+
+func Test_ExtractTag_NotFound(t *testing.T) {
+	assert.Empty(t, llmutils.ExtractTag("no tag here", "#"))
+}
+
+func Test_FindLastUserQuestion_NoHuman(t *testing.T) {
+	msgs := []llms.Message{
+		llms.MessageFromTextParts(llms.RoleSystem, "system"),
+		llms.MessageFromTextParts(llms.RoleAI, "answer"),
+		// A human message without a text part is skipped.
+		llms.MessageFromParts(llms.RoleHuman, llms.ImageURLContent{URL: "https://example.com/a.png"}),
+	}
+	assert.Empty(t, llmutils.FindLastUserQuestion(msgs))
+}
+
+func Test_PrintMessages_UnknownRole(t *testing.T) {
+	var buf strings.Builder
+	llmutils.PrintMessages(&buf, []llms.Message{
+		llms.MessageFromTextParts(llms.Role("custom"), "hello"),
+	})
+	assert.Equal(t, "Generic: hello\n", buf.String())
+}
+
+func Test_CountMessagesContentSize_AllParts(t *testing.T) {
+	msgs := []llms.Message{
+		llms.MessageFromParts(llms.RoleHuman,
+			llms.TextContent{Text: "abc"},
+			llms.ImageURLContent{
+				URL:    "u1",
+				Detail: "low",
+			},
+			llms.BinaryContent{
+				MIMEType: "image/png",
+				Data:     []byte("12345"),
+			},
+		),
+		llms.MessageFromParts(llms.RoleAI,
+			llms.ToolCall{
+				ID:   "id",
+				Type: "function",
+				FunctionCall: &llms.FunctionCall{
+					Name:      "fn",
+					Arguments: "{}",
+				},
+			},
+			// A tool call without a function call counts only ID and type.
+			llms.ToolCall{
+				ID:   "ws",
+				Type: "web_search",
+			},
+		),
+		llms.MessageFromToolResponse(llms.RoleTool, llms.ToolCallResponse{
+			ToolCallID: "id",
+			Name:       "fn",
+			Content:    "ok",
+		}),
+	}
+	exp := len(llms.RoleHuman) + len("abc") + len("u1") + len("low") + len("image/png") + len("12345") +
+		len(llms.RoleAI) + len("id") + len("function") + len("fn") + len("{}") + len("ws") + len("web_search") +
+		len(llms.RoleTool) + len("id") + len("fn") + len("ok")
+	assert.Equal(t, uint64(exp), llmutils.CountMessagesContentSize(msgs))
+}
+
+type markdownValue struct{}
+
+func (markdownValue) ToMarkdown() string { return "# markdown" }
+
+func Test_RenderToString(t *testing.T) {
+	val := map[string]int{
+		"a": 1,
+	}
+	assert.Equal(t, `{"a":1}`, llmutils.RenderToString(llmutils.RenderFormatJSON, val))
+	assert.Equal(t, "{\n  \"a\": 1\n}", llmutils.RenderToString(llmutils.RenderFormatJSONIndent, val))
+	assert.Equal(t, "a: 1\n", llmutils.RenderToString(llmutils.RenderFormatYAML, val))
+	// Markdown uses ToMarkdown when available, YAML otherwise.
+	assert.Equal(t, "# markdown", llmutils.RenderToString(llmutils.RenderFormatMarkdown, markdownValue{}))
+	assert.Equal(t, "a: 1\n", llmutils.RenderToString(llmutils.RenderFormatMarkdown, val))
+}

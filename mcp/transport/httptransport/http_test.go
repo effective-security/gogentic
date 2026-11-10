@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/gogentic/mcp/transport/httptransport"
 	"github.com/stretchr/testify/assert"
@@ -636,4 +638,288 @@ func TestHTTPTransport_Integration_NotificationFlow(t *testing.T) {
 	// Give the server handler goroutine a moment to process
 	time.Sleep(5 * time.Millisecond)
 	assert.True(t, notificationReceived)
+}
+
+// ---------------------------------------------------------------------------
+// Error paths and message dispatch
+// ---------------------------------------------------------------------------
+
+const (
+	mcpPath    = "/mcp"
+	errBoomMsg = "boom"
+)
+
+type errReader struct {
+	err error
+}
+
+func (e errReader) Read([]byte) (int, error) {
+	return 0, e.err
+}
+
+// fakeHTTPClient lets tests control the HTTP round trip without a network.
+type fakeHTTPClient struct {
+	do func(r *http.Request) (*http.Response, error)
+}
+
+func (f *fakeHTTPClient) Do(r *http.Request) (*http.Response, error) {
+	return f.do(r)
+}
+
+func okBody(body string) *fakeHTTPClient {
+	return &fakeHTTPClient{
+		do: func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewReader([]byte(body))),
+			}, nil
+		},
+	}
+}
+
+func pingRequest() *transport.BaseJsonRpcMessage {
+	return transport.NewBaseMessageRequest(&transport.BaseJSONRPCRequest{
+		Jsonrpc: "2.0",
+		Method:  "ping",
+		Id:      transport.RequestId(1),
+	})
+}
+
+func TestHTTPTransport_StartFailsOnBadAddr(t *testing.T) {
+	tr := httptransport.NewHTTPTransport(mcpPath).WithAddr("no-port")
+	err := tr.Start(context.Background())
+	assert.EqualError(t, err, "listen tcp: address no-port: missing port in address")
+
+	closed := false
+	tr.SetCloseHandler(func() { closed = true })
+	require.NoError(t, tr.Close())
+	assert.True(t, closed)
+}
+
+func TestHTTPTransport_HandleRequest_BodyReadError(t *testing.T) {
+	tr := httptransport.NewHTTPTransport(mcpPath)
+	var reported error
+	tr.SetErrorHandler(func(err error) { reported = err })
+	tr.SetMessageHandler(func(context.Context, *transport.BaseJsonRpcMessage) {
+		t.Error("message handler must not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, mcpPath, errReader{err: errors.New(errBoomMsg)})
+	rec := httptest.NewRecorder()
+	tr.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, "failed to read request body: boom\n", rec.Body.String())
+	assert.EqualError(t, reported, "failed to read request body: boom")
+}
+
+func TestHTTPTransport_HandleRequest_ResponseMarshalError(t *testing.T) {
+	tr := httptransport.NewHTTPTransport(mcpPath)
+	var reported error
+	tr.SetErrorHandler(func(err error) { reported = err })
+	tr.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+		go func() {
+			_ = tr.Send(ctx, transport.NewBaseMessageResponse(&transport.BaseJSONRPCResponse{
+				Jsonrpc: "2.0",
+				Id:      msg.JsonRpcRequest.Id,
+				Result:  json.RawMessage(`{bad`),
+			}))
+		}()
+	})
+
+	req := httptest.NewRequest(http.MethodPost, mcpPath, bytes.NewReader(marshalRequest(t, "ping", 1, nil)))
+	rec := httptest.NewRecorder()
+	tr.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, "Failed to marshal response\n", rec.Body.String())
+	require.Error(t, reported)
+	// The innermost type name differs between encoding/json v1 and v2, so only
+	// the stable prefix and cause are asserted.
+	assert.True(t, strings.HasPrefix(reported.Error(),
+		"failed to marshal response: json: error calling MarshalJSON for type *transport.BaseJsonRpcMessage: "), reported.Error())
+	assert.True(t, strings.HasSuffix(reported.Error(),
+		"invalid character 'b' looking for beginning of object key string"), reported.Error())
+}
+
+func TestHTTPTransport_HandleRequest_ResponseAndErrorBodies(t *testing.T) {
+	tcs := []struct {
+		name     string
+		body     string
+		wantType transport.BaseMessageType
+		wantID   transport.RequestId
+	}{
+		{
+			name:     "response",
+			body:     `{"jsonrpc":"2.0","id":4,"result":{"ok":true}}`,
+			wantType: transport.BaseMessageTypeJSONRPCResponseType,
+			wantID:   4,
+		},
+		{
+			name:     "error",
+			body:     `{"jsonrpc":"2.0","id":5,"error":{"code":-1,"message":"bad"}}`,
+			wantType: transport.BaseMessageTypeJSONRPCErrorType,
+			wantID:   5,
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, withHandler := range []bool{true, false} {
+				tr := httptransport.NewHTTPTransport(mcpPath)
+				var got *transport.BaseJsonRpcMessage
+				if withHandler {
+					tr.SetMessageHandler(func(_ context.Context, msg *transport.BaseJsonRpcMessage) {
+						got = msg
+					})
+				}
+
+				rec := httptest.NewRecorder()
+				tr.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, mcpPath, bytes.NewReader([]byte(tc.body))))
+				assert.Equal(t, http.StatusAccepted, rec.Code)
+				assert.Empty(t, rec.Body.String())
+				if !withHandler {
+					continue
+				}
+				require.NotNil(t, got)
+				assert.Equal(t, tc.wantType, got.Type)
+				assert.Equal(t, tc.wantID, got.MessageID())
+			}
+		})
+	}
+}
+
+func TestHTTPClientTransport_SendErrors(t *testing.T) {
+	tcs := []struct {
+		name    string
+		tr      *httptransport.HTTPClientTransport
+		msg     *transport.BaseJsonRpcMessage
+		wantErr string
+	}{
+		{
+			name: "marshal failure",
+			tr:   httptransport.NewHTTPClientTransport(mcpPath),
+			msg: &transport.BaseJsonRpcMessage{
+				Type: "bogus",
+			},
+			wantErr: "failed to marshal message: json: error calling MarshalJSON for type *transport.BaseJsonRpcMessage: failed to marshal: unknown message type: bogus",
+		},
+		{
+			name:    "invalid url",
+			tr:      httptransport.NewHTTPClientTransport(mcpPath).WithBaseURL("http://bad\x7f"),
+			msg:     pingRequest(),
+			wantErr: "failed to create request: parse \"http://bad\\x7f/mcp\": net/url: invalid control character in URL",
+		},
+		{
+			name: "round trip failure",
+			tr: httptransport.NewHTTPClientTransport(mcpPath).WithClient(&fakeHTTPClient{
+				do: func(*http.Request) (*http.Response, error) {
+					return nil, errors.New(errBoomMsg)
+				},
+			}),
+			msg:     pingRequest(),
+			wantErr: "failed to send request: boom",
+		},
+		{
+			name: "body read failure",
+			tr: httptransport.NewHTTPClientTransport(mcpPath).WithClient(&fakeHTTPClient{
+				do: func(*http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(errReader{err: errors.New(errBoomMsg)}),
+					}, nil
+				},
+			}),
+			msg:     pingRequest(),
+			wantErr: "failed to read response: boom",
+		},
+		{
+			name:    "invalid body",
+			tr:      httptransport.NewHTTPClientTransport(mcpPath).WithClient(okBody(`"just a string"`)),
+			msg:     pingRequest(),
+			wantErr: `received invalid response: "just a string"`,
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			var reported error
+			tc.tr.SetErrorHandler(func(err error) { reported = err })
+			assert.EqualError(t, tc.tr.Send(context.Background(), tc.msg), tc.wantErr)
+			assert.NoError(t, reported, "send errors are returned, not reported")
+		})
+	}
+}
+
+func TestHTTPClientTransport_SendSetsHeadersAndURL(t *testing.T) {
+	var seen *http.Request
+	var seenBody []byte
+	tr := httptransport.NewHTTPClientTransport(mcpPath).
+		WithBaseURL("http://example.invalid").
+		WithHeader("X-Api-Key", "secret").
+		WithClient(&fakeHTTPClient{
+			do: func(r *http.Request) (*http.Response, error) {
+				seen = r
+				b, err := io.ReadAll(r.Body)
+				if err != nil {
+					return nil, err
+				}
+				seenBody = b
+				return &http.Response{
+					StatusCode: http.StatusNoContent,
+					Body:       io.NopCloser(bytes.NewReader(nil)),
+				}, nil
+			},
+		})
+
+	require.NoError(t, tr.Send(context.Background(), pingRequest()))
+	require.NotNil(t, seen)
+	assert.Equal(t, http.MethodPost, seen.Method)
+	assert.Equal(t, "http://example.invalid/mcp", seen.URL.String())
+	assert.Equal(t, "application/json", seen.Header.Get("Content-Type"))
+	assert.Equal(t, "secret", seen.Header.Get("X-Api-Key"))
+	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"ping","id":1}`, string(seenBody))
+}
+
+// Any JSON object decodes as a BaseJSONRPCError, so the notification and
+// request fallbacks are only reached when "error" is not an object.
+func TestHTTPClientTransport_SendDispatchFallbacks(t *testing.T) {
+	tcs := []struct {
+		name       string
+		body       string
+		wantType   transport.BaseMessageType
+		wantMethod string
+	}{
+		{
+			name:       "notification",
+			body:       `{"jsonrpc":"2.0","method":"notifications/progress","error":"x"}`,
+			wantType:   transport.BaseMessageTypeJSONRPCNotificationType,
+			wantMethod: "notifications/progress",
+		},
+		{
+			name:       "request",
+			body:       `{"jsonrpc":"2.0","method":"sampling/createMessage","id":3,"error":"x"}`,
+			wantType:   transport.BaseMessageTypeJSONRPCRequestType,
+			wantMethod: "sampling/createMessage",
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := httptransport.NewHTTPClientTransport(mcpPath).WithClient(okBody(tc.body))
+			// Without a message handler the body is accepted and dropped.
+			require.NoError(t, tr.Send(context.Background(), pingRequest()))
+
+			var got *transport.BaseJsonRpcMessage
+			tr.SetMessageHandler(func(_ context.Context, msg *transport.BaseJsonRpcMessage) {
+				got = msg
+			})
+			require.NoError(t, tr.Send(context.Background(), pingRequest()))
+			require.NotNil(t, got)
+			require.Equal(t, tc.wantType, got.Type)
+			if got.JsonRpcRequest != nil {
+				assert.Equal(t, tc.wantMethod, got.JsonRpcRequest.Method)
+				assert.Equal(t, transport.RequestId(3), got.JsonRpcRequest.Id)
+			} else {
+				assert.Equal(t, tc.wantMethod, got.JsonRpcNotification.Method)
+			}
+		})
+	}
 }

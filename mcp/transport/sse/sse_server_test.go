@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
 	"github.com/effective-security/gogentic/mcp/transport/sse"
 	"github.com/stretchr/testify/assert"
@@ -753,4 +754,25 @@ func TestSSEServerTransport_MessageSizeLimit(t *testing.T) {
 		err = sseTransport.HandlePostMessage(httpReq)
 		assert.NoError(t, err)
 	})
+}
+
+type errReader struct {
+	err error
+}
+
+func (e errReader) Read([]byte) (int, error) {
+	return 0, e.err
+}
+
+func TestSSEServerTransport_HandlePostMessage_ReadError(t *testing.T) {
+	sseTransport, err := sse.NewSSEServerTransport("/messages", httptest.NewRecorder())
+	require.NoError(t, err)
+
+	sseTransport.SetMessageHandler(func(*transport.BaseJsonRpcMessage) {
+		t.Error("message handler must not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/messages", errReader{err: errors.New("boom")})
+	req.Header.Set("Content-Type", "application/json")
+	assert.EqualError(t, sseTransport.HandlePostMessage(req), "failed to read request body: boom")
 }

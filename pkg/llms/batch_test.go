@@ -2,6 +2,7 @@ package llms_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
@@ -61,4 +62,21 @@ func TestCapabilityBatch_OpenAI(t *testing.T) {
 	assert.True(t, llms.ProviderOpenAIBedrock.Supports(llms.CapabilityBatch))
 	assert.False(t, llms.ProviderAnthropic.Supports(llms.CapabilityBatch))
 	assert.False(t, llms.ProviderAzure.Supports(llms.CapabilityBatch))
+}
+
+func TestBatchSubmitOptions(t *testing.T) {
+	const window = 24 * time.Hour
+	meta := map[string]string{
+		"job": "nightly",
+	}
+
+	var opts llms.BatchSubmitOptions
+	for _, opt := range []llms.BatchSubmitOption{
+		llms.WithBatchCompletionWindow(window),
+		llms.WithBatchMetadata(meta),
+	} {
+		opt(&opts)
+	}
+	assert.Equal(t, window, opts.CompletionWindow)
+	assert.Equal(t, meta, opts.Metadata)
 }

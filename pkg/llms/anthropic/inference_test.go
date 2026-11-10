@@ -343,3 +343,95 @@ func TestStopReasonsAndErrors(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, ie.Status)
 	assert.Equal(t, 1, f.calls, "exactly one attempt")
 }
+
+func TestInferRejectsBeforeSending(t *testing.T) {
+	f := &fixture{reply: textReply}
+	m := newModel(t, f)
+	seed := int64(7)
+	req := userRequest("x")
+	req.Seed = &seed
+
+	out, err := m.Infer(context.Background(), req)
+	assertUnsupported(t, err, "seed")
+	assert.Nil(t, out)
+	assert.Zero(t, f.calls)
+}
+
+func TestInferRequestShape(t *testing.T) {
+	f := &fixture{reply: textReply}
+	m := newModel(t, f)
+	topP := 0.25
+	req := userRequest("second")
+	req.TopP = &topP
+	// A turn without content, and a refusal block, have no Anthropic slot.
+	req.Messages = append([]llms.InferenceMessage{
+		{
+			Role: llms.InferenceRoleUser,
+		},
+		{
+			Role: llms.InferenceRoleAssistant,
+			Content: []llms.InferenceBlock{
+				{
+					Type: llms.BlockRefusal,
+					Text: "no",
+				},
+			},
+		},
+	}, req.Messages...)
+
+	_, err := m.Infer(context.Background(), req)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"model": "fixture",
+		"max_tokens": 8192,
+		"top_p": 0.25,
+		"messages": [{"role": "user", "content": [{"type": "text", "text": "second"}]}]
+	}`, f.raw)
+}
+
+func TestInferUndecodableReplies(t *testing.T) {
+	tests := []struct {
+		name    string
+		reply   string
+		wantErr string
+	}{
+		{
+			name:    "unknown stop reason",
+			reply:   `{"id":"m","type":"message","role":"assistant","content":[],"stop_reason":"pause_turn"}`,
+			wantErr: `decode anthropic inference: unsupported stop reason "pause_turn"`,
+		},
+		{
+			name:    "unknown content block",
+			reply:   `{"id":"m","type":"message","role":"assistant","content":[{"type":"container_upload","file_id":"f"}],"stop_reason":"end_turn"}`,
+			wantErr: `decode anthropic inference: unsupported content block "container_upload"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newModel(t, &fixture{reply: tt.reply})
+
+			out, err := m.Infer(context.Background(), userRequest("x"))
+			require.EqualError(t, err, tt.wantErr)
+			var ie *llms.InferenceError
+			require.ErrorAs(t, err, &ie)
+			assert.Equal(t, http.StatusBadGateway, ie.Status)
+			assert.Empty(t, ie.Param)
+			assert.Nil(t, out)
+		})
+	}
+}
+
+func TestInferContentBlockNotAnObject(t *testing.T) {
+	m := newModel(t, &fixture{reply: `{"id":"m","type":"message","role":"assistant","content":[42],"stop_reason":"end_turn"}`})
+
+	out, err := m.Infer(context.Background(), userRequest("x"))
+	var ie *llms.InferenceError
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, http.StatusBadGateway, ie.Status)
+	var typeErr *json.UnmarshalTypeError
+	require.ErrorAs(t, err, &typeErr)
+	assert.Equal(t, "number", typeErr.Value)
+	assert.True(t, strings.HasPrefix(err.Error(), "decode anthropic content block: json: cannot unmarshal number"), err.Error())
+	assert.Nil(t, out)
+}

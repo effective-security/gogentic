@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/skills"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,4 +92,29 @@ func TestActivateSkillTool_ResourceListing(t *testing.T) {
 	exp := `{"skill":"foo-skill-2","instructions":"# Header\n\nInstructions","location":"/.agent-foo/foo-skill-2"}`
 
 	assert.Equal(t, exp, out)
+}
+
+func TestActivateSkillTool_NoSkills(t *testing.T) {
+	t.Parallel()
+	tool, err := skills.NewActivateSkillTool(nil)
+	require.EqualError(t, err, "no skills provided")
+	assert.Nil(t, tool)
+}
+
+func TestActivateSkillTool_Metadata(t *testing.T) {
+	t.Parallel()
+	tool, err := skills.NewActivateSkillTool(skills.Skills{
+		{
+			Name: "only",
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, skills.ActivateSkillToolName, tool.Name())
+	assert.Equal(t,
+		"Load the skill by name when the user's request matches a skill description, then follow the instructions.",
+		tool.Description())
+
+	out, err := tool.Call(context.Background(), "not json")
+	require.ErrorIs(t, err, chatmodel.ErrFailedUnmarshalInput)
+	assert.Empty(t, out)
 }

@@ -231,3 +231,124 @@ func TestEncoder_MapAndSlice(t *testing.T) {
 	assert.Contains(t, string(bs), "- item1")
 	assert.Contains(t, string(bs), "- item2")
 }
+
+const (
+	allKindsTail = "labels:\n    k: 1\nany: x\nnil_any: null\nptr: null\nnested:\n    items:\n        - 1\n        - 2\n"
+	headerText   = "\nRespond with YAML in the following YAML schema without comments:\n```yaml\n"
+	footerText   = "```\nMake sure to return an instance of the YAML, not the schema itself.\n"
+)
+
+// allKinds exercises every value branch of the comment-aware encoder.
+type allKinds struct {
+	Untagged string
+	Ignored  string            `yaml:"-"`
+	Name     string            `yaml:"name" comment:"the name"`
+	NoDoc    string            `yaml:"nodoc"`
+	Ratio    float64           `yaml:"ratio" jsonschema:"title=Ratio,description=a ratio"`
+	Enabled  bool              `yaml:"enabled"`
+	Count    uint              `yaml:"count"`
+	Labels   map[string]int    `yaml:"labels"`
+	Any      any               `yaml:"any"`
+	NilAny   any               `yaml:"nil_any"`
+	Ptr      *int              `yaml:"ptr"`
+	Nested   *allKindsChildren `yaml:"nested"`
+}
+
+type allKindsChildren struct {
+	Items []int `yaml:"items"`
+}
+
+func newAllKinds() *allKinds {
+	return &allKinds{
+		Untagged: "skip",
+		Ignored:  "skip",
+		Name:     "n",
+		NoDoc:    "d",
+		Ratio:    0.5,
+		Enabled:  true,
+		Count:    7,
+		Labels: map[string]int{
+			"k": 1,
+		},
+		Any: "x",
+		Nested: &allKindsChildren{
+			Items: []int{1, 2},
+		},
+	}
+}
+
+func TestEncoderMarshalAllKinds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		style CommentStyle
+		want  string
+	}{
+		{
+			name:  "head",
+			style: HeadComment,
+			want: "# the name\nname: n\nnodoc: d\n# a ratio\nratio: 0.500000\nenabled: true\ncount: 7\n" +
+				allKindsTail,
+		},
+		{
+			name:  "foot",
+			style: FootComment,
+			want: "name: n\n# the name\n\nnodoc: d\nratio: 0.500000\n# a ratio\n\nenabled: true\ncount: 7\n" +
+				allKindsTail,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			enc := NewEncoder(allKinds{}).WithCommentStyle(tc.style)
+			bs, err := enc.Marshal(newAllKinds())
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, string(bs))
+		})
+	}
+}
+
+// fakedPerson provides its own exemplar via schema.Faker.
+type fakedPerson struct {
+	Name string `yaml:"name" jsonschema:"description=person name"`
+}
+
+func (fakedPerson) Fake() any {
+	return fakedPerson{
+		Name: "from-faker",
+	}
+}
+
+// scalarFaker returns a non-struct exemplar, which the comment encoder rejects.
+type scalarFaker struct{}
+
+func (scalarFaker) Fake() any {
+	return 42
+}
+
+func TestEncoderGetFormatInstructionsFaker(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, headerText+"name: from-faker\n"+footerText,
+		NewEncoder(fakedPerson{}).GetFormatInstructions())
+	assert.Equal(t, headerText+"name: from-faker # person name\n"+footerText,
+		NewEncoder(fakedPerson{}).WithCommentStyle(LineComment).GetFormatInstructions())
+	assert.Equal(t, headerText+"42\n"+footerText,
+		NewEncoder(scalarFaker{}).GetFormatInstructions())
+	assert.Empty(t, NewEncoder(scalarFaker{}).WithCommentStyle(LineComment).GetFormatInstructions())
+}
+
+func TestEncoderMarshalWithCommentsEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	enc := NewEncoder(allKinds{}).WithCommentStyle(LineComment)
+
+	bs, err := enc.Marshal((*allKinds)(nil))
+	require.NoError(t, err)
+	assert.Equal(t, "null\n", string(bs))
+
+	bs, err = enc.Marshal(42)
+	require.EqualError(t, err, "expected struct, got int")
+	assert.Nil(t, bs)
+}

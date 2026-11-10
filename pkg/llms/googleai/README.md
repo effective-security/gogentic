@@ -1,21 +1,20 @@
-This directory contains langchaingo provider for Google's models.
+This directory contains the provider for Google's Gemini models served by the
+Gemini API (https://ai.google.dev/), built on `google.golang.org/genai`.
 
-* In the main `googleai` directory: provider for Google AI
-  (https://ai.google.dev/)
-* In the `vertex` directory: provider for GCP Vertex AI
-  (https://cloud.google.com/vertex-ai/)
-* In the `palm` directory: provider for the legacy PaLM models.
-
-Both the `googleai` and `vertex` providers give access to Gemini-family
-multi-modal LLMs. The code between these providers is very similar; therefore,
-most of the `vertex` package is code-generated from the `googleai` package using
-a tool:
-
-    go run ./llms/googleai/internal/cmd/generate-vertex.go < llms/googleai/googleai.go > llms/googleai/vertex/vertex.go
+* `googleai.New` creates the `llms.Model`; configure it with the `With*`
+  options in `option.go` (API key or credentials, default model, generation
+  defaults, harm threshold, effort policy).
+* `Infer` / `ValidateInference` in `inference.go` implement the portable
+  inference contract used by the router.
+* `NewModelLister` and `GoogleAI.ListModels` list the models an account can
+  call.
+* `internal/genaiutils` converts `llms.Tool` definitions and JSON Schemas to
+  `genai` types.
 
 ----
 
 Testing:
 
-The test code between `googleai` and `vertex` is also shared, and lives in
-the `shared_test` directory. The same tests are run for both providers.
+Unit tests need no credentials; model listing runs against recorded
+responses in `testdata/`. `TestIntegration*` tests call the live API and are
+skipped under `make test`.

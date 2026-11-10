@@ -192,7 +192,7 @@ func TestReasoningEffort_Levels(t *testing.T) {
 	}
 
 	t.Run("models without a reasoning control ignore every level", func(t *testing.T) {
-		for _, model := range []string{"gpt-4o", "gpt-35-turbo", "anthropic/claude-opus-4.8", "sonar-pro"} {
+		for _, model := range []string{"gpt-4o", "gpt-35-turbo", "anthropic/claude-opus-4.8", "sonar-pro", "omni-moderation-latest", "o3x-preview"} {
 			effort, ok := sentEffort(t, model, nil, llms.WithReasoningEffort(llms.ReasoningEffortMax))
 			assert.False(t, ok, "model %s: unexpected reasoning effort %q", model, effort)
 		}

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPromptTemplateFormatPrompt(t *testing.T) {
@@ -73,4 +75,26 @@ func TestPromptTemplateFormatPrompt(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPromptTemplateInvalidPartial(t *testing.T) {
+	t.Parallel()
+
+	p := PromptTemplate{
+		Template:       "hello",
+		TemplateFormat: TemplateFormatGoTemplate,
+		InputVariables: []string{"a", "b"},
+		PartialVariables: map[string]any{
+			"bad": 1,
+		},
+	}
+	assert.Equal(t, []string{"a", "b"}, p.GetInputVariables())
+
+	_, err := p.Format(nil)
+	require.ErrorIs(t, err, ErrInvalidPartialVariableType)
+	require.EqualError(t, err, "unexpected type for bad: invalid partial variable type")
+
+	pv, err := p.FormatPrompt(nil)
+	require.ErrorIs(t, err, ErrInvalidPartialVariableType)
+	assert.Nil(t, pv)
 }

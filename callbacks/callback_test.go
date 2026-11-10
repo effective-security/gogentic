@@ -3,6 +3,7 @@ package callbacks_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/effective-security/gogentic/skills"
 	"github.com/effective-security/gogentic/tools"
 	"github.com/effective-security/x/values"
+	"github.com/effective-security/xlog"
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 )
@@ -278,6 +280,7 @@ type fakeAssistant struct {
 	name        string
 	description string
 	tools       []tools.ITool
+	skills      skills.Skills
 }
 
 func (f *fakeAssistant) Name() string {
@@ -308,7 +311,7 @@ func (f *fakeAssistant) GetTools() []tools.ITool {
 }
 
 func (f *fakeAssistant) GetSkills() skills.Skills {
-	return nil
+	return f.skills
 }
 
 type fakeTool struct {
@@ -338,4 +341,215 @@ func (m *fakeModel) GetName() string                    { return m.name }
 func (m *fakeModel) GetProviderType() llms.ProviderType { return m.provider }
 func (m *fakeModel) GenerateContent(ctx context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
 	return nil, nil
+}
+
+const (
+	testRepo      = "github.com/effective-security/gogentic"
+	testLoggerPkg = "callbacks_test"
+	testModelName = "gpt-4o"
+)
+
+func newSkilledAssistant() *fakeAssistant {
+	return &fakeAssistant{
+		name: "test-assistant",
+		skills: skills.Skills{
+			{
+				Name: "triage",
+			},
+			{
+				Name: "search",
+			},
+		},
+	}
+}
+
+func TestPrinter_DefaultMode(t *testing.T) {
+	var buf bytes.Buffer
+	cb := callbacks.NewPrinter(&buf, callbacks.ModeDefault)
+	ctx := context.Background()
+	ast := newSkilledAssistant()
+	tool := &fakeTool{name: "test-tool"}
+	model := &fakeModel{
+		name:     testModelName,
+		provider: llms.ProviderOpenAI,
+	}
+
+	cb.OnAssistantStart(ctx, ast, "test input")
+	cb.OnAssistantLLMCallStart(ctx, ast, model, []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "hi"),
+	})
+	cb.OnAssistantLLMCallEnd(ctx, ast, model, &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "a",
+			},
+			{
+				Content: "b",
+			},
+		},
+	})
+	cb.OnToolEnd(ctx, tool, ast.Name(), "in", "not printed in default mode")
+	cb.OnAssistantEnd(ctx, ast, "test input", &assistants.Response{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "not printed in default mode",
+			},
+		},
+	}, nil)
+	cb.OnAssistantLLMParseError(ctx, ast, "test input", "raw", errors.New("bad json"))
+
+	exp := `Assistant Start: test-assistant
+Skills: triage, search
+Input: test input
+Assistant LLM Call: test-assistant: gpt-4o model, 1 messages
+Assistant LLM Call End: test-assistant: gpt-4o model, 2 messages
+Tool End: test-tool (test-assistant)
+Assistant End: test-assistant
+Assistant LLM Parse Error: test-assistant: bad json
+Response: raw
+`
+	assert.Equal(t, exp, buf.String())
+}
+
+func TestFanout_OnAssistantLLMCallEnd(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	fanout := callbacks.NewFanout(
+		callbacks.NewPrinter(&buf1, callbacks.ModeDefault),
+		callbacks.NewPrinter(&buf2, callbacks.ModeDefault),
+	)
+	ast := &fakeAssistant{name: "test-assistant"}
+	fanout.OnAssistantLLMCallEnd(context.Background(), ast, &fakeModel{name: testModelName}, &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "a",
+			},
+		},
+	})
+
+	exp := "Assistant LLM Call End: test-assistant: gpt-4o model, 1 messages\n"
+	assert.Equal(t, exp, buf1.String())
+	assert.Equal(t, exp, buf2.String())
+}
+
+func TestNoop_Progress(t *testing.T) {
+	ctx := context.Background()
+	ast := &fakeAssistant{name: "test-assistant"}
+	noop := callbacks.NewNoop()
+
+	// Without a progress callback the events are dropped.
+	noop.OnProgress(ctx, ast, "title", "message")
+	noop.OnAssistantLLMCallEnd(ctx, ast, &fakeModel{name: testModelName}, &llms.ContentResponse{})
+
+	var got []string
+	noop.WithProgress(func(_ context.Context, a assistants.IAssistant, title, message string) {
+		got = append(got, a.Name()+"|"+title+"|"+message)
+	})
+	noop.OnProgress(ctx, ast, "step 1", "working")
+	noop.OnProgress(ctx, ast, "step 2", "done")
+	assert.Equal(t, []string{
+		"test-assistant|step 1|working",
+		"test-assistant|step 2|done",
+	}, got)
+}
+
+// captureLogs routes xlog output to a buffer for the duration of the test.
+// The formatter is process-wide, so callers must not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := xlog.GetFormatter()
+	f := xlog.NewStringFormatter(&buf, xlog.FormatSkipTime(true), xlog.FormatWithCaller(false))
+	xlog.SetFormatter(f)
+	t.Cleanup(func() {
+		xlog.SetFormatter(prev)
+	})
+	xlog.SetPackageLogLevel(testRepo, testLoggerPkg, xlog.DEBUG)
+	return &buf
+}
+
+func TestPackageLogger(t *testing.T) {
+	// The level must be set after the package logger is registered.
+	cb := callbacks.NewPackageLogger(xlog.NewPackageLogger(testRepo, testLoggerPkg))
+	buf := captureLogs(t)
+	ctx := context.Background()
+	ast := &fakeAssistant{name: "a1"}
+	tool := &fakeTool{name: "t1"}
+	model := &fakeModel{
+		name:     testModelName,
+		provider: llms.ProviderOpenAI,
+	}
+
+	cb.OnAssistantStart(ctx, ast, "hello")
+	cb.OnAssistantEnd(ctx, ast, "hello", &assistants.Response{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "answer",
+			},
+			{
+				// empty content is not logged
+				Content: "",
+			},
+		},
+	}, nil)
+	cb.OnAssistantError(ctx, ast, "hello", errors.New("boom"), nil)
+	cb.OnAssistantError(ctx, ast, "hello", errors.WithStack(context.DeadlineExceeded), nil)
+	cb.OnAssistantLLMParseError(ctx, ast, "hello", "raw", errors.New("bad json"))
+	cb.OnToolStart(ctx, tool, "a1", "in")
+	cb.OnToolEnd(ctx, tool, "a1", "in", "out")
+	cb.OnToolError(ctx, tool, "a1", "in", errors.New("tool failed"))
+	cb.OnToolError(ctx, tool, "a1", "in", errors.New("request timeout"))
+	cb.OnAssistantLLMCallStart(ctx, ast, model, []llms.Message{
+		llms.MessageFromTextParts(llms.RoleHuman, "hi"),
+		llms.MessageFromTextParts(llms.RoleAI, "there"),
+	})
+	cb.OnAssistantLLMCallEnd(ctx, ast, model, &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "a",
+			},
+		},
+	})
+	cb.OnToolNotFound(ctx, ast, "missing")
+
+	// Timeouts are logged as warnings, other failures as errors.
+	exp := `level=D pkg=callbacks_test event=assistant_start assistant=a1 input=hello
+level=D pkg=callbacks_test event=assistant_end assistant=a1
+level=D pkg=callbacks_test result=answer
+level=E pkg=callbacks_test event=assistant_error assistant=a1 err=boom
+level=W pkg=callbacks_test event=assistant_error assistant=a1 err="context deadline exceeded"
+level=D pkg=callbacks_test event=assistant_llm_parse_error assistant=a1 err="bad json" response=raw
+level=D pkg=callbacks_test event=tool_start assistant=a1 tool=t1 input=in
+level=D pkg=callbacks_test event=tool_end assistant=a1 tool=t1 output=out
+level=E pkg=callbacks_test event=tool_error assistant=a1 tool=t1 err="tool failed"
+level=W pkg=callbacks_test event=tool_error assistant=a1 tool=t1 err="request timeout"
+level=D pkg=callbacks_test event=assistant_llm_call_start assistant=a1 model=gpt-4o messages=2
+level=D pkg=callbacks_test event=assistant_llm_call_end assistant=a1 model=gpt-4o messages=1
+level=D pkg=callbacks_test event=tool_not_found assistant=a1 tool=missing
+`
+	assert.Equal(t, exp, buf.String())
+}
+
+func TestIsTimeout(t *testing.T) {
+	tests := []struct {
+		err error
+		exp bool
+	}{
+		{err: nil, exp: false},
+		{err: errors.New("boom"), exp: false},
+		{err: context.DeadlineExceeded, exp: true},
+		{err: errors.Wrap(context.Canceled, "aborted"), exp: true},
+		{err: fmt.Errorf("wrapped: %w", context.DeadlineExceeded), exp: true},
+		{err: errors.New("i/o timeout"), exp: true},
+		{err: errors.New("deadline reached"), exp: true},
+		{err: errors.New("request cancelled"), exp: true},
+	}
+	for _, tc := range tests {
+		name := "nil"
+		if tc.err != nil {
+			name = tc.err.Error()
+		}
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.exp, callbacks.IsTimeout(tc.err))
+		})
+	}
 }

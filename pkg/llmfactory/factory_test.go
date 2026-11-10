@@ -2,10 +2,22 @@ package llmfactory_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llmfactory"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/skills"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yamlcfg "go.uber.org/config"
@@ -1415,4 +1427,470 @@ func (f *fakeLLM) GetProviderType() llms.ProviderType {
 
 func (f *fakeLLM) GetName() string {
 	return f.model
+}
+
+const (
+	// fixtureToken is the provider token of the wire tests.
+	fixtureToken = "fixture"
+	// fixtureModel is the model of the wire tests.
+	fixtureModel = "fixture-model"
+	// fixtureOrg and fixtureProject are the OpenAI organization and project
+	// of the wire tests.
+	fixtureOrg     = "org-1"
+	fixtureProject = "proj-1"
+	// awsRegion is the region of the AWS configuration the tests build.
+	awsRegion = "us-east-1"
+
+	headerAuthorization = "Authorization"
+	headerContentType   = "Content-Type"
+	mimeJSON            = "application/json"
+
+	// responsesReply answers an OpenAI Responses API request.
+	responsesReply = `{"id":"resp","status":"completed","output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}]}`
+	// chatReply answers an OpenAI Chat Completions request.
+	chatReply = `{"choices":[{"message":{"content":"hello"},"finish_reason":"stop"}]}`
+	// converseReply answers a Bedrock Converse request.
+	converseReply = `{"output":{"message":{"role":"assistant","content":[{"text":"hello"}]}},"stopReason":"end_turn","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}`
+	// cloudflareReply answers a Cloudflare Workers AI request.
+	cloudflareReply = `{"result":{"response":"hello"},"success":true,"errors":[],"messages":[]}`
+)
+
+// sentRequest is one request a provider client sent.
+type sentRequest struct {
+	method string
+	url    string
+	host   string
+	path   string
+	header http.Header
+	body   map[string]any
+}
+
+// recordRequest reads a request for a test to inspect.
+func recordRequest(t *testing.T, r *http.Request) sentRequest {
+	t.Helper()
+	sent := sentRequest{
+		method: r.Method,
+		url:    r.URL.String(),
+		host:   r.URL.Host,
+		path:   r.URL.Path,
+		header: r.Header.Clone(),
+	}
+	if r.Body != nil {
+		raw, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		if len(raw) > 0 {
+			require.NoError(t, json.Unmarshal(raw, &sent.body))
+		}
+	}
+	return sent
+}
+
+// recordingClient is the factory HTTP client of a test: it records every
+// request and answers with a fixed reply, or fails with err.
+type recordingClient struct {
+	t        *testing.T
+	reply    string
+	err      error
+	mu       sync.Mutex
+	requests []sentRequest
+}
+
+func (c *recordingClient) Do(r *http.Request) (*http.Response, error) {
+	sent := recordRequest(c.t, r)
+	c.mu.Lock()
+	c.requests = append(c.requests, sent)
+	c.mu.Unlock()
+	if c.err != nil {
+		return nil, c.err
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			headerContentType: []string{mimeJSON},
+		},
+		Body:    io.NopCloser(strings.NewReader(c.reply)),
+		Request: r,
+	}, nil
+}
+
+// sent returns the requests recorded so far.
+func (c *recordingClient) sent() []sentRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.requests)
+}
+
+// awsConfig returns an AWS configuration with static credentials.
+func awsConfig() *aws.Config {
+	return &aws.Config{
+		Region:      awsRegion,
+		Credentials: credentials.NewStaticCredentialsProvider("AKIDFIXTURE", "secret", ""),
+	}
+}
+
+// generateHello sends one message to the model and checks the reply.
+func generateHello(t *testing.T, model llms.Model) {
+	t.Helper()
+	messages := []llms.Message{{
+		Role: llms.RoleHuman,
+		Parts: []llms.ContentPart{
+			llms.TextContent{Text: "hi"},
+		},
+	}}
+	resp, err := model.GenerateContent(context.Background(), messages)
+	require.NoError(t, err)
+	require.Len(t, resp.Choices, 1)
+	assert.Equal(t, "hello", resp.Choices[0].Content)
+}
+
+// Every provider family reports a configuration that selects no model.
+func Test_CreateLLM_NoModel(t *testing.T) {
+	apiTypes := []llms.ProviderType{
+		llms.ProviderOpenAI,
+		llms.ProviderOpenRouter,
+		llms.ProviderOpenAIBedrock,
+		llms.ProviderPerplexity,
+		llms.ProviderAzure,
+		llms.ProviderAnthropic,
+		llms.ProviderGoogleAI,
+		llms.ProviderBedrock,
+		llms.ProviderAnthropicBedrock,
+		llms.ProviderCloudflare,
+	}
+	for _, apiType := range apiTypes {
+		t.Run(string(apiType), func(t *testing.T) {
+			cfg := &llmfactory.ProviderConfig{
+				Name:  "P",
+				Token: fixtureToken,
+				OpenAI: llmfactory.OpenAIConfig{
+					APIType: string(apiType),
+				},
+			}
+			model, err := llmfactory.CreateLLM(cfg, []string{"unlisted"}, nil)
+			require.EqualError(t, err, "no LLM model found")
+			assert.Nil(t, model)
+		})
+	}
+}
+
+// The Bedrock-based families take their AWS configuration from the factory,
+// with the factory HTTP client in it, and report a failure to provide one.
+func Test_CreateLLM_AWSConfigFactory(t *testing.T) {
+	errAWS := errors.New("no AWS credentials")
+	tests := []struct {
+		apiType      llms.ProviderType
+		wantProvider llms.ProviderType
+		wantNoConfig string
+	}{
+		{
+			apiType:      llms.ProviderBedrock,
+			wantProvider: llms.ProviderBedrock,
+		},
+		{
+			apiType:      llms.ProviderAnthropicBedrock,
+			wantNoConfig: "anthropic: AWS config is required",
+		},
+		{
+			apiType:      llms.ProviderOpenAIBedrock,
+			wantProvider: llms.ProviderOpenAIBedrock,
+			wantNoConfig: "bedrock openai: AWS config is required",
+		},
+	}
+	for _, tt := range tests {
+		cfg := &llmfactory.ProviderConfig{
+			Name:            "P",
+			Token:           fixtureToken,
+			AvailableModels: []string{fixtureModel},
+			OpenAI: llmfactory.OpenAIConfig{
+				APIType: string(tt.apiType),
+			},
+		}
+
+		t.Run(string(tt.apiType), func(t *testing.T) {
+			client := &recordingClient{t: t}
+			awsCfg := awsConfig()
+			opts := llmfactory.NewOptions(
+				llmfactory.WithAWSConfigFactory(func() (*aws.Config, error) {
+					return awsCfg, nil
+				}),
+				llmfactory.WithHTTPClient(client),
+			)
+			model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, opts)
+			require.NoError(t, err)
+			assert.Equal(t, fixtureModel, model.GetName())
+			if tt.wantProvider != "" {
+				assert.Equal(t, tt.wantProvider, model.GetProviderType())
+			}
+			assert.Same(t, client, awsCfg.HTTPClient, "the AWS configuration carries the factory client")
+			assert.Empty(t, client.sent())
+		})
+
+		t.Run(string(tt.apiType)+" factory error", func(t *testing.T) {
+			opts := llmfactory.NewOptions(
+				llmfactory.WithAWSConfigFactory(func() (*aws.Config, error) {
+					return nil, errAWS
+				}),
+			)
+			model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, opts)
+			require.ErrorIs(t, err, errAWS)
+			assert.Nil(t, model)
+		})
+
+		if tt.wantNoConfig != "" {
+			t.Run(string(tt.apiType)+" without a factory", func(t *testing.T) {
+				model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, llmfactory.NewOptions())
+				require.EqualError(t, err, tt.wantNoConfig)
+				assert.Nil(t, model)
+			})
+		}
+	}
+}
+
+// A Bedrock model with Converse sends its portable inference requests
+// through the factory HTTP client.
+func Test_CreateLLM_BedrockConverseUsesFactoryClient(t *testing.T) {
+	client := &recordingClient{
+		t:     t,
+		reply: converseReply,
+	}
+	cfg := &llmfactory.ProviderConfig{
+		Name:            "P",
+		AvailableModels: []string{fixtureModel},
+		OpenAI: llmfactory.OpenAIConfig{
+			APIType:  string(llms.ProviderBedrock),
+			Converse: true,
+		},
+	}
+	opts := llmfactory.NewOptions(
+		llmfactory.WithAWSConfigFactory(func() (*aws.Config, error) {
+			return awsConfig(), nil
+		}),
+		llmfactory.WithHTTPClient(client),
+	)
+	model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, opts)
+	require.NoError(t, err)
+	inference, ok := model.(llms.InferenceModel)
+	require.True(t, ok)
+
+	out, err := inference.Infer(context.Background(), llms.InferenceRequest{
+		Model: fixtureModel,
+		Messages: []llms.InferenceMessage{{
+			Role: llms.InferenceRoleUser,
+			Content: []llms.InferenceBlock{{
+				Type: llms.BlockText,
+				Text: "hi",
+			}},
+		}},
+	})
+	require.NoError(t, err)
+	require.Len(t, out.Content, 1)
+	assert.Equal(t, "hello", out.Content[0].Text)
+
+	sent := client.sent()
+	require.Len(t, sent, 1)
+	assert.Equal(t, "bedrock-runtime."+awsRegion+".amazonaws.com", sent[0].host)
+	assert.Equal(t, "/model/"+fixtureModel+"/converse", sent[0].path)
+}
+
+// The OpenAI-compatible families send the configured token, organization and
+// project to the configured base URL.
+func Test_CreateLLM_OpenAICompatibleWire(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		sent []sentRequest
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req := recordRequest(t, r)
+		mu.Lock()
+		sent = append(sent, req)
+		mu.Unlock()
+		reply := chatReply
+		if strings.HasSuffix(r.URL.Path, "/responses") {
+			reply = responsesReply
+		}
+		w.Header().Set(headerContentType, mimeJSON)
+		_, _ = w.Write([]byte(reply))
+	}))
+	t.Cleanup(server.Close)
+
+	awsOptions := llmfactory.NewOptions(
+		llmfactory.WithAWSConfigFactory(func() (*aws.Config, error) {
+			return awsConfig(), nil
+		}),
+	)
+	tests := []struct {
+		apiType       llms.ProviderType
+		options       *llmfactory.Options
+		wantPath      string
+		wantOrgHeader bool
+	}{
+		{
+			apiType:       llms.ProviderOpenAI,
+			wantPath:      "/responses",
+			wantOrgHeader: true,
+		},
+		{
+			apiType:       llms.ProviderOpenAIBedrock,
+			options:       awsOptions,
+			wantPath:      "/responses",
+			wantOrgHeader: true,
+		},
+		{
+			apiType:  llms.ProviderPerplexity,
+			wantPath: "/chat/completions",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.apiType), func(t *testing.T) {
+			mu.Lock()
+			sent = nil
+			mu.Unlock()
+			cfg := &llmfactory.ProviderConfig{
+				Name:            "P",
+				Token:           fixtureToken,
+				AvailableModels: []string{fixtureModel},
+				OpenAI: llmfactory.OpenAIConfig{
+					APIType:      string(tt.apiType),
+					BaseURL:      server.URL,
+					Organization: fixtureOrg,
+					Project:      fixtureProject,
+				},
+			}
+			model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, tt.options)
+			require.NoError(t, err)
+			assert.Equal(t, tt.apiType, model.GetProviderType())
+			generateHello(t, model)
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Len(t, sent, 1)
+			req := sent[0]
+			assert.Equal(t, tt.wantPath, req.path)
+			assert.Equal(t, fixtureModel, req.body["model"])
+			if tt.wantOrgHeader {
+				assert.Equal(t, "Bearer "+fixtureToken, req.header.Get(headerAuthorization))
+				assert.Equal(t, fixtureOrg, req.header.Get("OpenAI-Organization"))
+				assert.Equal(t, fixtureProject, req.header.Get("OpenAI-Project"))
+			}
+		})
+	}
+}
+
+// OpenRouter sends its requests, with the configured headers, through the
+// factory HTTP client.
+func Test_CreateOpenRouterLLM_UsesFactoryClient(t *testing.T) {
+	const referer = "https://app.example"
+	client := &recordingClient{
+		t:     t,
+		reply: responsesReply,
+	}
+	cfg := &llmfactory.ProviderConfig{
+		Name:            "openrouter",
+		Token:           fixtureToken,
+		AvailableModels: []string{fixtureModel},
+		Headers: map[string]string{
+			"HTTP-Referer": referer,
+		},
+		OpenAI: llmfactory.OpenAIConfig{
+			APIType: string(llms.ProviderOpenRouter),
+		},
+	}
+	model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, llmfactory.NewOptions(llmfactory.WithHTTPClient(client)))
+	require.NoError(t, err)
+	generateHello(t, model)
+
+	sent := client.sent()
+	require.Len(t, sent, 1)
+	assert.Equal(t, "https://openrouter.ai/api/v1/responses", sent[0].url)
+	assert.Equal(t, referer, sent[0].header.Get("HTTP-Referer"))
+	assert.Equal(t, "Bearer "+fixtureToken, sent[0].header.Get(headerAuthorization))
+}
+
+// Cloudflare sends its requests to the configured server through the factory
+// HTTP client.
+func Test_CreateCloudflareLLM(t *testing.T) {
+	const serverURL = "https://cloudflare.test/client/v4/accounts/acct"
+	client := &recordingClient{
+		t:     t,
+		reply: cloudflareReply,
+	}
+	cfg := &llmfactory.ProviderConfig{
+		Name:            "P",
+		Token:           fixtureToken,
+		AvailableModels: []string{fixtureModel},
+		OpenAI: llmfactory.OpenAIConfig{
+			APIType: string(llms.ProviderCloudflare),
+			BaseURL: serverURL,
+		},
+	}
+	model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, llmfactory.NewOptions(llmfactory.WithHTTPClient(client)))
+	require.NoError(t, err)
+	assert.Equal(t, fixtureModel, model.GetName())
+	assert.Equal(t, llms.ProviderCloudflare, model.GetProviderType())
+	generateHello(t, model)
+
+	sent := client.sent()
+	require.Len(t, sent, 1)
+	assert.Equal(t, "cloudflare.test", sent[0].host)
+	assert.True(t, strings.HasSuffix(sent[0].path, "/ai/run/"+fixtureModel), "path %s", sent[0].path)
+	assert.Equal(t, "Bearer "+fixtureToken, sent[0].header.Get(headerAuthorization))
+}
+
+// A failure of the factory HTTP client reaches the caller of a Google AI
+// model.
+func Test_GoogleAIFactoryClientFailure(t *testing.T) {
+	errOffline := errors.New("offline")
+	client := &recordingClient{
+		t:   t,
+		err: errOffline,
+	}
+	cfg := &llmfactory.Config{
+		Providers: []*llmfactory.ProviderConfig{{
+			Name:         "GOOGLE",
+			Token:        fixtureToken,
+			DefaultModel: fixtureModel,
+			OpenAI: llmfactory.OpenAIConfig{
+				APIType: string(llms.ProviderGoogleAI),
+			},
+		}},
+	}
+	f := llmfactory.New(cfg, llmfactory.WithHTTPClient(client))
+	model, err := f.GetModel(context.Background(), llmfactory.ModelOptions{})
+	require.NoError(t, err)
+	inference, ok := model.(llms.InferenceModel)
+	require.True(t, ok)
+
+	out, err := inference.Infer(context.Background(), llms.InferenceRequest{
+		Model: fixtureModel,
+		Messages: []llms.InferenceMessage{{
+			Role: llms.InferenceRoleUser,
+			Content: []llms.InferenceBlock{{
+				Type: llms.BlockText,
+				Text: "hi",
+			}},
+		}},
+	})
+	require.ErrorContains(t, err, "perform provider HTTP request: offline")
+	assert.Nil(t, out)
+	assert.Len(t, client.sent(), 1)
+}
+
+// Skills that cannot be loaded leave the factory without skills.
+func Test_SkillsLoaderFailure(t *testing.T) {
+	cfg := &llmfactory.Config{
+		Skills: &skills.Config{
+			Paths: []string{
+				filepath.Join(t.TempDir(), "missing.tar"),
+			},
+		},
+	}
+	f := llmfactory.New(cfg)
+	assert.Nil(t, f.Skills("agent-foo"))
+}
+
+// No file is an empty configuration.
+func Test_LoadConfig_NoFile(t *testing.T) {
+	cfg, err := llmfactory.LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, &llmfactory.Config{}, cfg)
 }

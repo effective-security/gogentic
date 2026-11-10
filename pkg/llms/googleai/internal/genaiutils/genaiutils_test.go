@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/pb33f/ordered-map/v2"
 	"github.com/stretchr/testify/assert"
@@ -382,4 +383,143 @@ func TestConvertTools(t *testing.T) {
 			tt.validate(t, result)
 		})
 	}
+}
+
+func TestConvertJResponseFormatJSONSchema(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil format", func(t *testing.T) {
+		t.Parallel()
+		got, err := ConvertJResponseFormatJSONSchema(nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("format without schema", func(t *testing.T) {
+		t.Parallel()
+		got, err := ConvertJResponseFormatJSONSchema(&schema.ResponseFormatJSONSchema{
+			Name: "empty",
+		})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("nested object, array and nil property", func(t *testing.T) {
+		t.Parallel()
+		format := &schema.ResponseFormatJSONSchema{
+			Name: "answer",
+			Schema: &schema.ResponseFormatJSONSchemaProperty{
+				Type:        "object",
+				Description: "the answer",
+				Required: []string{
+					"tags",
+				},
+				Properties: map[string]*schema.ResponseFormatJSONSchemaProperty{
+					"tags": {
+						Type: "array",
+						Items: &schema.ResponseFormatJSONSchemaProperty{
+							Type:        "string",
+							Description: "one tag",
+						},
+					},
+					"score": {
+						Type: "number",
+					},
+					"missing": nil,
+				},
+			},
+		}
+		got, err := ConvertJResponseFormatJSONSchema(format)
+		require.NoError(t, err)
+
+		want := &genai.Schema{
+			Type:        genai.TypeObject,
+			Description: "the answer",
+			Required: []string{
+				"tags",
+			},
+			Properties: map[string]*genai.Schema{
+				"tags": {
+					Type: genai.TypeArray,
+					Items: &genai.Schema{
+						Type:        genai.TypeString,
+						Description: "one tag",
+					},
+				},
+				"score": {
+					Type: genai.TypeNumber,
+				},
+				"missing": nil,
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+}
+
+func TestConvertJSONSchemaDefinition_Items(t *testing.T) {
+	t.Parallel()
+
+	got, err := ConvertJSONSchemaDefinition(&jsonschema.Schema{
+		Type: "array",
+		Items: &jsonschema.Schema{
+			Type:        "boolean",
+			Description: "a flag",
+		},
+	})
+	require.NoError(t, err)
+	want := &genai.Schema{
+		Type: genai.TypeArray,
+		Items: &genai.Schema{
+			Type:        genai.TypeBoolean,
+			Description: "a flag",
+		},
+	}
+	assert.Equal(t, want, got)
+
+	got, err = ConvertJSONSchemaDefinition(nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestConvertToolSchemaType(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]genai.Type{
+		"object":  genai.TypeObject,
+		"string":  genai.TypeString,
+		"number":  genai.TypeNumber,
+		"integer": genai.TypeInteger,
+		"boolean": genai.TypeBoolean,
+		"array":   genai.TypeArray,
+		"null":    genai.TypeUnspecified,
+		"":        genai.TypeUnspecified,
+	}
+	for input, want := range tests {
+		assert.Equal(t, want, ConvertToolSchemaType(input), "type %q", input)
+	}
+}
+
+func TestPointerHelpers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		someFloat  = float32(0.25)
+		someInt    = int32(7)
+		someString = "text"
+	)
+
+	assert.Nil(t, Float32Ptr(0))
+	f := Float32Ptr(someFloat)
+	require.NotNil(t, f)
+	assert.Equal(t, someFloat, *f)
+
+	assert.Nil(t, Int32Ptr(0))
+	i := Int32Ptr(someInt)
+	require.NotNil(t, i)
+	assert.Equal(t, someInt, *i)
+
+	assert.Nil(t, StringPtr(""))
+	s := StringPtr(someString)
+	require.NotNil(t, s)
+	assert.Equal(t, someString, *s)
 }

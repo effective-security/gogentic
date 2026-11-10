@@ -995,3 +995,46 @@ func Test_Response_GetUsage(t *testing.T) {
 	var nilUsage *assistants.Response
 	assert.Nil(t, nilUsage.GetUsage())
 }
+
+func Test_CallInput_GetArg(t *testing.T) {
+	var nilInput *assistants.CallInput
+	assert.Empty(t, nilInput.GetArg("key"))
+	assert.Empty(t, (&assistants.CallInput{}).GetArg("key"))
+
+	in := &assistants.CallInput{
+		Args: map[string]string{
+			"key": "value",
+			"":    "never returned",
+		},
+	}
+	assert.Equal(t, "value", in.GetArg("key"))
+	assert.Empty(t, in.GetArg("missing"))
+	assert.Empty(t, in.GetArg(""), "an empty key is never looked up")
+}
+
+func Test_Response_String_NilAndSingle(t *testing.T) {
+	var nilResp *assistants.Response
+	assert.Empty(t, nilResp.String())
+
+	// A single choice is returned verbatim, without trimming.
+	single := &assistants.Response{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "  only\n",
+			},
+		},
+	}
+	assert.Equal(t, "  only\n", single.String())
+}
+
+func Test_NewResponse(t *testing.T) {
+	resp := assistants.NewResponse("plain text")
+	require.Len(t, resp.Choices, 1)
+	assert.Equal(t, "plain text", resp.Choices[0].Content)
+	assert.Equal(t, "plain text", resp.String())
+
+	// Structured values are rendered as fenced JSON.
+	resp = assistants.NewResponse(chatmodel.OutputResult{Content: "x"})
+	require.Len(t, resp.Choices, 1)
+	assert.Equal(t, "\n```json\n{\n  \"content\": \"x\"\n}\n```\n", resp.Choices[0].Content)
+}

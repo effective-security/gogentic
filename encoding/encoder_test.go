@@ -106,3 +106,11 @@ type Search struct {
 	Query string     `json:"query" jsonschema:"title=Query,description=Query to search for relevant content,example=what is golang" fake:"what is golang"`
 	Type  SearchType `json:"type"  jsonschema:"title=Type,description=Type of search,default=web,enum=web,enum=image,enum=video" fake:"web"`
 }
+
+func TestPredefinedSchemaEncoderUnknownMode(t *testing.T) {
+	t.Parallel()
+
+	enc, err := encoding.PredefinedSchemaEncoder(encoding.ModeCustom, Search{})
+	require.EqualError(t, err, "no predefined encoder")
+	assert.Nil(t, enc)
+}

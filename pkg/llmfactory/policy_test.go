@@ -2,6 +2,7 @@ package llmfactory
 
 import (
 	"testing"
+	"time"
 
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
@@ -184,6 +185,21 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: `provider OPENAI: available_models: model reference "medium" is only an effort level`,
 		},
 		{
+			name: "bare effort level in disabled_models",
+			cfg: provider(func(c *ProviderConfig) {
+				c.DisabledModels = []string{"medium"}
+			}),
+			wantErr: `provider OPENAI: disabled_models: model reference "medium" is only an effort level`,
+		},
+		{
+			name: "empty org override",
+			cfg: &Config{
+				Orgs: map[string]*OrgConfig{
+					"1000": nil,
+				},
+			},
+		},
+		{
 			name: "effort on a disabled_models entry",
 			cfg: provider(func(c *ProviderConfig) {
 				c.DisabledModels = []string{"gpt-5.5,low"}
@@ -356,4 +372,30 @@ func candidateIDs(candidates []candidate) []string {
 		ids = append(ids, cand.model)
 	}
 	return ids
+}
+
+// A model listed twice is known once, and a retired one not at all.
+func TestProviderPolicy_UsableSkipsDuplicates(t *testing.T) {
+	policy, err := newProviderPolicy(&ProviderConfig{
+		Name: "ANTHROPIC",
+		AvailableModels: []string{
+			"claude-*",
+		},
+		OpenAI: OpenAIConfig{
+			APIType: "ANTHROPIC",
+		},
+	}, 0)
+	require.NoError(t, err)
+
+	list := newModelList(1, time.Now(), []llms.ModelInfo{
+		active("claude-fable-5-1"),
+		retired("claude-opus-4-1"),
+		active("claude-fable-5-1"),
+		active("claude-fable-5-2"),
+	})
+	want := []string{
+		"claude-fable-5-1",
+		"claude-fable-5-2",
+	}
+	assert.Equal(t, want, policy.known(list))
 }

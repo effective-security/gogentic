@@ -452,3 +452,122 @@ type OrchestratorResult struct {
 	ChatTitle string   `json:"chatTitle,omitempty" yaml:"chatTitle" jsonschema:"title=Chat Title,description=a brief title for the chat session"`
 	Actions   []Action `json:"actions" yaml:"actions" jsonschema:"title=Actions,description=a list of actions to execute to produce the final answer"`
 }
+
+const (
+	refPrefix   = "#/$defs/"
+	defRoot     = "Root"
+	defChild    = "Child"
+	errNotFound = "not found"
+
+	errUnmarshalArray = "json: cannot unmarshal array into Go value of type struct { *jsonschema.SchemaAlt }"
+)
+
+func TestToFunctionSchemaResolvesDefinitions(t *testing.T) {
+	t.Parallel()
+
+	childDef := &jsonschema.Schema{
+		Type:        "object",
+		Description: "child",
+	}
+	props := jsonschema.NewProperties()
+	props.Set("child", &jsonschema.Schema{
+		Ref: refPrefix + defChild,
+	})
+	props.Set("list", &jsonschema.Schema{
+		Type: "array",
+		Items: &jsonschema.Schema{
+			Ref: refPrefix + defChild,
+		},
+	})
+	rootDef := &jsonschema.Schema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"child"},
+	}
+	raw := &jsonschema.Schema{
+		Ref: refPrefix + defRoot,
+		Definitions: jsonschema.Definitions{
+			defRoot:  rootDef,
+			defChild: childDef,
+		},
+	}
+
+	res := schema.ToFunctionSchema(reflect.TypeOf(struct{}{}), raw)
+	require.NotNil(t, res)
+	assert.Equal(t, "object", res.Type)
+	assert.Equal(t, []string{"child"}, res.Required)
+
+	child, ok := res.Properties.Get("child")
+	require.True(t, ok)
+	assert.Same(t, childDef, child)
+
+	list, ok := res.Properties.Get("list")
+	require.True(t, ok)
+	assert.Same(t, childDef, list.Items)
+}
+
+func TestToFunctionSchemaPanicsOnUnknownRef(t *testing.T) {
+	t.Parallel()
+
+	newRaw := func(prop *jsonschema.Schema) *jsonschema.Schema {
+		props := jsonschema.NewProperties()
+		props.Set("p", prop)
+		return &jsonschema.Schema{
+			Type:       "object",
+			Properties: props,
+		}
+	}
+
+	assert.PanicsWithValue(t, errNotFound, func() {
+		schema.ToFunctionSchema(nil, newRaw(&jsonschema.Schema{
+			Ref: refPrefix + "Missing",
+		}))
+	})
+	assert.PanicsWithValue(t, errNotFound, func() {
+		schema.ToFunctionSchema(nil, newRaw(&jsonschema.Schema{
+			Type: "array",
+			Items: &jsonschema.Schema{
+				Ref: refPrefix + "Missing",
+			},
+		}))
+	})
+}
+
+func TestSchemaNameFromRef(t *testing.T) {
+	t.Parallel()
+
+	s := &schema.Schema{
+		RawSchema: &jsonschema.Schema{
+			Ref: refPrefix + "MyStruct",
+		},
+	}
+	assert.Equal(t, "MyStruct", s.NameFromRef())
+}
+
+func TestSchemaMustFromAny(t *testing.T) {
+	t.Parallel()
+
+	sc := schema.MustFromAny(map[string]any{
+		"type":        "string",
+		"description": "d",
+	})
+	assert.Equal(t, "string", sc.Type)
+	assert.Equal(t, "d", sc.Description)
+
+	assert.PanicsWithError(t, "json: unsupported type: chan int", func() {
+		schema.MustFromAny(make(chan int))
+	})
+	assert.PanicsWithError(t, errUnmarshalArray, func() {
+		schema.MustFromAny([]int{1})
+	})
+}
+
+func TestSchemaFromAnyErrors(t *testing.T) {
+	t.Parallel()
+
+	_, err := schema.FromAny(make(chan int))
+	require.EqualError(t, err, "json: unsupported type: chan int")
+
+	_, err = schema.FromAny([]int{1})
+	require.EqualError(t, err, errUnmarshalArray)
+}

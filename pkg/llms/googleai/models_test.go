@@ -75,6 +75,9 @@ func recorded(t *testing.T, name string) string {
 // The two recorded pages hold four models that generate content, an embedding
 // model and a live-only model.
 func TestListModels_Pages(t *testing.T) {
+	// EnsureAuthPresent lets GOOGLE_API_KEY replace the key given by option,
+	// so the key sent below is the fixture's only without it.
+	t.Setenv(envGoogleAPIKey, "")
 	ctx := context.Background()
 	list := &modelList{
 		pages: map[string]listReply{

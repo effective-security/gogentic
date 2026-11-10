@@ -1,8 +1,10 @@
 package llms_test
 
 import (
+	"context"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,4 +102,65 @@ func TestCapabilityModels(t *testing.T) {
 	for _, provider := range all {
 		assert.Equal(t, listers[provider], provider.Supports(llms.CapabilityModels), "provider %s", provider)
 	}
+}
+
+// singlePromptModel is a fake llms.Model that records the request it receives.
+type singlePromptModel struct {
+	resp     *llms.ContentResponse
+	err      error
+	messages []llms.Message
+	opts     llms.CallOptions
+}
+
+func (m *singlePromptModel) GetName() string                    { return "fake" }
+func (m *singlePromptModel) GetProviderType() llms.ProviderType { return llms.ProviderOpenAI }
+func (m *singlePromptModel) GenerateContent(_ context.Context, messages []llms.Message, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	m.messages = messages
+	for _, opt := range options {
+		opt(&m.opts)
+	}
+	return m.resp, m.err
+}
+
+func TestGenerateFromSinglePrompt(t *testing.T) {
+	const prompt = "What is the capital of France?"
+	ctx := context.Background()
+
+	model := &singlePromptModel{
+		resp: &llms.ContentResponse{
+			Choices: []*llms.ContentChoice{
+				{
+					Content: "Paris",
+				},
+				{
+					Content: "ignored",
+				},
+			},
+		},
+	}
+	out, err := llms.GenerateFromSinglePrompt(ctx, model, prompt, llms.WithMaxTokens(10))
+	require.NoError(t, err)
+	assert.Equal(t, "Paris", out, "only the first choice is returned")
+	assert.Equal(t, []llms.Message{
+		{
+			Role: llms.RoleHuman,
+			Parts: []llms.ContentPart{
+				llms.TextContent{Text: prompt},
+			},
+		},
+	}, model.messages)
+	assert.Equal(t, 10, model.opts.MaxTokens, "call options are forwarded to the model")
+
+	model = &singlePromptModel{
+		resp: &llms.ContentResponse{},
+	}
+	_, err = llms.GenerateFromSinglePrompt(ctx, model, prompt)
+	assert.EqualError(t, err, "empty response from model")
+
+	modelErr := errors.New("provider down")
+	model = &singlePromptModel{
+		err: modelErr,
+	}
+	_, err = llms.GenerateFromSinglePrompt(ctx, model, prompt)
+	assert.ErrorIs(t, err, modelErr)
 }

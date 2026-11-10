@@ -1,8 +1,10 @@
 package json
 
 import (
+	"reflect"
 	"testing"
 
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -90,4 +92,46 @@ Use the exact field names as they are defined in the schema.
 `
 
 	assert.Equal(t, exp, enc.GetFormatInstructions())
+}
+
+type validated struct {
+	Name string `json:"name" validate:"required"`
+}
+
+func TestEncoderMarshalValidateSchema(t *testing.T) {
+	t.Parallel()
+
+	enc, err := NewEncoder(validated{})
+	require.NoError(t, err)
+
+	bs, err := enc.Marshal(validated{
+		Name: "n",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, `{"name":"n"}`, string(bs))
+
+	require.NoError(t, enc.Validate(validated{
+		Name: "n",
+	}))
+	err = enc.Validate(validated{})
+	require.EqualError(t, err, "Key: 'validated.Name' Error:Field validation for 'Name' failed on the 'required' tag")
+
+	sc, err := schema.New(reflect.TypeOf(validated{}))
+	require.NoError(t, err)
+	assert.Same(t, sc, enc.Schema())
+}
+
+func TestEncoderUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	enc, err := NewEncoder(validated{})
+	require.NoError(t, err)
+
+	var v validated
+	require.NoError(t, enc.Unmarshal([]byte("Sure, here you go:\n```json\n{\"name\":\"n\"}\n```\nDone."), &v))
+	assert.Equal(t, validated{
+		Name: "n",
+	}, v)
+
+	require.EqualError(t, enc.Unmarshal([]byte("no json here"), &v), "expected a struct in the input data")
 }
