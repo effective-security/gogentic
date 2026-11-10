@@ -15,6 +15,8 @@ func TestParseModelName(t *testing.T) {
 		version  []int
 		snapshot string
 		stage    string
+		variant  string
+		key      string
 	}{
 		// The family table in Documentation/llm-factory.md.
 		{id: "claude-fable-5-1", family: "claude-fable", version: []int{5, 1}},
@@ -65,6 +67,40 @@ func TestParseModelName(t *testing.T) {
 		{id: "meta-llama/llama-3.1-70b-instruct", prefix: "meta-llama/", family: "llama-70b-instruct", version: []int{3, 1}},
 		{id: "anthropic.claude-v2:1", prefix: "anthropic.", family: "claude", snapshot: "v2:1"},
 
+		// A router variant is kept apart from the family and the version.
+		{
+			id:      "openai/gpt-5.5:batch",
+			prefix:  "openai/",
+			family:  "gpt",
+			version: []int{5, 5},
+			variant: "batch",
+			key:     "openai/gpt:batch",
+		},
+		{
+			id:      "openai/gpt-5-pro:batch",
+			prefix:  "openai/",
+			family:  "gpt-pro",
+			version: []int{5},
+			variant: "batch",
+			key:     "openai/gpt-pro:batch",
+		},
+		{
+			id:      "anthropic/claude-3.7-sonnet:thinking",
+			prefix:  "anthropic/",
+			family:  "claude-sonnet",
+			version: []int{3, 7},
+			variant: "thinking",
+			key:     "anthropic/claude-sonnet:thinking",
+		},
+		{
+			id:      "meta-llama/llama-3.3-70b-instruct:free",
+			prefix:  "meta-llama/",
+			family:  "llama-70b-instruct",
+			version: []int{3, 3},
+			variant: "free",
+			key:     "meta-llama/llama-70b-instruct:free",
+		},
+
 		// IDs that follow no convention stay whole.
 		{id: "fixture", family: "fixture"},
 		{id: "", family: ""},
@@ -78,7 +114,12 @@ func TestParseModelName(t *testing.T) {
 			assert.Equal(t, tt.version, name.Version)
 			assert.Equal(t, tt.snapshot, name.Snapshot)
 			assert.Equal(t, tt.stage, name.Stage)
-			assert.Equal(t, tt.prefix+tt.family, name.Key())
+			assert.Equal(t, tt.variant, name.Variant)
+			wantKey := tt.key
+			if tt.variant == "" {
+				wantKey = tt.prefix + tt.family
+			}
+			assert.Equal(t, wantKey, name.Key())
 			assert.Equal(t, len(tt.version) > 0, name.HasVersion())
 		})
 	}

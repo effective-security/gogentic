@@ -19,23 +19,19 @@ var (
 )
 
 // The configuration samples in the documentation must load and validate.
-// Samples of the design that is not implemented yet are not checked.
 func TestDocumentationSamples(t *testing.T) {
-	const (
-		providersKey  = "providers:"
-		designHeading = "\n## Design:"
-	)
+	const providersKey = "providers:"
 	files := []string{
 		"../../Documentation/llm-factory.md",
+		"../../Documentation/RELEASE_NOTES_1.0.md",
 		"../../README.md",
 	}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		require.NoError(t, err)
-		text, _, _ := strings.Cut(string(raw), designHeading)
 
 		var checked int
-		for _, match := range yamlSample.FindAllStringSubmatch(text, -1) {
+		for _, match := range yamlSample.FindAllStringSubmatch(string(raw), -1) {
 			sample := match[1]
 			if !strings.Contains(sample, providersKey) {
 				continue

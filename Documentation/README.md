@@ -24,6 +24,12 @@ If you are new to the repo, read in this order:
 | 11 | [LLM Providers](llms.md) | `llms.Model`, messages, call options, prompt caching, batch API |
 | 12 | [Observability](observability.md) | Callbacks, scratchpad run reports, metrics |
 
+## Release notes
+
+[Release notes for 1.0](RELEASE_NOTES_1.0.md): reasoning effort in
+configuration, model patterns, model discovery with family fallback, and what
+to update to benefit from them.
+
 ## Inference routing
 
 [Semantic router](router.md) documents the embeddable inference router: the

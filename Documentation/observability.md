@@ -164,6 +164,14 @@ ready to register with your collector.
 | `stats_tool_calls_succeeded` / `_failed` | Tool outcomes |
 | `stats_tool_calls_not_found` | Model asked for an unregistered tool |
 
+**Counters of the LLM factory**, emitted when
+[model discovery](llm-factory.md#model-discovery) is on:
+
+| Metric | Tags | Meaning |
+|--------|------|---------|
+| `stats_llm_model_substituted` | `provider`, `requested`, `model` | A resolution used another model of the family than the one configured, because the provider no longer serves it or the configuration does not allow it |
+| `stats_llm_model_list_failed` | `provider` | A fetch of the provider's model list failed |
+
 **Samples (durations):**
 
 | Metric | Tags |
@@ -183,6 +191,8 @@ reason to name assistants deliberately.
 | `stats_assistant_llm_parse_errors` climbing | Output type too complex, or the provider lacks `CapabilityJSONSchema` and is ignoring the prompt schema |
 | `stats_assistant_calls_retried` climbing | Same as above; each retry is a full extra LLM call |
 | `stats_llm_cached_read_tokens` near zero with a cache policy set | Prompt prefix is not stable, or the provider lacks `CapabilityPromptCaching` |
+| `stats_llm_model_substituted` above zero | A configured model was retired or is not allowed: update the reference, or accept the substitute named in the `model` tag |
+| `stats_llm_model_list_failed` climbing | The provider's model list cannot be read (key, network, outage); resolution keeps using the last list, or the configuration alone |
 | `perf_tool_call` p99 spikes | A slow tool serializing the parallel tool batch — the LLM turn waits for the slowest tool |
 
 ## Logging

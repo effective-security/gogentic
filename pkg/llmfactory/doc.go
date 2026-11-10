@@ -114,7 +114,45 @@
 // [LoadConfig] validates the references and effort levels. [New] cannot fail,
 // so for a Config built in code call [Config.Validate] first.
 //
+// # 6. Model discovery
+//
+// Providers retire models and ship new ones. With a discovery section the
+// factory reads the model list from the provider (OPENAI, OPENROUTER,
+// ANTHROPIC and GOOGLEAI), so that a pattern selects models nobody listed and
+// a model the provider no longer serves gives way to the newest allowed model
+// of its family. Without the section nothing changes.
+//
+//	providers:
+//	  - name: ANTHROPIC
+//	    token: env://ANTHROPIC_API_KEY
+//	    default_model: claude-sonnet-*,medium
+//	    available_models:
+//	      - claude-fable-*,high
+//	      - claude-sonnet-*
+//	    discovery:
+//	      enabled: true
+//	      refresh: 6h
+//	    open_ai:
+//	      api_type: ANTHROPIC
+//	assistant_models:
+//	  coder:
+//	    - ANTHROPIC/claude-fable-5-1
+//
+// When the provider retires claude-fable-5-1, "coder" resolves to the newest
+// model that claude-fable-* allows. available_models stays the only grant of
+// access. The list is fetched on first use and refreshed in the background; a
+// failed fetch keeps the last list and never fails GetModel.
+//
+// [Resolve] reports what a reference selects right now, without building a
+// client, and [RefreshModels] reads the lists on demand:
+//
+//	res, err := llmfactory.Resolve(ctx, fac, llmfactory.ModelOptions{AssistantName: "coder"})
+//	if err != nil {
+//	    return err
+//	}
+//	// res.Model "claude-fable-5-2", res.Reason llmfactory.ReasonFamily
+//
 // See Documentation/llm-factory.md for the full resolution rules, the effort
 // mapping per provider, the skills section, and testing hooks such as the
-// overridable [NewLLM] variable.
+// overridable [NewLLM] and [NewModelLister] variables.
 package llmfactory

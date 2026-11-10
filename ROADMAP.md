@@ -61,12 +61,12 @@ supervisor's model. Still missing:
 
 ### Model routing
 
-- [ ] Model lists read from the provider, and a retired model replaced by the
-      newest allowed model of its family — designed in
-      [LLM Factory](Documentation/llm-factory.md#design-dynamic-model-lists-and-family-fallback),
-      tracked in [PLAN.md](PLAN.md)
-- [ ] The configured effort default and ceiling on the portable `Infer` path
-      used by the router
+- [x] Model lists read from the provider: `llms.ModelLister` on OpenAI,
+      OpenRouter, Anthropic and Google AI —
+      [Providers](Documentation/llms.md#listing-models)
+- [x] The factory using those lists (`discovery`): patterns that match models
+      nobody listed, and a retired model replaced by the newest allowed model
+      of its family — [LLM Factory](Documentation/llm-factory.md#model-discovery)
 
 ### Observability
 

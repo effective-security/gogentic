@@ -125,7 +125,7 @@ const (
 	CapabilityBatch
 
 	// The provider can list the models an account may call.
-	// Providers that advertise this capability implement a model lister.
+	// Providers that advertise this capability also implement [ModelLister].
 	CapabilityModels
 )
 

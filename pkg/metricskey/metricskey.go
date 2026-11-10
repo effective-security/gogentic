@@ -116,6 +116,25 @@ var (
 		Help:         "stats_assistant_llm_parse_errors provides total assistant LLM parse errors",
 		RequiredTags: []string{"agent", "model", "org"},
 	}
+
+	// StatsLLMModelSubstituted counts the model resolutions in which the LLM
+	// factory replaced a configured model the provider no longer serves, or
+	// does not allow, by another model of the same family.
+	StatsLLMModelSubstituted = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_model_substituted",
+		Help:         "stats_llm_model_substituted provides total model resolutions that used another model of the family than the one configured",
+		RequiredTags: []string{"provider", "requested", "model"},
+	}
+
+	// StatsLLMModelListFailed counts the failed attempts of the LLM factory
+	// to read the model list of a provider.
+	StatsLLMModelListFailed = metrics.Describe{
+		Type:         metrics.TypeCounter,
+		Name:         "stats_llm_model_list_failed",
+		Help:         "stats_llm_model_list_failed provides total failed fetches of a provider model list",
+		RequiredTags: []string{"provider"},
+	}
 )
 
 // Perf
@@ -151,6 +170,8 @@ var Metrics = []*metrics.Describe{
 	&StatsLLMCachedWriteTokens,
 	&StatsLLMInputTokens,
 	&StatsLLMMessagesSent,
+	&StatsLLMModelListFailed,
+	&StatsLLMModelSubstituted,
 	&StatsLLMOutputTokens,
 	&StatsLLMTotalTokens,
 	&StatsToolCallsFailed,

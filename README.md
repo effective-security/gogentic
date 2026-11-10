@@ -24,6 +24,7 @@ go get github.com/effective-security/gogentic
 | Multi-agent delegation (an assistant *is* a tool) | `assistants` | [Orchestration](Documentation/orchestration.md) |
 | One config for OpenAI, Anthropic, Azure, Bedrock, Google AI, OpenRouter, Perplexity, Cloudflare | `pkg/llmfactory`, `pkg/llms` | [LLM Factory](Documentation/llm-factory.md), [LLM Providers](Documentation/llms.md) |
 | Per-assistant and per-organization model routing, capability filtering, quota hooks | `pkg/llmfactory` | [Model resolution](Documentation/llm-factory.md#model-resolution) |
+| Model patterns, reasoning effort in configuration, and retired models replaced from the provider's own model list | `pkg/llmfactory` | [Model discovery](Documentation/llm-factory.md#model-discovery), [Reasoning effort](Documentation/llm-factory.md#reasoning-effort) |
 | Agent Skills (`SKILL.md`) with progressive disclosure | `skills` | [Skills](Documentation/skills.md) |
 | MCP server and client, with stdio / HTTP / SSE / in-process transports | `mcp` | [MCP](Documentation/mcp.md) |
 | Chat history in memory or Redis, multi-tenant | `store`, `chatmodel` | [Memory](Documentation/memory.md) |
@@ -201,6 +202,38 @@ if err := tr.Start(ctx); err != nil {
 ```
 
 See [MCP](Documentation/mcp.md).
+
+## Survive model retirements
+
+Providers retire models on short notice. With `discovery`, the factory reads
+the provider's model list, so a pattern picks up new models and a reference to
+a retired model resolves to the newest allowed model of the same family
+instead of failing:
+
+```yaml
+providers:
+  - name: ANTHROPIC
+    token: env://ANTHROPIC_API_KEY
+    default_model: claude-sonnet-*,medium
+    available_models:
+      - claude-fable-*,high
+      - claude-sonnet-*
+    max_effort: xhigh
+    discovery:
+      enabled: true
+    open_ai:
+      api_type: ANTHROPIC
+assistant_models:
+  researcher:
+    - ANTHROPIC/claude-fable-5-1
+```
+
+```go
+res, err := llmfactory.Resolve(ctx, fac, llmfactory.ModelOptions{AssistantName: "researcher"})
+// res.Model is claude-fable-5-1 while it is served, then the newest claude-fable
+```
+
+See [Model discovery](Documentation/llm-factory.md#model-discovery).
 
 ## Load skills from disk
 

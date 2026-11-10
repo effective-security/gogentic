@@ -9,4 +9,7 @@
 //	    googleai.WithDefaultModel("gemini-1.5-flash"),
 //	)
 //	_ = mdl; _ = err
+//
+// The models an account can call are listed with [NewModelLister] or with
+// [GoogleAI.ListModels].
 package googleai

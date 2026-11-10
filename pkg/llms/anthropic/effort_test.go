@@ -196,16 +196,20 @@ func TestReasoningEffort_Levels(t *testing.T) {
 
 // A thinking budget counts against max_tokens and must stay below it.
 func TestReasoningEffort_BudgetFitsMaxTokens(t *testing.T) {
+	const (
+		highBudget    = 10000
+		defaultTokens = float64(anthropic.DefaultMaxTokens)
+	)
 	tests := []struct {
 		name      string
 		maxTokens int
 		effort    llms.ReasoningEffort
 		want      float64
 	}{
-		{"default max_tokens is raised above the budget", 0, llms.ReasoningEffortHigh, 10000 + 4096},
-		{"max_tokens equal to the budget is raised", 10000, llms.ReasoningEffortHigh, 10000 + 4096},
+		{"max_tokens below the budget is raised above it", 5000, llms.ReasoningEffortHigh, highBudget + defaultTokens},
+		{"max_tokens equal to the budget is raised", highBudget, llms.ReasoningEffortHigh, highBudget + defaultTokens},
 		{"max_tokens above the budget is kept", 20000, llms.ReasoningEffortHigh, 20000},
-		{"low budget fits the default", 0, llms.ReasoningEffortLow, 4096},
+		{"low budget fits the default", 0, llms.ReasoningEffortLow, defaultTokens},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,7 +228,92 @@ func TestReasoningEffort_BudgetFitsMaxTokens(t *testing.T) {
 
 	// Adaptive thinking has no budget, so max_tokens is left alone.
 	body := sentRequest(t, "claude-opus-4-8", nil, llms.WithReasoningEffort(llms.ReasoningEffortMax))
-	assert.EqualValues(t, 4096, body["max_tokens"])
+	assert.EqualValues(t, anthropic.DefaultMaxTokens, body["max_tokens"])
+}
+
+// The effort levels the model list reports for the client's model take the
+// place of the table's.
+func TestReasoningEffort_ReportedByProvider(t *testing.T) {
+	const notSent = ""
+	lowToHigh := llms.NewEffortSet(
+		llms.ReasoningEffortLow,
+		llms.ReasoningEffortMedium,
+		llms.ReasoningEffortHigh,
+	)
+	lowToMax := lowToHigh.With(llms.ReasoningEffortXHigh, llms.ReasoningEffortMax)
+	tests := []struct {
+		name       string
+		model      string
+		callModel  string
+		supported  llms.EffortSet
+		effort     llms.ReasoningEffort
+		wantEffort string
+	}{
+		{
+			name:       "the table",
+			model:      "claude-opus-4-6",
+			effort:     llms.ReasoningEffortXHigh,
+			wantEffort: "high",
+		},
+		{
+			name:       "a level the list adds",
+			model:      "claude-opus-4-6",
+			supported:  lowToMax,
+			effort:     llms.ReasoningEffortXHigh,
+			wantEffort: "xhigh",
+		},
+		{
+			name:       "a level the list takes away",
+			model:      "claude-opus-4-8",
+			supported:  lowToHigh,
+			effort:     llms.ReasoningEffortMax,
+			wantEffort: "high",
+		},
+		{
+			name:       "none stays: the API does not name it, the client can send it",
+			model:      "claude-opus-4-8",
+			supported:  lowToHigh,
+			effort:     llms.ReasoningEffortNone,
+			wantEffort: "low",
+		},
+		{
+			name:       "a model without an output effort keeps its thinking budget",
+			model:      "claude-haiku-4-5",
+			supported:  lowToMax,
+			effort:     llms.ReasoningEffortMax,
+			wantEffort: notSent,
+		},
+		{
+			name:       "another model named in the call keeps the table",
+			model:      "claude-opus-4-8",
+			callModel:  "claude-opus-4-6",
+			supported:  lowToMax,
+			effort:     llms.ReasoningEffortXHigh,
+			wantEffort: "high",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []anthropic.Option{
+				anthropic.WithEffortPolicy(llms.EffortPolicy{Supported: tt.supported}),
+			}
+			callOpts := []llms.CallOption{
+				llms.WithReasoningEffort(tt.effort),
+			}
+			if tt.callModel != "" {
+				callOpts = append(callOpts, llms.WithModel(tt.callModel))
+			}
+			body := sentRequest(t, tt.model, opts, callOpts...)
+
+			effort, ok := outputEffort(body)
+			if tt.wantEffort == notSent {
+				assert.False(t, ok, "unexpected output effort %q", effort)
+				return
+			}
+			require.True(t, ok, "output effort was not sent")
+			assert.Equal(t, tt.wantEffort, effort)
+		})
+	}
 }
 
 func TestReasoningEffort_Policy(t *testing.T) {

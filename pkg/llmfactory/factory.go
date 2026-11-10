@@ -3,7 +3,6 @@ package llmfactory
 import (
 	"context"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +36,11 @@ var logger = xlog.NewPackageLogger("github.com/effective-security/gogentic", "ll
 
 // NewLLM is a wrapper for CreateLLM to allow for overriding the default implementation.
 var NewLLM = CreateLLM
+
+// NewModelLister is a wrapper for CreateModelLister to allow for overriding
+// the default implementation. The factory calls it once per provider with
+// discovery, on the first fetch of its model list.
+var NewModelLister = CreateModelLister
 
 // Factory is the interface for creating and managing LLM models.
 // In multi-tenant environments, the OrgID is used to determine the LLM model to use for the organization.
@@ -101,7 +105,9 @@ type factory struct {
 
 	defaultProvider *ProviderConfig
 	// policies holds the compiled model policy of each provider, in the
-	// order of cfg.Providers. It is immutable after New.
+	// order of cfg.Providers. It is immutable after New, and shared with the
+	// factories derived by WithModelFilter, so they read one model list per
+	// provider.
 	policies           []*providerPolicy
 	assistantModels    map[string][]string
 	orgAssistantModels map[string]map[string][]string
@@ -153,6 +159,11 @@ func New(cfg *Config, opts ...Option) Factory {
 				"provider", provider.Name,
 				"err", err.Error(),
 			)
+		}
+		if policy.discovers() {
+			policy.catalog = newModelCatalog(provider.Name, policy.refresh, func() (llms.ModelLister, error) {
+				return NewModelLister(provider, f.options)
+			})
 		}
 		f.policies = append(f.policies, policy)
 	}
@@ -262,29 +273,14 @@ func newOpenAI(cfg *ProviderConfig, preferredModels []string, options *Options) 
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, openai.WithProvider(llms.ProviderOpenAI), openai.WithModel(model))
+	opts = append(opts, openai.WithModel(model))
 	opts = append(opts, openAIEffort(options)...)
-	if options != nil && options.HTTPClient != nil {
-		opts = append(opts, openai.WithHTTPClient(options.HTTPClient))
-	}
 	inferenceAPI, err := inferenceAPIOption(cfg)
 	if err != nil {
 		return nil, err
 	}
 	opts = append(opts, inferenceAPI)
-
-	if cfg.Token != "" {
-		opts = append(opts, openai.WithToken(cfg.Token))
-	}
-	if cfg.OpenAI.BaseURL != "" {
-		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
-	}
-	if cfg.OpenAI.Organization != "" {
-		opts = append(opts, openai.WithOrganization(cfg.OpenAI.Organization))
-	}
-	if cfg.OpenAI.Project != "" {
-		opts = append(opts, openai.WithProject(cfg.OpenAI.Project))
-	}
+	opts = append(opts, openAIConnection(cfg, options)...)
 	return openai.New(opts...)
 }
 
@@ -294,23 +290,11 @@ func newOpenRouter(cfg *ProviderConfig, preferredModels []string, options *Optio
 		return nil, err
 	}
 
-	baseURL := cfg.OpenAI.BaseURL
-	if baseURL == "" {
-		baseURL = defaultOpenRouterBaseURL
-	}
 	opts := []openai.Option{
-		openai.WithProvider(llms.ProviderOpenRouter),
 		openai.WithModel(model),
-		openai.WithBaseURL(baseURL),
-		openai.WithHeaders(cfg.Headers),
 	}
 	opts = append(opts, openAIEffort(options)...)
-	if cfg.Token != "" {
-		opts = append(opts, openai.WithToken(cfg.Token))
-	}
-	if options != nil && options.HTTPClient != nil {
-		opts = append(opts, openai.WithHTTPClient(options.HTTPClient))
-	}
+	opts = append(opts, openRouterConnection(cfg, options)...)
 	return openai.New(opts...)
 }
 
@@ -399,12 +383,7 @@ func newAnthropic(cfg *ProviderConfig, preferredModels []string, options *Option
 	}
 	opts = append(opts, anthropic.WithModel(model))
 	opts = append(opts, anthropicEffort(options)...)
-	if cfg.Token != "" {
-		opts = append(opts, anthropic.WithToken(cfg.Token))
-	}
-	if options != nil && options.HTTPClient != nil {
-		opts = append(opts, anthropic.WithHTTPClient(options.HTTPClient))
-	}
+	opts = append(opts, anthropicConnection(cfg, options)...)
 	return anthropic.New(opts...)
 }
 
@@ -418,12 +397,7 @@ func newGoogleAI(cfg *ProviderConfig, preferredModels []string, options *Options
 	if options != nil && !options.Effort.IsZero() {
 		opts = append(opts, googleai.WithEffortPolicy(options.Effort))
 	}
-	if options != nil && options.HTTPClient != nil {
-		opts = append(opts, googleai.WithHTTPClient(&http.Client{Transport: factoryTransport{client: options.HTTPClient}}))
-	}
-	if cfg.Token != "" {
-		opts = append(opts, googleai.WithAPIKey(cfg.Token))
-	}
+	opts = append(opts, googleAIConnection(cfg, options)...)
 	return googleai.New(context.Background(), opts...)
 }
 
@@ -532,28 +506,6 @@ func validReferences(scope, assistant string, refs []string) []string {
 	return valid
 }
 
-// GetModel returns an LLM model that matches the given options.
-func (f *factory) GetModel(ctx context.Context, opts ModelOptions) (llms.Model, error) {
-	// A specific provider type takes precedence over name-based resolution.
-	if opts.ProviderType != "" {
-		return f.getModelByType(opts)
-	}
-
-	// Expand the assistant model mapping (optionally per-org) into the
-	// preferred models, keeping caller-provided models at the front.
-	preferred := opts.PreferredModels
-	if opts.AssistantName != "" {
-		assistantModels := f.getOrgAssistants(opts.OrgID)
-		if modelNames, ok := assistantModels[opts.AssistantName]; ok {
-			preferred = append(slices.Clone(opts.PreferredModels), modelNames...)
-		} else if modelNames, ok := assistantModels["default"]; ok {
-			preferred = append(slices.Clone(opts.PreferredModels), modelNames...)
-		}
-	}
-
-	return f.getModelByName(ctx, opts, preferred)
-}
-
 // configProviderType returns the normalized provider type for a provider
 // config, so it can be matched against the capability table.
 func configProviderType(cfg *ProviderConfig) llms.ProviderType {
@@ -580,179 +532,6 @@ func (f *factory) isModelAllowed(ctx context.Context, orgID, assistantName, mode
 	return f.options.ModelFilter == nil || f.options.ModelFilter(ctx, orgID, assistantName, modelName)
 }
 
-// resolveDefault returns the default model, honoring capability and org
-// filters. It must be called with f.lock held.
-func (f *factory) resolveDefault(ctx context.Context, opts ModelOptions) (llms.Model, error) {
-	if len(f.cfg.Providers) == 0 || f.defaultProvider == nil {
-		return nil, errors.New("no providers configured")
-	}
-
-	if f.defaultProvider.DefaultModel == "" {
-		return nil, errors.New("no default model configured")
-	}
-
-	policy := f.policyFor(f.defaultProvider)
-	if !supportsCapabilities(policy.typ, opts.RequiredCapabilities) {
-		return nil, errors.Errorf("default provider %s does not support required capabilities", f.defaultProvider.Name)
-	}
-
-	models, effort := policy.defaultCandidates()
-	if len(models) == 0 {
-		return nil, errors.Errorf("default model %s of provider %s is not available", f.defaultProvider.DefaultModel, f.defaultProvider.Name)
-	}
-
-	// A pattern default selects several models: the best one the org filter
-	// allows is used, as for a pattern in assistant_models.
-	for _, model := range models {
-		if !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, model) {
-			continue
-		}
-		return f.instance(policy, model, policy.effortPolicy(effort, model))
-	}
-	return nil, errors.Errorf("model not available for org: %s", policy.fallback.text)
-}
-
-// getModelByType returns a model for the requested provider type.
-func (f *factory) getModelByType(opts ModelOptions) (llms.Model, error) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-
-	providerType := opts.ProviderType
-	for index, cfg := range f.cfg.Providers {
-		if cfg.OpenAI.APIType != string(providerType) {
-			continue
-		}
-		if !supportsCapabilities(configProviderType(cfg), opts.RequiredCapabilities) {
-			return nil, errors.Errorf("provider %s does not support required capabilities", cfg.Name)
-		}
-
-		if client, ok := f.byType[providerType]; ok {
-			return client, nil
-		}
-
-		// The provider's default model is used. Without a usable default the
-		// provider constructor decides, as it always did.
-		var preferred []string
-		options := f.options
-		policy := f.policies[index]
-		if name, effort, ok := policy.defaultModel(); ok {
-			preferred = []string{name}
-			options = f.optionsFor(policy.effortPolicy(effort, name))
-		}
-		model, err := NewLLM(cfg, preferred, options)
-		if err != nil {
-			return nil, err
-		}
-
-		logger.KV(xlog.DEBUG,
-			"status", "created_llm",
-			"type", cfg.OpenAI.APIType,
-			"version", cfg.OpenAI.APIVersion,
-			"name", cfg.Name)
-
-		f.byType[providerType] = model
-		return model, nil
-	}
-	return nil, errors.Errorf("provider not found for type: %s", providerType)
-}
-
-// getModelByName returns a model by resolving the preferred model references
-// in order, falling back to the default model when none match.
-func (f *factory) getModelByName(ctx context.Context, opts ModelOptions, modelNames []string) (llms.Model, error) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-
-	for _, modelNamePath := range modelNames {
-		spec, err := parseRefSpec(modelNamePath)
-		if err != nil {
-			logger.KV(xlog.WARNING,
-				"reason", "invalid_model_reference",
-				"reference", modelNamePath,
-				"err", err.Error(),
-			)
-			continue
-		}
-		scope, modelName := f.splitProvider(spec.path)
-		ref := newModelMatcher(modelName)
-
-		// An exact reference is checked against the filter as written, before
-		// any provider is consulted. A pattern has no name to check yet.
-		if !ref.isPattern() && !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, spec.path) {
-			continue
-		}
-
-		for _, policy := range f.policies {
-			if !scope.includes(policy) {
-				continue
-			}
-			if !supportsCapabilities(policy.typ, opts.RequiredCapabilities) {
-				continue
-			}
-			for _, candidate := range policy.candidates(ref) {
-				if !f.isCandidateAllowed(ctx, opts, scope, ref, spec.path, candidate) {
-					continue
-				}
-				model, err := f.instance(policy, candidate, policy.effortPolicy(spec.effort, candidate))
-				if err != nil {
-					logger.KV(xlog.ERROR,
-						"reason", "NewLLM",
-						"type", policy.cfg.OpenAI.APIType,
-						"version", policy.cfg.OpenAI.APIVersion,
-						"models", modelNames,
-					)
-					continue
-				}
-				return model, nil
-			}
-		}
-	}
-
-	return f.resolveDefault(ctx, opts)
-}
-
-// isCandidateAllowed applies the model filter to one concrete model selected
-// by a reference. The filter sees the provider-qualified name first, in the
-// form the reference used, and then the bare model ID.
-func (f *factory) isCandidateAllowed(ctx context.Context, opts ModelOptions, scope providerScope, ref modelMatcher, path, model string) bool {
-	qualified := path
-	if ref.isPattern() {
-		qualified = scope.qualify(model)
-		if !f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, qualified) {
-			return false
-		}
-	}
-	return model == qualified || f.isModelAllowed(ctx, opts.OrgID, opts.AssistantName, model)
-}
-
-// instance returns the client for a model of a provider with the given effort
-// settings, building it on first use. Clients are shared by every reference
-// that resolves to the same provider, model and effort. It must be called
-// with f.lock held.
-func (f *factory) instance(policy *providerPolicy, model string, effort llms.EffortPolicy) (llms.Model, error) {
-	key := instanceKey(policy.index, model, effort)
-	if client, ok := f.byName[key]; ok {
-		return client, nil
-	}
-
-	client, err := NewLLM(policy.cfg, []string{model}, f.optionsFor(effort))
-	if err != nil {
-		return nil, err
-	}
-
-	logger.KV(xlog.DEBUG,
-		"status", "created_llm",
-		"type", policy.cfg.OpenAI.APIType,
-		"version", policy.cfg.OpenAI.APIVersion,
-		"provider", policy.cfg.Name,
-		"model", model,
-		"effort", effort.Default.String(),
-		"max_effort", effort.Max.String(),
-	)
-
-	f.byName[key] = client
-	return client, nil
-}
-
 // optionsFor returns the construction options for a model with the given
 // effort settings. Without any, the factory options are used as they are.
 func (f *factory) optionsFor(effort llms.EffortPolicy) *Options {
@@ -777,14 +556,26 @@ func (f *factory) policyFor(cfg *ProviderConfig) *providerPolicy {
 	return policy
 }
 
-// instanceKey identifies a client in the cache by provider, model and effort.
+// instanceKey identifies a client in the cache by provider, model and effort
+// settings, including what the provider reports for the model.
 func instanceKey(provider int, model string, effort llms.EffortPolicy) string {
 	return strings.Join([]string{
 		instanceCachePrefix,
 		strconv.Itoa(provider),
 		model,
+		effortKey(effort),
+	}, cacheKeySeparator)
+}
+
+// effortKey is the part of a cache key that tells clients of one model
+// apart by their effort settings. A client is built with them, so a change of
+// what the provider reports for the model needs another client.
+func effortKey(effort llms.EffortPolicy) string {
+	return strings.Join([]string{
 		effort.Default.String(),
 		effort.Max.String(),
+		strconv.Itoa(int(effort.Supported)),
+		effort.Implicit.String(),
 	}, cacheKeySeparator)
 }
 

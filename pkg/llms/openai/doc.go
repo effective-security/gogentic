@@ -10,4 +10,7 @@
 //	    openai.WithModel("gpt-4o-mini"),
 //	)
 //	_ = mdl; _ = err
+//
+// The models an OpenAI or OpenRouter account can call are listed with
+// [NewModelLister], which needs no model name, or with [LLM.ListModels].
 package openai

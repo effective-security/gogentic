@@ -5,16 +5,12 @@ the only place in the repo that knows about provider construction, so
 application code and assistants stay provider-agnostic.
 
 Source: [`pkg/llmfactory/`](../pkg/llmfactory) —
-`config.go` (types, loading, validation), `factory.go` (resolution + provider
-construction), `modelref.go` (model references and patterns), `policy.go`
-(per-provider allow/deny/effort policy), `rank.go` (ordering of pattern
-matches), `options.go` (HTTP/AWS hooks, model filter).
-
-> **Planned.** Reading the model list from the provider, and replacing a
-> retired model with the newest one of its family, are designed but not
-> implemented. See
-> [Design: dynamic model lists and family fallback](#design-dynamic-model-lists-and-family-fallback).
-> Everything before that section describes what the code does today.
+`config.go` (types, loading, validation), `factory.go` (provider
+construction), `resolve.go` (resolution), `modelref.go` (model references and
+patterns), `policy.go` (per-provider allow/deny/effort policy), `rank.go`
+(ordering of matches), `catalog.go` (model lists read from providers),
+`lister.go` (the client that reads them), `resolution.go` (`Catalog`,
+`Resolution`), `options.go` (HTTP/AWS hooks, model filter).
 
 ## Configuration
 
@@ -47,6 +43,10 @@ providers:
       - "*-preview"
     # No call to this provider goes above this effort.
     max_effort: xhigh
+    # Read the model list from the provider (see Model discovery).
+    discovery:
+      enabled: true
+      refresh: 6h
     open_ai:
       api_type: ANTHROPIC
 
@@ -187,10 +187,11 @@ Two YAML details matter:
 | `disabled_models` | Deny-list of IDs and patterns. Wins over `available_models` and `default_model`. |
 | `default_model` | The fallback used when nothing preferred matches. An exact ID does not need to be listed in `available_models`. A pattern selects the best known model it matches. |
 | `max_effort` | Highest reasoning effort any call to this provider may use. Empty means no ceiling. |
+| `discovery` | Read the model list from the provider. Off unless present and enabled; see [Model discovery](#model-discovery). |
 
-The factory does not ask a provider which models exist. The models it *knows*
-are the exact IDs listed in `available_models`, minus the denied ones. That
-decides what a reference selects:
+Without `discovery` the factory does not ask a provider which models exist.
+The models it *knows* are the exact IDs listed in `available_models`, minus
+the denied ones. That decides what a reference selects:
 
 | Reference | Selects |
 |-----------|---------|
@@ -214,7 +215,10 @@ names: the first allowed name wins, else the default model, else an error.
 - an entry that is only an effort level (the YAML flow-sequence mistake);
 - an effort on a `disabled_models` entry;
 - a `default_model` that is also disabled, or a `default_model` pattern that
-  matches no exact `available_models` entry.
+  matches no exact `available_models` entry (with `discovery` the pattern is
+  accepted: its models come from the provider);
+- `discovery` enabled for a provider type that has no model list, or a
+  `discovery.refresh` that is not a duration of at least one minute.
 
 `New` cannot return an error. Given a `Config` built in code, it logs the
 entries that do not parse and leaves them out; call `Validate` yourself to
@@ -234,9 +238,12 @@ model, err := fac.GetModel(ctx, llmfactory.ModelOptions{
 Resolution order:
 
 1. **`ProviderType` set** → pick the provider with that `api_type` and use its
-   default model, ignoring everything else. Returns an error if it does not
-   support `RequiredCapabilities`. This is the "give me Anthropic, whatever the
-   config prefers" escape hatch, mostly used in tests.
+   default model, ignoring everything else, the model filter included. Returns
+   an error if it does not support `RequiredCapabilities`. This is the "give me
+   Anthropic, whatever the config prefers" escape hatch, mostly used in tests.
+   With [discovery](#model-discovery), it is an error when the provider no
+   longer serves the default model and no allowed model of its family can
+   stand in.
 2. Otherwise, build the preferred list: `PreferredModels` first, then the
    `assistant_models[AssistantName]` entries (falling back to
    `assistant_models["default"]`), using the org's overridden map when `OrgID`
@@ -245,7 +252,9 @@ Resolution order:
    order. A provider is skipped when it does not support all
    `RequiredCapabilities`. The first model the reference
    [selects](#model-policy-of-a-provider) and the model filter accepts wins.
-   A reference that does not parse is logged and skipped.
+   A reference that does not parse is logged and skipped. With
+   [discovery](#model-discovery), a model that stands in for a named one is
+   tried only after every provider was asked for the named model.
 4. If nothing matched, fall back to the default provider's default model —
    still subject to the capability check and the model filter. When
    `default_model` is a pattern, the best match the filter accepts is used.
@@ -271,6 +280,189 @@ So `Assistant.WithName("orchestrator")` is what binds it to the
 - `assistants.WithModel(model)` bypasses the factory entirely — useful for
   tests and for pinning one assistant to one model. The configured effort and
   ceiling do not apply to such a model.
+
+## Model discovery
+
+Providers retire models and ship new ones. Without discovery the factory knows
+only the IDs written in `available_models`: a retired model fails at call time
+until someone edits the file, and a pattern cannot select a model nobody
+listed. With discovery the factory reads the model list from the provider and
+resolves against it.
+
+```yaml
+providers:
+  - name: ANTHROPIC
+    token: env://ANTHROPIC_API_KEY
+    default_model: claude-sonnet-*,medium
+    available_models:
+      - claude-fable-*,high
+      - claude-opus-*
+      - claude-sonnet-*
+    disabled_models:
+      - "*-preview"
+    discovery:
+      enabled: true
+      refresh: 6h
+    open_ai:
+      api_type: ANTHROPIC
+
+assistant_models:
+  orchestrator:
+    - ANTHROPIC/claude-fable-5-1,high
+```
+
+| Key | Meaning |
+|-----|---------|
+| `discovery.enabled` | Read the model list from the provider. Accepted for the `api_type` values that advertise `llms.CapabilityModels`: `OPENAI`, `OPENROUTER`, `ANTHROPIC` and `GOOGLEAI`. On any other type it is a load error. |
+| `discovery.refresh` | How long a fetched list is trusted. A duration string; default `1h`, minimum `1m`. |
+
+A file without the section resolves exactly as before.
+
+### What a list changes
+
+With a list, the models the factory *knows* are the ones the provider serves,
+not the IDs written in `available_models`. A model is *usable* when the
+provider serves it, an `available_models` entry matches it, no
+`disabled_models` entry does, and it is not retired. `available_models` stays
+the only grant of access: discovery never widens it.
+
+| Reference | Selects |
+|-----------|---------|
+| Exact ID | That ID, when it is usable. Otherwise the usable models of its family, best first. |
+| Pattern | The usable models the pattern matches, best first. |
+| Exact `default_model` | That ID, when the provider serves it and it is not denied; it still needs no `available_models` entry. Otherwise the usable models of its family, best first. |
+
+"Best first" is the order described under
+[Model policy](#model-policy-of-a-provider), with a model in normal service
+ahead of a deprecated one.
+
+**Served.** The provider serves a model when its list holds the ID and does
+not mark it retired. A model that is not in the list is gone: providers drop
+models from their lists rather than flag them (Anthropic returns no retired
+model, even when asked for them). One rule keeps working IDs working: a
+floating ID is served when the list holds a dated snapshot of it. Anthropic
+accepts `claude-haiku-4-5` and lists only `claude-haiku-4-5-20251001`; the
+reference is used as written.
+
+**Family.** The family of a model is its ID without version and snapshot, as
+`llms.ParseModelName` computes it. Two models are of one family when
+`ModelName.Key()` is the same for both, which also holds the route and the
+variant:
+
+| ID | Family | Version |
+|----|--------|---------|
+| `claude-fable-5-1` | `claude-fable` | 5.1 |
+| `claude-3-5-sonnet-20241022` | `claude-sonnet` | 3.5 |
+| `gpt-5.1-mini` | `gpt-mini` | 5.1 |
+| `gpt-5.6-luna` | `gpt-luna` | 5.6 |
+| `gemini-3-pro-preview` | `gemini-pro` | 3 (preview) |
+| `global.anthropic.claude-sonnet-4-6` | `claude-sonnet`, prefix `global.anthropic.` | 4.6 |
+| `openai/gpt-5.5:batch` | `gpt`, prefix `openai/`, variant `batch` | 5.5 |
+| `gpt-4o-mini` | `gpt-4o-mini` | none |
+
+An ID the rule cannot split keeps its whole name as the family, so it matches
+nothing else. The family comes from the ID alone, never from what the provider
+says about the model.
+
+**Family fallback** is how a retired model keeps working: an exact ID that
+cannot be used gives way to the best usable model of its family.
+`claude-fable-5-1` gives way to the newest `claude-fable` model, and
+`gemini-2.5-pro` to the newest `gemini-pro` model, but never to a Flash model.
+It only picks a usable model, so `available_models` decides how far it may go:
+`claude-fable-*` allows any Fable, and a list of exact IDs allows only those.
+The effort written on the reference still applies; without one, the effort of
+the `available_models` entry that allows the substitute does.
+
+The fallback also applies to an exact ID that the provider serves but the
+configuration does not allow: `claude-opus-4-6` resolves to `claude-opus-4-8`
+when only the latter is in `available_models`.
+
+A named model wins over a substitute. Every provider a reference can address
+is asked for the named model first, in config order; only when none has it are
+the substitutes tried.
+
+### Reading the list
+
+- **First use.** The list is fetched on the first resolution that reaches the
+  provider, outside the factory lock. That resolution waits for it, for at most
+  10 seconds or until its context ends. `New` still does no I/O and cannot
+  fail.
+- **Refresh.** Once a list is older than `refresh`, the next resolution starts
+  a fetch in the background and keeps using the list it has until the new one
+  arrives.
+- **Failure.** The last good list stays in use. With no list at all, the
+  provider resolves as it does without discovery until a fetch succeeds. A
+  failed fetch is retried at most once a minute. An empty list counts as a
+  failure, so it cannot make every model look retired. A discovery outage
+  never fails `GetModel`.
+- **Sharing.** Factories derived with `WithModelFilter` share one list per
+  provider. One fetch runs at a time per provider.
+
+What each provider reports (see
+[Providers → Listing models](llms.md#listing-models)):
+
+| `api_type` | Lifecycle | Effort levels |
+|------------|-----------|---------------|
+| `ANTHROPIC` | `active` and `deprecated`, with the retirement date | Per model |
+| `OPENAI` | `deprecated` with the shutdown date, once announced | — |
+| `OPENROUTER` | `deprecated` with the expiration date, once set | Per model where reported, and the level it applies by default |
+| `GOOGLEAI` | — | — |
+
+Where the provider reports the effort levels of a model, they replace the
+provider's built-in table for the client of that model; see
+[Reasoning effort](#reasoning-effort).
+
+### Seeing what a reference resolves to
+
+`Resolve` reports what `GetModel` selects, without building a client:
+
+```go
+res, err := llmfactory.Resolve(ctx, fac, llmfactory.ModelOptions{
+    AssistantName: "orchestrator",
+})
+if err != nil {
+    return err
+}
+fmt.Printf("%s -> %s/%s (%s)\n", res.Reference, res.Provider, res.Model, res.Reason)
+// ANTHROPIC/claude-fable-5-1,high -> ANTHROPIC/claude-fable-5-2 (family)
+```
+
+| `Resolution` field | Meaning |
+|--------------------|---------|
+| `Provider`, `Model` | The provider name and the model ID selected |
+| `Reference` | The configuration entry that selected it, as written |
+| `Reason` | `ReasonExact`, `ReasonPattern`, or `ReasonFamily` for a substitute |
+| `Default` | Set when no preferred reference selected a model and `default_model` was used |
+| `Effort` | The effort settings the client gets |
+| `Verified` | Set when the provider's list confirmed the model. False without discovery and until a list is read. |
+| `Lifecycle`, `RetiresAt` | What the provider reports for the model |
+
+`RefreshModels(ctx, fac)` reads every list now and waits for them: call it at
+start-up to pay for the first fetch before traffic arrives, or to pick up a
+provider change at once. Lists that cannot be read stay as they were, and the
+errors are returned.
+
+Both functions need a factory that implements the optional `Catalog`
+interface, as the one returned by `New` does.
+
+### Logs and metrics
+
+Each event is logged once per fetched list, not once per call:
+
+| Level | Event | When |
+|-------|-------|------|
+| `INFO` | `model_list_loaded` | A list was read |
+| `ERROR` | `model_list_failed` | A list could not be read; `stale` says whether an older one is in use |
+| `INFO` | `model_substituted` | A reference resolved to another model of the family |
+| `INFO` | `model_selected` | A pattern resolved to a model of the provider's list |
+| `WARN` | `model_not_listed` | A model the configuration names and allows is not served by the provider |
+| `WARN` | `model_deprecated` | A resolution used a deprecated model; carries the retirement date |
+| `WARN` | `pattern_spans_families` | A pattern matches models of several families, between which the order is by version alone |
+
+Two counters are in `pkg/metricskey`: `stats_llm_model_substituted` (tags
+`provider`, `requested`, `model`), incremented on every resolution that uses a
+substitute, and `stats_llm_model_list_failed` (tag `provider`). See
+[Observability](observability.md#metrics).
 
 ## Reasoning effort
 
@@ -312,6 +504,13 @@ Which levels a model supports comes from a table in each provider package,
 keyed by model family and version (`llms.ParseModelName`), not by name prefix.
 A model newer than the table is treated like the newest generation the table
 knows, or as supporting `low`, `medium` and `high`.
+
+With [discovery](#model-discovery), what the provider reports for a model
+replaces the table for the client of that model: the levels Anthropic and
+OpenRouter list, and the default level OpenRouter lists, which is what
+`max_effort` is checked against when a call requests none. A model new to the
+table then gets its real levels: `openai/gpt-6-sol` on OpenRouter takes `max`
+with discovery and is cut to `high` without.
 
 | Providers | Requested level is sent as | With no level requested |
 |-----------|----------------------------|-------------------------|
@@ -373,6 +572,9 @@ always sees concrete model IDs — never a pattern or an effort suffix — first
 `PROVIDER/model` when the reference named a provider, then as the bare `model`;
 a filter that matches on substrings handles both. When it denies one match of a
 pattern, the next best match is tried; this includes a pattern `default_model`.
+A model that stands in for a retired one is shown to the filter the same way,
+after the named model was shown as written; a filter that refuses the named
+model stops the substitution.
 
 ## Skills
 
@@ -404,6 +606,19 @@ The factory passes one concrete model ID in `preferred` (none for a provider
 without a usable default model), and the model's effort settings in
 `opts.Effort`. `cfg.FindModel(preferred...)` returns that ID.
 
+`llmfactory.NewModelLister` is the same hook for discovery: it points at
+`CreateModelLister` and is called once per provider, on the first fetch.
+Return a fake `llms.ModelLister` (or `mockllms.MockModelLister`) to resolve
+against a list of your own:
+
+```go
+orig := llmfactory.NewModelLister
+llmfactory.NewModelLister = func(cfg *llmfactory.ProviderConfig, opts *llmfactory.Options) (llms.ModelLister, error) {
+    return fakeLister, nil
+}
+t.Cleanup(func() { llmfactory.NewModelLister = orig })
+```
+
 For assistant-level tests, prefer `mocks/mockllmfactory` (generated by
 `make generate`) or `assistants.WithModel(mockModel)`.
 
@@ -413,14 +628,16 @@ For assistant-level tests, prefer `mocks/mockllmfactory` (generated by
 `ExactResolver` interface. It returns `ErrModelNotFound` for absent/denied targets,
 checks org filters before cached results, and never falls back. Duplicate provider
 names are errors. The existing `GetModel` preference/default behavior is unchanged.
-Constructed models are cached per provider and model; the org filter runs on every
-call, so two organizations allowed to use the same deployment share one instance.
+Constructed models are cached per provider, model and effort settings; the org
+filter runs on every call, so two organizations allowed to use the same deployment
+share one instance.
 
 A model is admitted when an `available_models` entry (an ID or a pattern) or the
 provider's default model matches it and no `disabled_models` entry does. The name
 is taken literally: a pattern is never expanded and no other model is substituted.
-The model carries the effort of its `available_models` entry and the provider's
-`max_effort`.
+With [discovery](#model-discovery), a model the provider no longer serves is
+`ErrModelNotFound`. The model carries the effort of its `available_models` entry
+and the provider's `max_effort`.
 
 Router-related provider options under `open_ai`:
 
@@ -433,223 +650,23 @@ Adapt the resolved model with `router.Connector(model)`; see [router.md](router.
 
 ## Known limits
 
-- A pattern selects among the exact IDs listed in `available_models`. Until
-  model lists are read from the provider, a pattern alone cannot discover a
-  model nobody listed.
+- `AZURE`, `AZURE_AD`, `BEDROCK`, `ANTHROPIC_BEDROCK`, `OPENAI_BEDROCK`,
+  `PERPLEXITY` and `CLOUDFLARE` have no discovery, and so no family fallback:
+  there a pattern selects among the exact IDs listed in `available_models`.
+- A model retired between two refreshes fails until the next refresh. `refresh`
+  bounds that window; `RefreshModels` closes it on demand.
+- With discovery, an ID the provider accepts but does not list is treated as
+  gone, apart from a floating ID with a listed snapshot. `Resolve` shows what
+  such a reference selects, and `model_not_listed` is logged for it.
 - The factory does not know prices. "Cheaper" is expressed by which family a
   pattern names, not chosen automatically.
 - On Azure the effort table is keyed by deployment name, so it only works when
   deployments are named after their model.
-- `max_effort` and the configured default cover `GenerateContent`. The portable
-  `Infer` path used by the router has its own effort vocabulary (`llms.Effort`)
-  and is not covered.
+- `max_effort` and the configured default apply to `GenerateContent`. The
+  router's portable `Infer` path has its own reasoning controls
+  (`llms.Effort`) and is not affected by them.
 - The Anthropic client does not replay thinking blocks, so inside a tool loop a
   model reasons without its earlier thinking.
-
-## Design: dynamic model lists and family fallback
-
-> **Status: proposed, not implemented.** [PLAN.md](../PLAN.md) lists this as
-> phases 4 and 5. Go signatures in this section are proposals and are not in
-> the tree yet.
-
-### Problem
-
-`available_models` is never compared with what the provider serves. When a
-provider retires a model, calls fail until someone edits the file; when it
-ships a better or cheaper model, a pattern cannot pick it up, because patterns
-only see the IDs somebody listed.
-
-### Discovery
-
-A new optional section turns on reading the model list from the provider:
-
-```yaml
-providers:
-  - name: ANTHROPIC
-    token: env://ANTHROPIC_API_KEY
-    default_model: claude-sonnet-*,medium
-    available_models:
-      - claude-fable-*,high
-      - claude-opus-*
-      - claude-sonnet-*,medium
-    disabled_models:
-      - "*-preview"
-    max_effort: xhigh
-    discovery:
-      enabled: true
-      refresh: 6h
-    open_ai:
-      api_type: ANTHROPIC
-
-assistant_models:
-  orchestrator:
-    - ANTHROPIC/claude-fable-5-1,high
-```
-
-| Key | Meaning |
-|-----|---------|
-| `discovery.enabled` | Read the model list from the provider. Requires an `api_type` that advertises `llms.CapabilityModels`: `OPENAI`, `OPENROUTER`, `ANTHROPIC`, `GOOGLEAI`. On any other type it is a load error. |
-| `discovery.refresh` | How long a fetched list is trusted. Duration string, default `1h`, minimum `1m`. |
-
-Like every other addition, it switches on by being present: a file without the
-section resolves exactly as it does today.
-
-### Model catalog
-
-With discovery, the models the factory *knows* are the ones the provider lists,
-not only the exact IDs in `available_models`. A model is *usable* when it is
-listed, allowed by `available_models`, not denied and not retired.
-
-What each provider reports:
-
-| `api_type` | Lifecycle | Family | Effort levels |
-|------------|-----------|--------|---------------|
-| `ANTHROPIC` | `active`, `deprecated`, `retired`, with retirement date | `line` (`opus`, `sonnet`, `fable`, …) | Per model |
-| `OPENAI` | Shutdown date when announced | Derived from the ID | Provider table |
-| `OPENROUTER` | — | Derived from the ID | Provider table |
-| `GOOGLEAI` | — | Derived from the ID | Provider table |
-
-Discovery is driven by `open_ai.api_type` from the config, not by
-`Model.GetProviderType()`: the Anthropic client reports `ANTHROPIC` for its
-Bedrock mode as well, and the Bedrock runtime endpoint has no model list.
-
-Fetching:
-
-- **First use.** The list is fetched on the first resolution that touches the
-  provider, with a 10 second timeout, outside the factory lock. `New` still does
-  no I/O and cannot fail.
-- **Refresh.** Once a list is older than `refresh`, the next resolution starts a
-  background fetch and keeps using the current list until the new one arrives.
-- **Failure.** The last good list stays in use. With no list at all, the
-  provider behaves as it does without discovery until a fetch succeeds. Fetches
-  are retried at most once a minute. A discovery outage never fails `GetModel`.
-- **Sharing.** Factories derived with `WithModelFilter` share one catalog.
-
-### Resolution with a catalog
-
-| Reference | Selects |
-|-----------|---------|
-| Exact ID | That ID, if usable. Otherwise the usable models of the same family, best first. |
-| Pattern | The usable models the pattern matches, best first. |
-
-The order is the one used today, with `active` before `deprecated` in front.
-
-**Family.** A family is the model ID with its version removed, as
-`llms.ParseModelName` already computes it for the effort tables:
-
-| ID | Family | Version |
-|----|--------|---------|
-| `claude-fable-5-1` | `claude-fable` | 5.1 |
-| `claude-3-5-sonnet-20241022` | `claude-sonnet` | 3.5 |
-| `gpt-5.1-mini` | `gpt-mini` | 5.1 |
-| `gpt-5.6-luna` | `gpt-luna` | 5.6 |
-| `gemini-3-pro-preview` | `gemini-pro` | 3 (preview) |
-| `global.anthropic.claude-sonnet-4-6` | `claude-sonnet`, prefix `global.anthropic.` | 4.6 |
-| `gpt-4o-mini` | `gpt-4o-mini` | none |
-
-When the provider reports a family for both models, that is compared instead.
-An ID the rule cannot split keeps its whole name as the family, so it matches
-nothing else and the reference is skipped.
-
-**Family fallback** is the aliasing mechanism: an exact ID that can no longer be
-used is replaced by the best usable model of its family. `claude-fable-5-1`
-gives way to the newest `claude-fable` model and `gemini-2.5-pro` to the newest
-`gemini-pro` model. It only ever picks a usable model, so `available_models`
-decides how far it may go: a list of exact IDs allows no substitution, and
-`claude-fable-*` allows any Fable.
-
-`GetModelExact` still never substitutes; with a catalog, a model the provider no
-longer lists is `ErrModelNotFound`.
-
-### Proposed API
-
-```go
-// pkg/llms
-
-// ModelInfo is one entry of a provider's model list.
-type ModelInfo struct {
-    ID          string
-    DisplayName string
-    Family      string         // empty when the provider does not report one
-    Created     time.Time
-    Lifecycle   ModelLifecycle // "", active, deprecated, retired
-    RetiresAt   time.Time
-    Efforts     EffortSet      // zero when the provider does not report them
-}
-
-// ModelLister is implemented by providers that advertise CapabilityModels.
-type ModelLister interface {
-    ListModels(ctx context.Context) ([]ModelInfo, error)
-}
-
-// EffortPolicy gains the levels reported by discovery; they win over the
-// provider table for the model the client was built for.
-type EffortPolicy struct {
-    Default   ReasoningEffort
-    Max       ReasoningEffort
-    Supported EffortSet
-}
-```
-
-```go
-// pkg/llms/openai, pkg/llms/anthropic, pkg/llms/googleai
-
-func NewModelLister(opts ...Option) (llms.ModelLister, error) // needs no model name
-```
-
-```go
-// pkg/llmfactory
-
-type ProviderConfig struct {
-    // ... existing fields
-    Discovery *DiscoveryConfig `json:"discovery,omitempty" yaml:"discovery,omitempty"`
-}
-
-type DiscoveryConfig struct {
-    Enabled bool   `json:"enabled" yaml:"enabled"`
-    Refresh string `json:"refresh,omitempty" yaml:"refresh,omitempty"`
-}
-
-// Catalog is an optional Factory extension, used like ExactResolver.
-type Catalog interface {
-    // Resolve reports what GetModel would select, without building a client.
-    Resolve(ctx context.Context, opts ModelOptions) (*Resolution, error)
-    // Refresh fetches every discovered list now. Lists that fail stay as they were.
-    Refresh(ctx context.Context) error
-}
-
-type Resolution struct {
-    Provider  string            // configured provider name
-    Reference string            // the entry that matched, as written
-    Model     string            // concrete model ID
-    Effort    llms.EffortPolicy
-    Reason    ResolutionReason  // exact, pattern, family or default
-}
-
-// NewModelLister builds the lister for a provider; override it in tests.
-var NewModelLister = CreateModelLister
-```
-
-`Catalog.Resolve` answers "what does `claude-opus-*` mean right now" and lets
-resolution be tested without constructing clients. `Catalog.Refresh` is for
-warming the catalog at start-up.
-
-### Observability
-
-- `INFO` when a reference resolves to a model it did not name, with the
-  reference, provider, model and reason.
-- `WARN` when a reference resolves to a deprecated model, with its retirement
-  date; and when a pattern matches models of more than one family.
-- `ERROR` when a model list cannot be fetched.
-- Two counters in `pkg/metricskey`: substitutions, tagged by provider, requested
-  and resolved model; and failed list fetches, tagged by provider.
-
-### Limits of the design
-
-- `AZURE`, `AZURE_AD`, `BEDROCK`, `ANTHROPIC_BEDROCK`, `OPENAI_BEDROCK`,
-  `PERPLEXITY` and `CLOUDFLARE` have no discovery, and so no family fallback.
-- A model retired between two refreshes fails until the next refresh. `refresh`
-  bounds that window; `Catalog.Refresh` closes it on demand.
 
 ## Decisions
 
@@ -663,6 +680,10 @@ warming the catalog at start-up.
 | Patterns are globs | Model IDs are full of dots, which an unescaped regex over-matches, and RE2 has no negative lookahead, so a deny-list is needed either way. The `re:` prefix stays reserved. | Regular expressions |
 | Effort is a suffix on the string | Org overrides merge as `map[string][]string`, and adding an effort is a one-line edit | Object entries with `model:` and `effort:` keys |
 | A provider-type prefix must be upper-case | `llms.ParseProviderType` ignores case, which would turn `openai/gpt-oss-120b` into provider `OPENAI` | Case-insensitive type prefixes |
-| Fallback picks the newest usable model of the family, in the same order as a pattern match (planned) | One ordering to learn, shared by patterns and fallback | Nearest-version successor: a second ordering, and it drifts again at the next retirement |
-| Family fallback needs `discovery` (planned) | A configured list cannot tell a retired model from a mistyped one, and existing files must not change behaviour | Fallback among configured IDs |
-| Lists are fetched lazily and refreshed on read (planned) | `New` stays free of I/O and errors, and the factory needs no `Close` | A background ticker |
+| Fallback picks the newest usable model of the family, in the same order as a pattern match | One ordering to learn, shared by patterns and fallback | Nearest-version successor: a second ordering, and it drifts again at the next retirement |
+| Family fallback needs `discovery` | A configured list cannot tell a retired model from a mistyped one, and existing files must not change behaviour | Fallback among configured IDs |
+| Lists are fetched lazily and refreshed on read | `New` stays free of I/O and errors, and the factory needs no `Close` | A background ticker |
+| A model that is not listed is gone, except a floating ID with a listed snapshot | Providers drop retired models from their lists instead of flagging them. The exception covers the IDs Anthropic accepts but lists only by date, which would otherwise be replaced while they still work. | Waiting for an explicit `retired` flag, which the Anthropic API was seen never to send |
+| The named model on any provider wins over a substitute | A reference such as `gpt-5.5` must reach the provider that has it, not an older model on a provider listed earlier | Resolving provider by provider |
+| The family comes from the ID, not from provider metadata | One rule for every provider, and never wider than the name: Anthropic's `line` would put every Opus variant in one family | Comparing the family the provider reports |
+| An empty list is a failed fetch | No provider serves no model, and resolving against an empty list would make every configured model look retired | Trusting the list |

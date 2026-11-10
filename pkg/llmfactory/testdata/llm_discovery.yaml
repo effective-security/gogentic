@@ -1,0 +1,33 @@
+---
+# Fixture for model discovery: one provider reads its model list, one does not.
+default_provider: ANTHROPIC
+providers:
+  - name: ANTHROPIC
+    token: fakekey
+    default_model: claude-sonnet-*,medium
+    available_models:
+      - claude-fable-*,high
+      - claude-opus-*
+      - claude-sonnet-*
+    disabled_models:
+      - "*-preview"
+    max_effort: xhigh
+    discovery:
+      enabled: true
+      refresh: 6h
+    open_ai:
+      api_type: ANTHROPIC
+
+  - name: AZURE
+    token: fakekey
+    default_model: gpt-5.5
+    available_models:
+      - gpt-5.5
+    open_ai:
+      api_type: AZURE
+      api_version: "2025-04-01-preview"
+      base_url: https://azure.test
+
+assistant_models:
+  orchestrator:
+    - ANTHROPIC/claude-fable-5-1,high

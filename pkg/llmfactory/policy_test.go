@@ -62,19 +62,19 @@ func TestProviderPolicy(t *testing.T) {
 
 	t.Run("candidates", func(t *testing.T) {
 		// An exact ID selects itself when allowed, listed or not.
-		assert.Equal(t, []string{"claude-opus-4-8"}, policy.candidates(newModelMatcher("claude-opus-4-8")))
-		assert.Equal(t, []string{"claude-opus-5-5"}, policy.candidates(newModelMatcher("claude-opus-5-5")))
-		assert.Empty(t, policy.candidates(newModelMatcher("claude-opus-4-6")))
-		assert.Empty(t, policy.candidates(newModelMatcher("claude-haiku-5-5")))
+		assert.Equal(t, []string{"claude-opus-4-8"}, candidateIDs(policy.candidates(newModelMatcher("claude-opus-4-8"), nil)))
+		assert.Equal(t, []string{"claude-opus-5-5"}, candidateIDs(policy.candidates(newModelMatcher("claude-opus-5-5"), nil)))
+		assert.Empty(t, candidateIDs(policy.candidates(newModelMatcher("claude-opus-4-6"), nil)))
+		assert.Empty(t, candidateIDs(policy.candidates(newModelMatcher("claude-haiku-5-5"), nil)))
 		// A pattern selects among the known models, best first.
 		assert.Equal(t,
 			[]string{"claude-sonnet-5-5", "claude-sonnet-4-6"},
-			policy.candidates(newModelMatcher("claude-sonnet-*")))
-		assert.Equal(t, []string{"claude-opus-4-8"}, policy.candidates(newModelMatcher("claude-opus-*")))
-		assert.Empty(t, policy.candidates(newModelMatcher("claude-haiku-*")))
+			candidateIDs(policy.candidates(newModelMatcher("claude-sonnet-*"), nil)))
+		assert.Equal(t, []string{"claude-opus-4-8"}, candidateIDs(policy.candidates(newModelMatcher("claude-opus-*"), nil)))
+		assert.Empty(t, candidateIDs(policy.candidates(newModelMatcher("claude-haiku-*"), nil)))
 		assert.Equal(t,
 			[]string{"claude-sonnet-5-5", "claude-fable-5-2", "claude-opus-4-8", "claude-sonnet-4-6"},
-			policy.candidates(newModelMatcher("*")),
+			candidateIDs(policy.candidates(newModelMatcher("*"), nil)),
 			"a pattern across families orders by version alone")
 	})
 
@@ -90,22 +90,22 @@ func TestProviderPolicy(t *testing.T) {
 		// The level on the selecting reference wins.
 		assert.Equal(t,
 			llms.EffortPolicy{Default: llms.ReasoningEffortLow, Max: ceiling},
-			policy.effortPolicy(llms.ReasoningEffortLow, "claude-fable-5-2"))
+			policy.effortPolicy(llms.ReasoningEffortLow, "claude-fable-5-2", nil))
 		// Otherwise the first matching available_models entry decides.
 		assert.Equal(t,
 			llms.EffortPolicy{Default: llms.ReasoningEffortHigh, Max: ceiling},
-			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-fable-5-2"))
+			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-fable-5-2", nil))
 		// The exact entry without a level comes before the pattern entry.
 		assert.Equal(t,
 			llms.EffortPolicy{Max: ceiling},
-			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-opus-4-8"))
+			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-opus-4-8", nil))
 		assert.Equal(t,
 			llms.EffortPolicy{Default: llms.ReasoningEffortLow, Max: ceiling},
-			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-opus-5-5"))
+			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-opus-5-5", nil))
 		// A model no entry matches gets the ceiling only.
 		assert.Equal(t,
 			llms.EffortPolicy{Max: ceiling},
-			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-haiku-5-5"))
+			policy.effortPolicy(llms.ReasoningEffortDefault, "claude-haiku-5-5", nil))
 	})
 }
 
@@ -131,7 +131,7 @@ func TestProviderPolicy_ExactDefault(t *testing.T) {
 	require.NoError(t, policy.validate())
 	_, _, ok = policy.defaultModel()
 	assert.False(t, ok)
-	assert.Equal(t, llms.EffortPolicy{}, policy.effortPolicy(llms.ReasoningEffortDefault, "any"))
+	assert.Equal(t, llms.EffortPolicy{}, policy.effortPolicy(llms.ReasoningEffortDefault, "any", nil))
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -347,4 +347,13 @@ func TestFindModel_Policy(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, "no LLM model found", err.Error())
 	})
+}
+
+// candidateIDs returns the model IDs of candidates, in order.
+func candidateIDs(candidates []candidate) []string {
+	ids := make([]string, 0, len(candidates))
+	for _, cand := range candidates {
+		ids = append(ids, cand.model)
+	}
+	return ids
 }

@@ -173,6 +173,11 @@ func TestReasoningEffort_Levels(t *testing.T) {
 		{"openai.gpt-5.6-luna", llms.ReasoningEffortHigh, "high"},
 		{"openai.gpt-5.6-terra", llms.ReasoningEffortMax, "max"},
 		{"openai/gpt-5.1", llms.ReasoningEffortLow, "low"},
+
+		// A router variant is the same model: it keeps the model's levels.
+		{"openai/gpt-5.5:batch", llms.ReasoningEffortMax, "xhigh"},
+		{"openai/gpt-5-pro:batch", llms.ReasoningEffortLow, "high"},
+		{"openai/gpt-5:batch", llms.ReasoningEffortNone, "minimal"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model+"/"+effortLabel(tt.effort), func(t *testing.T) {
@@ -325,6 +330,149 @@ func TestReasoningEffort_Policy(t *testing.T) {
 			assert.Equal(t, tt.want, effort)
 		})
 	}
+}
+
+// The levels and the default level a provider's model list reports for the
+// client's model take the place of the table's.
+func TestReasoningEffort_ReportedByProvider(t *testing.T) {
+	const notSent = ""
+	lowToMax := llms.NewEffortSet(
+		llms.ReasoningEffortLow,
+		llms.ReasoningEffortMedium,
+		llms.ReasoningEffortHigh,
+		llms.ReasoningEffortXHigh,
+		llms.ReasoningEffortMax,
+	)
+	noneToMax := lowToMax.With(llms.ReasoningEffortNone)
+	lowToHigh := llms.NewEffortSet(
+		llms.ReasoningEffortLow,
+		llms.ReasoningEffortMedium,
+		llms.ReasoningEffortHigh,
+	)
+	tests := []struct {
+		name   string
+		model  string
+		policy llms.EffortPolicy
+		effort llms.ReasoningEffort
+		want   string
+	}{
+		{
+			name:   "a generation the table does not know gets its real top level",
+			model:  "openai/gpt-6-sol",
+			policy: llms.EffortPolicy{Supported: noneToMax},
+			effort: llms.ReasoningEffortMax,
+			want:   "max",
+		},
+		{
+			name:   "without the list the same request is cut to high",
+			model:  "openai/gpt-6-sol",
+			effort: llms.ReasoningEffortMax,
+			want:   "high",
+		},
+		{
+			name:   "a reported none is sent as none",
+			model:  "openai/gpt-6-sol",
+			policy: llms.EffortPolicy{Supported: noneToMax},
+			effort: llms.ReasoningEffortNone,
+			want:   "none",
+		},
+		{
+			name:   "a model without none gets its lowest level",
+			model:  "openai/gpt-6-astra",
+			policy: llms.EffortPolicy{Supported: lowToMax},
+			effort: llms.ReasoningEffortNone,
+			want:   "low",
+		},
+		{
+			name:   "a model of another vendor, which the table has no levels for",
+			model:  "anthropic/claude-opus-4.8",
+			policy: llms.EffortPolicy{Supported: noneToMax},
+			effort: llms.ReasoningEffortXHigh,
+			want:   "xhigh",
+		},
+		{
+			name:   "the minimal floor of gpt-5 is kept, though the list cannot name it",
+			model:  "openai/gpt-5",
+			policy: llms.EffortPolicy{Supported: lowToHigh},
+			effort: llms.ReasoningEffortNone,
+			want:   "minimal",
+		},
+		{
+			name:   "reported levels narrower than the table win",
+			model:  "openai/gpt-5.5",
+			policy: llms.EffortPolicy{Supported: lowToHigh},
+			effort: llms.ReasoningEffortXHigh,
+			want:   "high",
+		},
+		{
+			name:  "the reported default level is what a ceiling is checked against",
+			model: "openai/gpt-5.4",
+			policy: llms.EffortPolicy{
+				Max:      llms.ReasoningEffortLow,
+				Implicit: llms.ReasoningEffortMedium,
+			},
+			want: "low",
+		},
+		{
+			name:   "without it the table's default of none leaves the ceiling unused",
+			model:  "openai/gpt-5.4",
+			policy: llms.EffortPolicy{Max: llms.ReasoningEffortLow},
+			want:   notSent,
+		},
+		{
+			name:  "a reported default within the ceiling sends nothing",
+			model: "openai/gpt-5.4",
+			policy: llms.EffortPolicy{
+				Max:      llms.ReasoningEffortHigh,
+				Implicit: llms.ReasoningEffortMedium,
+			},
+			want: notSent,
+		},
+		{
+			name:   "nothing requested and nothing configured sends nothing",
+			model:  "openai/gpt-6-sol",
+			policy: llms.EffortPolicy{Supported: noneToMax, Implicit: llms.ReasoningEffortMedium},
+			want:   notSent,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []openai.Option{
+				openai.WithEffortPolicy(tt.policy),
+			}
+			var callOpts []llms.CallOption
+			if tt.effort != llms.ReasoningEffortDefault {
+				callOpts = append(callOpts, llms.WithReasoningEffort(tt.effort))
+			}
+			effort, ok := sentEffort(t, tt.model, opts, callOpts...)
+			if tt.want == notSent {
+				assert.False(t, ok, "unexpected reasoning effort %q", effort)
+				return
+			}
+			require.True(t, ok, "reasoning effort was not sent")
+			assert.Equal(t, tt.want, effort)
+		})
+	}
+
+	// What is reported describes the client's model only: another model named
+	// in a call keeps the levels of the table.
+	t.Run("another model named in the call", func(t *testing.T) {
+		opts := []openai.Option{
+			openai.WithEffortPolicy(llms.EffortPolicy{Supported: noneToMax}),
+		}
+		effort, ok := sentEffort(t, "openai/gpt-6-sol", opts,
+			llms.WithModel("gpt-5.1"),
+			llms.WithReasoningEffort(llms.ReasoningEffortMax),
+		)
+		require.True(t, ok, "reasoning effort was not sent")
+		assert.Equal(t, "high", effort)
+
+		effort, ok = sentEffort(t, "openai/gpt-6-sol", opts,
+			llms.WithModel("gpt-4o"),
+			llms.WithReasoningEffort(llms.ReasoningEffortMax),
+		)
+		assert.False(t, ok, "unexpected reasoning effort %q", effort)
+	})
 }
 
 // The level is looked up for the model named in the call, not for the model
