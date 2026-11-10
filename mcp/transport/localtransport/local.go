@@ -126,8 +126,12 @@ func (s *Transport) HandleMessage(ctx context.Context, body []byte) (*transport.
 		delete(s.responseMap, key)
 		s.mu.Unlock()
 
-		if responseToUse.JsonRpcResponse != nil {
+		// Restore the caller's ID on both result and error replies.
+		switch {
+		case responseToUse.JsonRpcResponse != nil:
 			responseToUse.JsonRpcResponse.Id = prevId
+		case responseToUse.JsonRpcError != nil:
+			responseToUse.JsonRpcError.Id = prevId
 		}
 		return responseToUse, nil
 	}

@@ -358,6 +358,42 @@ func TestTransport_HandleMessage(t *testing.T) {
 		}
 	})
 
+	t.Run("error reply restores original id", func(t *testing.T) {
+		tr := localtransport.New()
+		tr.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+			go func() {
+				_ = tr.Send(ctx, transport.NewBaseMessageError(&transport.BaseJSONRPCError{
+					Jsonrpc: "2.0",
+					Id:      msg.JsonRpcRequest.Id,
+					Error: transport.BaseJSONRPCErrorInner{
+						Code:    -32000,
+						Message: "unknown tool: missing",
+					},
+				}))
+			}()
+		})
+
+		body, err := json.Marshal(transport.BaseJSONRPCRequest{
+			Jsonrpc: "2.0",
+			Method:  "tools/call",
+			Id:      transport.RequestId(42),
+		})
+		require.NoError(t, err)
+
+		resp, err := tr.HandleMessage(context.Background(), body)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, transport.BaseMessageTypeJSONRPCErrorType, resp.Type)
+		assert.Equal(t, &transport.BaseJSONRPCError{
+			Jsonrpc: "2.0",
+			Id:      transport.RequestId(42),
+			Error: transport.BaseJSONRPCErrorInner{
+				Code:    -32000,
+				Message: "unknown tool: missing",
+			},
+		}, resp.JsonRpcError)
+	})
+
 	t.Run("handle JSON-RPC notification", func(t *testing.T) {
 		tr := localtransport.New()
 		var receivedMessage *transport.BaseJsonRpcMessage

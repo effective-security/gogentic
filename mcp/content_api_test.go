@@ -65,6 +65,15 @@ func TestContentConstructors(t *testing.T) {
 	assert.InDelta(t, priority, *annotated.Annotations.Priority, 0)
 }
 
+// testAnnotations returns annotations that exercise both fields.
+func testAnnotations() Annotations {
+	priority := 0.5
+	return Annotations{
+		Audience: []Role{RoleUser, RoleAssistant},
+		Priority: &priority,
+	}
+}
+
 func TestContent_MarshalJSON(t *testing.T) {
 	tcs := []struct {
 		name    string
@@ -78,21 +87,26 @@ func TestContent_MarshalJSON(t *testing.T) {
 			want:    `{"type":"text","text":"some text"}`,
 		},
 		{
+			name:    "text with annotations",
+			content: NewTextContent(contentText).WithAnnotations(testAnnotations()),
+			want:    `{"type":"text","text":"some text","annotations":{"audience":["user","assistant"],"priority":0.5}}`,
+		},
+		{
 			name:    "image",
 			content: NewImageContent(contentBlob, mimeImagePNG),
 			want:    `{"type":"image","data":"YmxvYg==","mimeType":"image/png"}`,
 		},
 		{
-			// NOTE: the resource fields are emitted inline next to "type";
-			// the MCP schema nests them under a "resource" key.
 			name:    "text resource",
 			content: NewTextResourceContent(contentURI, contentText, mimeTextPlain),
-			want:    `{"type":"resource","uri":"file:///a.txt","text":"some text","mimeType":"text/plain"}`,
+			want:    `{"type":"resource","resource":{"uri":"file:///a.txt","text":"some text","mimeType":"text/plain"}}`,
 		},
 		{
-			name:    "blob resource",
-			content: NewBlobResourceContent(contentURI, contentBlob, mimeImagePNG),
-			want:    `{"type":"resource","uri":"file:///a.txt","blob":"YmxvYg==","mimeType":"image/png"}`,
+			name: "blob resource with annotations",
+			content: NewBlobResourceContent(contentURI, contentBlob, mimeImagePNG).WithAnnotations(Annotations{
+				Audience: []Role{RoleUser},
+			}),
+			want: `{"type":"resource","resource":{"uri":"file:///a.txt","blob":"YmxvYg==","mimeType":"image/png"},"annotations":{"audience":["user"]}}`,
 		},
 		{
 			name: "unknown content type",
@@ -107,7 +121,7 @@ func TestContent_MarshalJSON(t *testing.T) {
 				Type:             ContentTypeEmbeddedResource,
 				EmbeddedResource: &EmbeddedResource{},
 			},
-			wantErr: "json: error calling MarshalJSON for type *mcp.Content: json: error calling MarshalJSON for type *mcp.EmbeddedResource: unknown embedded resource type: ",
+			wantErr: "json: error calling MarshalJSON for type *mcp.Content: failed to marshal resource content: json: error calling MarshalJSON for type *mcp.EmbeddedResource: unknown embedded resource type: ",
 		},
 	}
 	for _, tc := range tcs {
@@ -125,26 +139,79 @@ func TestContent_MarshalJSON(t *testing.T) {
 }
 
 func TestContent_UnmarshalJSON(t *testing.T) {
-	t.Run("text", func(t *testing.T) {
-		var c Content
-		require.NoError(t, json.Unmarshal([]byte(`{"type":"text","text":"hello"}`), &c))
-		assert.Equal(t, Content{
-			Type: ContentTypeText,
-			TextContent: &TextContent{
-				Text: "hello",
-			},
-		}, c)
-	})
-
-	t.Run("round trip", func(t *testing.T) {
-		b, err := json.Marshal(NewTextContent(contentText))
-		require.NoError(t, err)
-		var c Content
-		require.NoError(t, json.Unmarshal(b, &c))
-		assert.Equal(t, *NewTextContent(contentText), c)
-	})
+	annotations := testAnnotations()
 
 	tcs := []struct {
+		name  string
+		input string
+		want  Content
+	}{
+		{
+			name:  "text",
+			input: `{"type":"text","text":"hello"}`,
+			want: Content{
+				Type: ContentTypeText,
+				TextContent: &TextContent{
+					Text: "hello",
+				},
+			},
+		},
+		{
+			name:  "empty text with annotations",
+			input: `{"type":"text","text":"","annotations":{"audience":["user","assistant"],"priority":0.5}}`,
+			want: Content{
+				Type: ContentTypeText,
+				TextContent: &TextContent{
+					Text: "",
+				},
+				Annotations: &annotations,
+			},
+		},
+		{
+			name:  "image",
+			input: `{"type":"image","data":"YmxvYg==","mimeType":"image/png"}`,
+			want:  *NewImageContent(contentBlob, mimeImagePNG),
+		},
+		{
+			name:  "text resource",
+			input: `{"type":"resource","resource":{"uri":"file:///a.txt","mimeType":"text/plain","text":"some text"}}`,
+			want:  *NewTextResourceContent(contentURI, contentText, mimeTextPlain),
+		},
+		{
+			name:  "empty text resource without mime type",
+			input: `{"type":"resource","resource":{"uri":"file:///a.txt","text":""}}`,
+			want: Content{
+				Type: ContentTypeEmbeddedResource,
+				EmbeddedResource: &EmbeddedResource{
+					EmbeddedResourceType: embeddedResourceTypeText,
+					TextResourceContents: &TextResourceContents{
+						Uri:  contentURI,
+						Text: "",
+					},
+				},
+			},
+		},
+		{
+			name:  "blob resource",
+			input: `{"type":"resource","resource":{"uri":"file:///a.txt","mimeType":"image/png","blob":"YmxvYg=="}}`,
+			want:  *NewBlobResourceContent(contentURI, contentBlob, mimeImagePNG),
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			var c Content
+			require.NoError(t, json.Unmarshal([]byte(tc.input), &c))
+			assert.Equal(t, tc.want, c)
+		})
+	}
+
+	t.Run("replaces previous value", func(t *testing.T) {
+		c := *NewTextContent(contentText).WithAnnotations(annotations)
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"image","data":"YmxvYg==","mimeType":"image/png"}`), &c))
+		assert.Equal(t, *NewImageContent(contentBlob, mimeImagePNG), c)
+	})
+
+	errCases := []struct {
 		name    string
 		input   string
 		wantErr string
@@ -152,7 +219,7 @@ func TestContent_UnmarshalJSON(t *testing.T) {
 		{
 			name:    "invalid json",
 			input:   `[]`,
-			wantErr: "json: cannot unmarshal array into Go value of type mcp.typeWrapper",
+			wantErr: "failed to unmarshal content: json: cannot unmarshal array into Go value of type mcp.typeWrapper",
 		},
 		{
 			name:    "unknown type",
@@ -160,21 +227,89 @@ func TestContent_UnmarshalJSON(t *testing.T) {
 			wantErr: "unknown content type: audio",
 		},
 		{
-			// Decoding is only implemented for text content.
-			name:    "image is not decodable",
-			input:   `{"type":"image","data":"YmxvYg==","mimeType":"image/png"}`,
-			wantErr: "unknown content type: image",
+			name:    "text without text",
+			input:   `{"type":"text"}`,
+			wantErr: `invalid text content: missing required field "text"`,
 		},
 		{
-			name:    "resource is not decodable",
-			input:   `{"type":"resource","resource":{"uri":"x","text":"y"}}`,
-			wantErr: "unknown content type: resource",
+			name:    "text with null text",
+			input:   `{"type":"text","text":null}`,
+			wantErr: `invalid text content: missing required field "text"`,
+		},
+		{
+			name:    "image without data",
+			input:   `{"type":"image","mimeType":"image/png"}`,
+			wantErr: `invalid image content: missing required field "data"`,
+		},
+		{
+			name:    "image without mime type",
+			input:   `{"type":"image","data":"YmxvYg=="}`,
+			wantErr: `invalid image content: missing required field "mimeType"`,
+		},
+		{
+			name:    "resource without resource",
+			input:   `{"type":"resource","uri":"file:///a.txt","text":"flat"}`,
+			wantErr: `invalid resource content: missing required field "resource"`,
+		},
+		{
+			name:    "resource with null resource",
+			input:   `{"type":"resource","resource":null}`,
+			wantErr: `invalid resource content: missing required field "resource"`,
+		},
+		{
+			name:    "resource that is not an object",
+			input:   `{"type":"resource","resource":"file:///a.txt"}`,
+			wantErr: "failed to unmarshal resource content: json: cannot unmarshal string into Go value of type mcp.resourceWrapper",
+		},
+		{
+			name:    "resource without uri",
+			input:   `{"type":"resource","resource":{"text":"x"}}`,
+			wantErr: `invalid resource content: missing required field "resource.uri"`,
+		},
+		{
+			name:    "resource without text or blob",
+			input:   `{"type":"resource","resource":{"uri":"file:///a.txt","mimeType":"text/plain"}}`,
+			wantErr: `invalid resource content: missing required field "resource.text" or "resource.blob"`,
+		},
+	}
+	for _, tc := range errCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var c Content
+			assert.EqualError(t, json.Unmarshal([]byte(tc.input), &c), tc.wantErr)
+			assert.Equal(t, Content{}, c, "content must be left unchanged on error")
+		})
+	}
+}
+
+func TestContent_RoundTrip(t *testing.T) {
+	tcs := []struct {
+		name    string
+		content *Content
+	}{
+		{
+			name:    "text",
+			content: NewTextContent(contentText),
+		},
+		{
+			name:    "image",
+			content: NewImageContent(contentBlob, mimeImagePNG).WithAnnotations(testAnnotations()),
+		},
+		{
+			name:    "text resource",
+			content: NewTextResourceContent(contentURI, contentText, mimeTextPlain).WithAnnotations(testAnnotations()),
+		},
+		{
+			name:    "blob resource",
+			content: NewBlobResourceContent(contentURI, contentBlob, mimeImagePNG),
 		},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(tc.content)
+			require.NoError(t, err)
 			var c Content
-			assert.EqualError(t, json.Unmarshal([]byte(tc.input), &c), tc.wantErr)
+			require.NoError(t, json.Unmarshal(b, &c))
+			assert.Equal(t, *tc.content, c)
 		})
 	}
 }

@@ -12,6 +12,19 @@ type Role string
 const RoleAssistant Role = "assistant"
 const RoleUser Role = "user"
 
+// JSON field names of MCP content; the required ones are named in decoding errors.
+const (
+	contentFieldText         = "text"
+	contentFieldData         = "data"
+	contentFieldMimeType     = "mimeType"
+	contentFieldResource     = "resource"
+	contentFieldResourceURI  = "resource.uri"
+	contentFieldResourceText = "resource.text"
+	contentFieldResourceBlob = "resource.blob"
+	contentFieldType         = "type"
+	contentFieldAnnotations  = "annotations"
+)
+
 type Annotations struct {
 	// Describes who the intended customer of this object or data is.
 	//
@@ -135,81 +148,150 @@ type Content struct {
 	Annotations      *Annotations
 }
 
+// UnmarshalJSON decodes text, image and embedded resource content as defined
+// by the MCP schema, including annotations. A missing required field or an
+// unsupported content type is reported as an error.
 func (c *Content) UnmarshalJSON(b []byte) error {
 	type typeWrapper struct {
-		Type             ContentType       `json:"type" yaml:"type" mapstructure:"type"`
-		Text             *string           `json:"text" yaml:"text" mapstructure:"text"`
-		Image            *string           `json:"image" yaml:"image" mapstructure:"image"`
-		Annotations      *Annotations      `json:"annotations" yaml:"annotations" mapstructure:"annotations"`
-		EmbeddedResource *EmbeddedResource `json:"resource" yaml:"resource" mapstructure:"resource"`
+		Type        ContentType      `json:"type" yaml:"type" mapstructure:"type"`
+		Text        *string          `json:"text" yaml:"text" mapstructure:"text"`
+		Data        *string          `json:"data" yaml:"data" mapstructure:"data"`
+		MimeType    *string          `json:"mimeType" yaml:"mimeType" mapstructure:"mimeType"`
+		Resource    *json.RawMessage `json:"resource" yaml:"resource" mapstructure:"resource"`
+		Annotations *Annotations     `json:"annotations" yaml:"annotations" mapstructure:"annotations"`
 	}
 	var tw typeWrapper
-	err := json.Unmarshal(b, &tw)
-	if err != nil {
-		return err
+	if err := json.Unmarshal(b, &tw); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal content")
+	}
+
+	decoded := Content{
+		Type:        tw.Type,
+		Annotations: tw.Annotations,
 	}
 	switch tw.Type {
 	case ContentTypeText:
-		c.Type = ContentTypeText
+		if tw.Text == nil {
+			return errMissingContentField(tw.Type, contentFieldText)
+		}
+		decoded.TextContent = &TextContent{
+			Text: *tw.Text,
+		}
 	case ContentTypeImage:
-		c.Type = ContentTypeImage
+		if tw.Data == nil {
+			return errMissingContentField(tw.Type, contentFieldData)
+		}
+		if tw.MimeType == nil {
+			return errMissingContentField(tw.Type, contentFieldMimeType)
+		}
+		decoded.ImageContent = &ImageContent{
+			Data:     *tw.Data,
+			MimeType: *tw.MimeType,
+		}
 	case ContentTypeEmbeddedResource:
-		c.Type = ContentTypeEmbeddedResource
+		if tw.Resource == nil {
+			return errMissingContentField(tw.Type, contentFieldResource)
+		}
+		resource, err := decodeResourceContents(*tw.Resource)
+		if err != nil {
+			return err
+		}
+		decoded.EmbeddedResource = resource
 	default:
 		return errors.Errorf("unknown content type: %s", tw.Type)
 	}
 
-	switch c.Type {
-	case ContentTypeText:
-		c.TextContent = &TextContent{Text: *tw.Text}
-	default:
-		return errors.Errorf("unknown content type: %s", c.Type)
-	}
-
+	*c = decoded
 	return nil
 }
 
-// Custom JSON marshaling for ToolResponse Content
-func (c Content) MarshalJSON() ([]byte, error) {
-	var rawJson []byte
+// decodeResourceContents decodes the "resource" object of embedded resource
+// content: a uri, an optional mimeType, and either text or a base64 blob.
+func decodeResourceContents(b []byte) (*EmbeddedResource, error) {
+	type resourceWrapper struct {
+		Uri      *string `json:"uri"`
+		MimeType *string `json:"mimeType"`
+		Text     *string `json:"text"`
+		Blob     *string `json:"blob"`
+	}
+	var rw resourceWrapper
+	if err := json.Unmarshal(b, &rw); err != nil {
+		return nil, errors.WithMessage(err, "failed to unmarshal resource content")
+	}
+	if rw.Uri == nil {
+		return nil, errMissingContentField(ContentTypeEmbeddedResource, contentFieldResourceURI)
+	}
 
+	switch {
+	case rw.Text != nil:
+		return &EmbeddedResource{
+			EmbeddedResourceType: embeddedResourceTypeText,
+			TextResourceContents: &TextResourceContents{
+				MimeType: rw.MimeType,
+				Text:     *rw.Text,
+				Uri:      *rw.Uri,
+			},
+		}, nil
+	case rw.Blob != nil:
+		return &EmbeddedResource{
+			EmbeddedResourceType: embeddedResourceTypeBlob,
+			BlobResourceContents: &BlobResourceContents{
+				Blob:     *rw.Blob,
+				MimeType: rw.MimeType,
+				Uri:      *rw.Uri,
+			},
+		}, nil
+	default:
+		return nil, errors.Errorf("invalid %s content: missing required field %q or %q",
+			ContentTypeEmbeddedResource, contentFieldResourceText, contentFieldResourceBlob)
+	}
+}
+
+// errMissingContentField reports a required field that decoded content lacks.
+func errMissingContentField(contentType ContentType, field string) error {
+	return errors.Errorf("invalid %s content: missing required field %q", contentType, field)
+}
+
+// embeddedResourceBody nests an embedded resource under "resource", as the MCP
+// schema requires for resource content.
+type embeddedResourceBody struct {
+	Resource *EmbeddedResource `json:"resource"`
+}
+
+// MarshalJSON encodes the content in its MCP schema shape: the "type" field,
+// the fields of the content type (an embedded resource nested under
+// "resource"), and the optional annotations object.
+func (c Content) MarshalJSON() ([]byte, error) {
+	var body any
 	switch c.Type {
 	case ContentTypeText:
-		j, err := json.Marshal(c.TextContent)
-		if err != nil {
-			return nil, err
-		}
-		rawJson = j
+		body = c.TextContent
 	case ContentTypeImage:
-		j, err := json.Marshal(c.ImageContent)
-		if err != nil {
-			return nil, err
-		}
-		rawJson = j
+		body = c.ImageContent
 	case ContentTypeEmbeddedResource:
-		j, err := json.Marshal(c.EmbeddedResource)
-		if err != nil {
-			return nil, err
+		body = embeddedResourceBody{
+			Resource: c.EmbeddedResource,
 		}
-		rawJson = j
 	default:
 		return nil, errors.Errorf("unknown content type: %s", c.Type)
 	}
 
-	// Add the type
-	rawJson, err := sjson.SetBytes(rawJson, "type", string(c.Type))
+	rawJson, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to marshal %s content", c.Type)
 	}
-	// Add the annotations
+	rawJson, err = sjson.SetBytes(rawJson, contentFieldType, string(c.Type))
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to set content type")
+	}
 	if c.Annotations != nil {
-		marshal, err := json.Marshal(c.Annotations)
+		annotations, err := json.Marshal(c.Annotations)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithMessage(err, "failed to marshal annotations")
 		}
-		rawJson, err = sjson.SetBytes(rawJson, "annotations", marshal)
+		rawJson, err = sjson.SetRawBytes(rawJson, contentFieldAnnotations, annotations)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithMessage(err, "failed to set annotations")
 		}
 	}
 	return rawJson, nil

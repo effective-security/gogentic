@@ -143,7 +143,7 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 | Model listing | `ModelLister`, `ModelInfo`, `ModelLifecycle`, `ErrModelListNotSupported` | `models.go` |
 | Single prompt helper | `GenerateFromSinglePrompt` | `llms.go` |
 | Messages | `Message`, `Messages`, `Role`, `MessageSource`, `MessageFromTextParts`, `MessageFromToolCalls`, `MessageFromToolResponse` | `generatecontent.go` |
-| Content parts | `ContentPart`, `TextContent`, `ImageURLContent`, `BinaryContent`, `ToolCall`, `ToolCallResponse` | `generatecontent.go` |
+| Content parts | `ContentPart`, `TextContent`, `ImageURLContent`, `BinaryContent`, `ToolCall`, `ToolTypeFunction`, `ToolCallResponse` | `generatecontent.go` |
 | Responses | `ContentResponse`, `ContentChoice` | `generatecontent.go` |
 | Usage | `Usage`, `UsageStats` | `generatecontent.go` |
 | Call options | `CallOptions`, `CallOption`, `WithXxx` | `options.go` |

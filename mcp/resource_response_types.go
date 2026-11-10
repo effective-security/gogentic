@@ -10,7 +10,8 @@ type readResourceRequestParams struct {
 type ListResourcesResponse struct {
 	// Resources corresponds to the JSON schema field "resources".
 	Resources []*ResourceSchema `json:"resources" yaml:"resources" mapstructure:"resources"`
-	// NextCursor is a cursor for pagination. If not nil, there are more resources available.
+	// NextCursor is a cursor for pagination. If not nil, more resources may be available:
+	// pass it to the next list call, which returns an empty page when none are left.
 	NextCursor *string `json:"nextCursor,omitempty" yaml:"nextCursor,omitempty" mapstructure:"nextCursor,omitempty"`
 }
 
@@ -59,6 +60,7 @@ type ResourceTemplateSchema struct {
 type ListResourceTemplatesResponse struct {
 	// Templates corresponds to the JSON schema field "templates".
 	Templates []*ResourceTemplateSchema `json:"resourceTemplates" yaml:"resourceTemplates" mapstructure:"resourceTemplates"`
-	// NextCursor is a cursor for pagination. If not nil, there are more templates available.
+	// NextCursor is a cursor for pagination. If not nil, more templates may be available:
+	// pass it to the next list call, which returns an empty page when none are left.
 	NextCursor *string `json:"nextCursor,omitempty" yaml:"nextCursor,omitempty" mapstructure:"nextCursor,omitempty"`
 }

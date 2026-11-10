@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -563,6 +565,7 @@ const (
 	listChangedPrompts   = "notifications/prompts/list_changed"
 	listChangedResources = "notifications/resources/list_changed"
 	templateURI          = "file:///{path}"
+	missingResourceURI   = "file:///docs/missing.txt"
 )
 
 type ctxKey struct{}
@@ -1014,6 +1017,15 @@ func TestHandlePromptCalls(t *testing.T) {
 		assert.Nil(t, sent.Response)
 		assert.EqualError(t, sent.Error, "handler must return exactly two values, got 1")
 	})
+
+	t.Run("unknown prompt", func(t *testing.T) {
+		resp, err := srv.handlePromptCalls(context.Background(), &transport.BaseJSONRPCRequest{
+			Method: "prompts/get",
+			Params: []byte(`{"name":"nope","arguments":{"name":"Ann"}}`),
+		}, protocol.RequestHandlerExtra{})
+		assert.EqualError(t, err, "unknown prompt: nope")
+		assert.Nil(t, resp)
+	})
 }
 
 func TestHandleResourceCalls(t *testing.T) {
@@ -1047,6 +1059,13 @@ func TestHandleResourceCalls(t *testing.T) {
 	failed := read(context.Background(), failResourceURI)
 	assert.Nil(t, failed.Response)
 	assert.EqualError(t, failed.Error, errBoom)
+
+	resp, err := srv.handleResourceCalls(context.Background(), &transport.BaseJSONRPCRequest{
+		Method: "resources/read",
+		Params: []byte(`{"uri":"` + missingResourceURI + `"}`),
+	}, protocol.RequestHandlerExtra{})
+	assert.EqualError(t, err, "unknown resource: "+missingResourceURI)
+	assert.Nil(t, resp)
 }
 
 func TestResponseSent_MarshalJSON(t *testing.T) {
@@ -1098,4 +1117,194 @@ func TestResponseSent_MarshalJSON(t *testing.T) {
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"contents":[{"uri":"u","text":"boom","mimeType":"text/plain"}]}`, string(b))
 	})
+}
+
+// listKind adapts one */list handler for table-driven pagination tests.
+type listKind struct {
+	name     string
+	register func(t *testing.T, srv *Server, key string)
+	list     func(srv *Server, req *transport.BaseJSONRPCRequest) (keys []string, next *string, err error)
+}
+
+func listKinds() []listKind {
+	extra := protocol.RequestHandlerExtra{}
+	return []listKind{
+		{
+			name: "tools",
+			register: func(t *testing.T, srv *Server, key string) {
+				require.NoError(t, srv.RegisterTool(key, echoToolDesc, func(args echoArgs) (*ToolResponse, error) {
+					return NewToolResponse(), nil
+				}))
+			},
+			list: func(srv *Server, req *transport.BaseJSONRPCRequest) ([]string, *string, error) {
+				resp, err := srv.handleListTools(context.Background(), req, extra)
+				if err != nil {
+					return nil, nil, err
+				}
+				page := resp.(ToolsResponse)
+				var keys []string
+				for _, item := range page.Tools {
+					keys = append(keys, item.Name)
+				}
+				return keys, page.NextCursor, nil
+			},
+		},
+		{
+			name: "prompts",
+			register: func(t *testing.T, srv *Server, key string) {
+				require.NoError(t, srv.RegisterPrompt(key, greetPromptDesc, func(args greetArgs) (*PromptResponse, error) {
+					return NewPromptResponse(key), nil
+				}))
+			},
+			list: func(srv *Server, req *transport.BaseJSONRPCRequest) ([]string, *string, error) {
+				resp, err := srv.handleListPrompts(context.Background(), req, extra)
+				if err != nil {
+					return nil, nil, err
+				}
+				page := resp.(ListPromptsResponse)
+				var keys []string
+				for _, item := range page.Prompts {
+					keys = append(keys, item.Name)
+				}
+				return keys, page.NextCursor, nil
+			},
+		},
+		{
+			name: "resources",
+			register: func(t *testing.T, srv *Server, key string) {
+				require.NoError(t, srv.RegisterResource(key, key, key, mimeTextPlain, func() (*ResourceResponse, error) {
+					return NewResourceResponse(), nil
+				}))
+			},
+			list: func(srv *Server, req *transport.BaseJSONRPCRequest) ([]string, *string, error) {
+				resp, err := srv.handleListResources(context.Background(), req, extra)
+				if err != nil {
+					return nil, nil, err
+				}
+				page := resp.(ListResourcesResponse)
+				var keys []string
+				for _, item := range page.Resources {
+					keys = append(keys, item.Uri)
+				}
+				return keys, page.NextCursor, nil
+			},
+		},
+		{
+			name: "resource templates",
+			register: func(t *testing.T, srv *Server, key string) {
+				require.NoError(t, srv.RegisterResourceTemplate(key, key, key, mimeTextPlain))
+			},
+			list: func(srv *Server, req *transport.BaseJSONRPCRequest) ([]string, *string, error) {
+				resp, err := srv.handleListResourceTemplates(context.Background(), req, extra)
+				if err != nil {
+					return nil, nil, err
+				}
+				page := resp.(ListResourceTemplatesResponse)
+				var keys []string
+				for _, item := range page.Templates {
+					keys = append(keys, item.UriTemplate)
+				}
+				return keys, page.NextCursor, nil
+			},
+		},
+	}
+}
+
+// listRequest builds a */list request for the given cursor; nil asks for the first page.
+func listRequest(t *testing.T, cursor *string) *transport.BaseJSONRPCRequest {
+	t.Helper()
+	params, err := json.Marshal(map[string]any{
+		"cursor": cursor,
+	})
+	require.NoError(t, err)
+	return &transport.BaseJSONRPCRequest{
+		Params: params,
+	}
+}
+
+// Following nextCursor until it is absent must visit every item exactly once
+// and stop, whether or not the page limit divides the item count.
+func TestHandleList_PaginationTerminates(t *testing.T) {
+	// Registered out of order; listings are ordered by key.
+	keys := []string{"c://item", "a://item", "d://item", "b://item"}
+	sorted := []string{"a://item", "b://item", "c://item", "d://item"}
+
+	tcs := []struct {
+		limit     int
+		wantPages []int
+	}{
+		{
+			limit:     1,
+			wantPages: []int{1, 1, 1, 1, 0},
+		},
+		{
+			limit:     2,
+			wantPages: []int{2, 2, 0},
+		},
+		{
+			limit:     3,
+			wantPages: []int{3, 1},
+		},
+		{
+			limit:     4,
+			wantPages: []int{4, 0},
+		},
+		{
+			limit:     5,
+			wantPages: []int{4},
+		},
+		{
+			// A non-positive limit disables pagination.
+			limit:     0,
+			wantPages: []int{4},
+		},
+	}
+	for _, kind := range listKinds() {
+		for _, tc := range tcs {
+			t.Run(fmt.Sprintf("%s limit %d", kind.name, tc.limit), func(t *testing.T) {
+				srv, _ := newServedServer(t, WithPaginationLimit(tc.limit))
+				for _, key := range keys {
+					kind.register(t, srv, key)
+				}
+
+				var (
+					seen   []string
+					pages  []int
+					cursor *string
+				)
+				// Bounded so that a cursor loop fails instead of hanging.
+				for range len(keys) + 2 {
+					page, next, err := kind.list(srv, listRequest(t, cursor))
+					require.NoError(t, err)
+					seen = append(seen, page...)
+					pages = append(pages, len(page))
+					if next == nil {
+						break
+					}
+					cursor = next
+				}
+				assert.Equal(t, tc.wantPages, pages)
+				assert.Equal(t, sorted, seen)
+			})
+		}
+	}
+}
+
+func TestHandleList_CursorPastLastItem(t *testing.T) {
+	pastEnd := base64.StdEncoding.EncodeToString([]byte("z://after-everything"))
+	for _, kind := range listKinds() {
+		t.Run(kind.name, func(t *testing.T) {
+			srv, _ := newServedServer(t, WithPaginationLimit(2))
+			kind.register(t, srv, "a://item")
+
+			page, next, err := kind.list(srv, listRequest(t, &pastEnd))
+			require.NoError(t, err)
+			assert.Empty(t, page, "a cursor past the last item must not restart the listing")
+			assert.Nil(t, next)
+
+			badCursor := "not base64!"
+			_, _, err = kind.list(srv, listRequest(t, &badCursor))
+			assert.EqualError(t, err, "failed to decode cursor: illegal base64 data at input byte 3")
+		})
+	}
 }

@@ -11,16 +11,6 @@ choice. Source symbols are stable references; line numbers are omitted.
 
 | ID  | Package / location | Title | Type | Severity | Status |
 | --- | ------------------ | ----- | ---- | -------- | ------ |
-| [F-001](#f-001) | `pkg/llms/bedrock/internal/bedrockclient` · `createAnthropicCompletion` | Bedrock Anthropic tool calls have no `Type`, so every call is "tool not found" | Bug | High | Open |
-| [F-002](#f-002) | `mcp/transport/{localtransport,httptransport}` · `HandleMessage`, `handleMessage` | Error replies keep the internal request ID; the client hangs until its deadline | Hang | High | Open |
-| [F-003](#f-003) | `mcp` · `Server.handlePromptCalls`, `Server.handleResourceCalls` | Unknown prompt or resource returns `(nil, nil)` | Bug | High | Open |
-| [F-004](#f-004) | `mcp` · `Server.handleListPrompts`, `handleListResources`, `handleListResourceTemplates` | Pagination cursor wraps to the first page and loops forever | Hang | High | Open |
-| [F-005](#f-005) | `mcp/transport/httptransport` · `HTTPTransport.Send`, `handleMessage` | Data race on `responseMap` | Race | High | Open |
-| [F-006](#f-006) | `mcp` · `Content.UnmarshalJSON` | Text content without `text` panics; image and resource content cannot be decoded | Crash | High | Open |
-| [F-007](#f-007) | `pkg/llms/anthropic` · `GenerateMessagesContent` | Non-streaming responses with `thinking` blocks fail | Bug | High | Open |
-| [F-008](#f-008) | `pkg/llms/openai/internal/openaiclient` · `parseStreamingChatResponse` | Goroutine leak when a streaming callback returns an error | Leak | High | Open |
-| [F-009](#f-009) | `pkg/llms/googleai` · `Options.EnsureAuthPresent` | `GOOGLE_API_KEY` overrides the key passed with `WithAPIKey` | Bug | High | Open |
-| [F-010](#f-010) | `pkg/prompts` · `interpolateJinja2` | Unterminated jinja2 expression hangs forever | Hang | High | Open |
 | [F-011](#f-011) | `assistants` · `Assistant.Run` | Retry after unparsable output loses the question, overwrites the input, keeps tools | Bug | Medium | Open |
 | [F-012](#f-012) | `pkg/prompts` · `ChatPromptTemplate.Format` | Panics whenever formatting fails | Crash | Medium | Open |
 | [F-013](#f-013) | `pkg/llmfactory` · `LoadConfig` | Panics on a null org override | Crash | Medium | Open |
@@ -40,8 +30,6 @@ choice. Source symbols are stable references; line numbers are omitted.
 | [F-027](#f-027) | `router/dialect` · `OpenOpaque` | Accepts a JSON `null` provider state | Bug | Medium | Open |
 | [F-028](#f-028) | `mcp` · `createWrappedResourceHandler`, `createWrappedPromptHandler` | Wrong handler return types pass registration and crash the process | Crash | Medium | Open |
 | [F-029](#f-029) | `mcp` · `createWrappedPromptHandler`, `createWrappedToolHandler` | Prompts and tools called without arguments fail | Bug | Medium | Open |
-| [F-030](#f-030) | `mcp` · `Content.MarshalJSON` | Annotations are serialized as a JSON string | Bug | Medium | Open |
-| [F-031](#f-031) | `mcp` · `Content.MarshalJSON` | Embedded resource is written flat instead of under `resource` | Bug | Medium | Open |
 | [F-032](#f-032) | `mcp` · `ToolResponse` | Client cannot see the server's `isError` flag | Bug | Medium | Open |
 | [F-033](#f-033) | `mcp` · `Server.handleListPrompts` | Data race on the shared prompt input schema | Race | Medium | Open |
 | [F-034](#f-034) | `mcp/transport/{localtransport,httptransport}` · client `Send` | Notifications and requests in a response are dispatched as errors | Bug | Medium | Open |
@@ -64,115 +52,12 @@ choice. Source symbols are stable references; line numbers are omitted.
 | [F-051](#f-051) | `store` · `inMemory.GetChatInfo` | Unknown tenant and unknown chat behave differently, and differently from Redis | Bug | Low | Needs Decision |
 | [F-052](#f-052) | `pkg/llms/cloudflare` · `doc.go` | Package example builds a broken endpoint URL | Docs | Low | Open |
 | [F-053](#f-053) | `pkg/llms/anthropic` · `TestNew`, `TestNewWithEnvironmentVariable` | Parallel tests mutate process environment | Test | Low | Open |
+| [F-054](#f-054) | `pkg/prompts` · `interpolateJinja2` | Jinja2 templates can `{% include %}` any local file | Security | Medium | Needs Decision |
+| [F-055](#f-055) | `pkg/llms/anthropic` · `GenerateMessagesContent`, `HandleAIMessage` | Thinking blocks are not kept in the message history | Bug | Medium | Needs Decision |
+| [F-056](#f-056) | `mcp` · `Server.Serve`; `httptransport.HTTPTransport.Start` | `Serve` blocks with the HTTP transport; documented start sequence is wrong | Bug | Medium | Needs Decision |
+| [F-057](#f-057) | `mcp/transport/httptransport` · `HTTPTransport.Send`, `handleRequest` | `Send` ignores cancellation; `errorHandler` read without the lock | Race | Low | Open |
 
 ## Details
-
-### F-001
-
-**Bedrock Anthropic tool calls have no `Type`.** `createAnthropicCompletion`
-builds `llms.ToolCall{ID, FunctionCall}` without `Type: "function"`.
-`ToolCall.GetFunctionCallName` and `GetFunctionCallArguments` return `""`
-unless `Type == "function"`, so `Assistant` looks up a tool named `""` and
-reports "tool not found" for every tool call from Bedrock Anthropic models.
-
-- Repro: a response body
-  `{"content":[{"type":"tool_use","id":"t","name":"lookup","input":{}}],"stop_reason":"tool_use"}`
-  yields `ToolCalls[0].GetFunctionCallName() == ""`.
-- Fix: set `Type: "function"`, as the OpenAI provider does.
-
-### F-002
-
-**MCP error replies keep the internal request ID.** `localtransport.Transport.HandleMessage`
-and `httptransport.HTTPTransport.handleMessage` rewrite the request ID to an
-internal key and restore the caller's ID only when
-`responseToUse.JsonRpcResponse != nil`. Error responses go back with the
-internal ID; the client never matches them and the call blocks until its
-context deadline (60s by default).
-
-- Repro: over the local transport, `client.CallTool(ctx, "missing", map[string]any{})`.
-- Impact: every server-side RPC error (unknown tool, bad params) looks like a timeout.
-
-### F-003
-
-**Unknown prompt or resource returns `(nil, nil)`.** When no prompt matches,
-`Server.handlePromptCalls` returns `errors.Wrapf(err, ...)` with `err == nil`,
-which is `nil`. `Server.handleResourceCalls` has the same defect and its
-message says "unknown prompt". Both messages use `req.Method` instead of the
-requested name or URI.
-
-- Repro: `prompts/get` with `{"name":"nope"}`; the client receives an empty
-  `PromptResponse` and no error.
-
-### F-004
-
-**List pagination loops forever.** For prompts, resources and resource
-templates, a cursor past the last item leaves `startPosition` at 0, so the
-listing restarts from the first page. When the item count is a multiple of
-the page limit, the last page still returns a cursor, and following it starts
-over. The tools listing handles this correctly.
-
-- Repro: `WithPaginationLimit(2)` with 2 prompts; following `nextCursor`
-  returns the same two prompts again, indefinitely.
-
-### F-005
-
-**Data race on `responseMap`.** `HTTPTransport.Send` reads
-`t.responseMap[key]` and `handleMessage` reads `<-t.responseMap[key]` without
-holding `t.mu`, while `handleMessage` writes the map under the lock, so
-concurrent requests race.
-
-### F-006
-
-**MCP content decoding.** `Content.UnmarshalJSON` dereferences `tw.Text`
-without a nil check, so `{"type":"text"}` panics. Image and embedded-resource
-types pass the first switch and then fail with "unknown content type", so
-`Client.CallTool` fails for any tool that returns image or resource content.
-
-### F-007
-
-**Anthropic `thinking` blocks fail non-streaming calls.**
-`GenerateMessagesContent` returns
-`anthropic: unsupported content type` for `thinking` and `redacted_thinking`
-blocks. `WithReasoningEffort` enables thinking, so real reasoning calls fail.
-The same applies to `bash_code_execution_tool_result`,
-`text_editor_code_execution_tool_result`, `tool_search_tool_result` and
-`container_upload` blocks.
-
-### F-008
-
-**Goroutine leak in OpenAI chat streaming.** When `StreamingFunc` or
-`StreamingReasoningFunc` returns an error, `combineStreamingChatResponse`
-stops reading the channel. The reader goroutine in
-`parseStreamingChatResponse` then blocks forever on `responseChan <-`;
-closing the body does not unblock it.
-
-- Repro: a 3-chunk stream with a `StreamingFunc` that fails on the first
-  chunk leaves one goroutine blocked.
-- Impact: a callback that errors when the downstream client disconnects
-  leaks a goroutine per request.
-
-### F-009
-
-**`GOOGLE_API_KEY` overrides an explicit key.** `Options.EnsureAuthPresent`
-checks only `Credentials == nil`, not `APIKey`, so the environment variable
-replaces a key passed with `WithAPIKey`. With per-organization keys from the
-factory, requests can be billed to the wrong account.
-
-- Repro: `GOOGLE_API_KEY=x`, `New(ctx, WithAPIKey("k"))`; requests carry
-  `X-Goog-Api-Key: x`.
-- Test impact: the Makefile does not fake `GOOGLE_API_KEY`, so tests in this
-  package can pick up a real key from the shell. `TestListModels_Pages`
-  clears it with `t.Setenv`.
-
-### F-010
-
-**Jinja2 rendering hangs on an unterminated expression.** `interpolateJinja2`
-(gonja) never returns for `"{{ x "`. This is a denial-of-service risk wherever
-templates come from users.
-
-- Repro: `RenderTemplate("{{ x ", TemplateFormatJinja2, map[string]any{"x": 1})`
-  does not return.
-- Fix: bound rendering with a timeout, or validate the template before rendering.
 
 ### F-011
 
@@ -333,24 +218,6 @@ the protocol goroutine, which has no recover.
 - `Client.GetPrompt(ctx, name, nil)` and `Client.CallTool(ctx, name, nil)`
   send `null`, so both fail.
 
-### F-030
-
-**Annotations serialized as a string.** `Content.MarshalJSON` uses
-`sjson.SetBytes` with a `[]byte`, which encodes it as a JSON string:
-`"annotations":"{\"audience\":[\"user\"]}"`.
-
-- Repro: `json.Marshal(NewTextContent("x").WithAnnotations(Annotations{Audience: []Role{RoleUser}}))`.
-- Fix: `sjson.SetRawBytes`.
-
-### F-031
-
-**Embedded resource written flat.** `Content.MarshalJSON` writes the
-resource fields next to `"type"` instead of nesting them under `"resource"`
-as the MCP schema requires.
-
-- Pinned: `mcp/content_api_test.go` asserts the current shape (marked
-  `NOTE`); update it with the fix.
-
 ### F-032
 
 **Client cannot see tool errors.** `ToolResponse` has no `IsError` field, so
@@ -479,7 +346,9 @@ sets `resourceResponseSent.Uri`, so error resources are sent with `"uri":""`.
 
 **Unhelpful embedded resource error.** When neither `text` nor `blob` is
 present, `EmbeddedResource.UnmarshalJSON` returns
-"failed to unmarshal embedded resource: <nil>".
+"failed to unmarshal embedded resource: <nil>". `Content.UnmarshalJSON` now
+decodes embedded resources with `decodeResourceContents`, which names the
+missing field; `EmbeddedResource.UnmarshalJSON` could reuse it.
 
 ### F-050
 
@@ -507,3 +376,50 @@ example should pass `.../accounts` with `WithAccountID`.
 `pkg/llms/anthropic/anthropicllm_test.go` call `os.Setenv`/`os.Unsetenv`
 inside `t.Parallel()` tests, racing with other parallel tests that read the
 environment. Use `t.Setenv` in non-parallel tests.
+
+### F-054
+
+**Jinja2 templates can read local files.** `interpolateJinja2` renders with
+gonja's default environment, whose filesystem loader resolves
+`{% include %}` paths relative to the working directory and accepts
+absolute paths. `{% include "/etc/hostname" %}` renders the file, and a
+failed include echoes the file's contents in the error. Both gonja v1 and v2
+behave this way. Harmless for templates written by developers; a file
+disclosure wherever template text comes from users. Decide whether
+`TemplateFormatJinja2` should support includes; if not, render with an
+environment whose loader refuses every path.
+
+### F-055
+
+**Anthropic thinking blocks are not kept in the history.**
+`GenerateMessagesContent` returns thinking text in `ReasoningContent` only,
+and `HandleAIMessage` has no message part to send thinking blocks (with
+their `signature`, or `redacted_thinking` data) back. The Claude API
+expects thinking blocks passed back unchanged in later turns; dropping them
+breaks the turn, notably in a tool loop with thinking on, which is every
+call on models where thinking cannot be disabled. Not verified against the
+live API here. Fixing it needs a new `llms` content part carried through
+`MessageFromToolCalls`, the stores and `HandleAIMessage`, ignored by other
+providers.
+
+### F-056
+
+**`Serve` blocks with the HTTP transport.** `Server.Serve` connects the
+protocol, and `Protocol.Connect` calls the transport's `Start`
+synchronously. `HTTPTransport.Start` runs `ListenAndServe`, so `Serve` does
+not return while the server runs; it also binds the transport's own
+address (":8080" by default). The `httptransport` package example, which
+calls `Serve` and then mounts the transport on the caller's mux, never
+reaches the mux. The `Documentation/mcp.md` example calls `Serve` and then
+`Start`: for HTTP the `Start` is never reached, and for stdio, whose `Start`
+returns at once, the second `Start` fails with "already started". Decide the
+transport lifecycle (start in `Connect` without blocking, or leave starting
+to the caller) and fix the examples to match.
+
+### F-057
+
+**HTTP transport cancellation and error handler.**
+`HTTPTransport.Send` does not stop when its context is cancelled (the local
+transport does), and `handleRequest` reads `errorHandler` without holding
+`t.mu` while `SetErrorHandler` writes it under the lock.
+

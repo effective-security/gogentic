@@ -301,19 +301,27 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 	// produce exactly one merged choice per API response.
 
 	var textParts []string
+	var reasoningParts []string
 	var toolCalls []llms.ToolCall
 
 	for _, contentBlock := range result.Content {
 		switch content := contentBlock.AsAny().(type) {
 		case anthropic.TextBlock:
 			textParts = append(textParts, content.Text)
+		case anthropic.ThinkingBlock:
+			// Thinking is on whenever reasoning effort enables it, and always
+			// on for models where it cannot be disabled.
+			reasoningParts = append(reasoningParts, content.Thinking)
+		case anthropic.RedactedThinkingBlock:
+			// Encrypted reasoning carries no readable text.
 		case anthropic.ToolUseBlock:
 			argumentsJSON, err := json.Marshal(content.Input)
 			if err != nil {
 				return nil, errors.Wrap(err, "anthropic: failed to marshal tool use arguments")
 			}
 			toolCalls = append(toolCalls, llms.ToolCall{
-				ID: content.ID,
+				ID:   content.ID,
+				Type: llms.ToolTypeFunction,
 				FunctionCall: &llms.FunctionCall{
 					Name:      content.Name,
 					Arguments: string(argumentsJSON),
@@ -355,15 +363,21 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 			// TODO: option to add WebSearchToolResultBlock to the response
 		case anthropic.CodeExecutionToolResultBlock:
 			// TODO: option to add CodeExecutionToolResultBlock to the response
+		case anthropic.BashCodeExecutionToolResultBlock,
+			anthropic.TextEditorCodeExecutionToolResultBlock,
+			anthropic.ToolSearchToolResultBlock,
+			anthropic.ContainerUploadBlock:
+			// Results of server-side tools the model already consumed.
 		default:
 			return nil, errors.Wrapf(ErrUnsupportedContentType, "response content type: %T", content)
 		}
 	}
 
 	choice := &llms.ContentChoice{
-		Content:    strings.Join(textParts, ""),
-		ToolCalls:  toolCalls,
-		StopReason: string(result.StopReason),
+		Content:          strings.Join(textParts, ""),
+		ReasoningContent: strings.Join(reasoningParts, ""),
+		ToolCalls:        toolCalls,
+		StopReason:       string(result.StopReason),
 		Usage: llms.Usage{
 			InputTokens:      uint64(result.Usage.InputTokens),
 			OutputTokens:     uint64(result.Usage.OutputTokens),
@@ -400,6 +414,7 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 	}()
 
 	var content strings.Builder
+	var reasoning strings.Builder
 	var toolCalls []llms.ToolCall
 	var currentToolCall *llms.ToolCall
 	var stopReason string
@@ -415,7 +430,8 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			switch block := evt.ContentBlock.AsAny().(type) {
 			case anthropic.ToolUseBlock:
 				currentToolCall = &llms.ToolCall{
-					ID: block.ID,
+					ID:   block.ID,
+					Type: llms.ToolTypeFunction,
 					FunctionCall: &llms.FunctionCall{
 						Name: block.Name,
 					},
@@ -430,6 +446,8 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 						return nil, errors.Wrap(err, "anthropic: streaming function error")
 					}
 				}
+			case anthropic.ThinkingDelta:
+				reasoning.WriteString(delta.Thinking)
 			case anthropic.InputJSONDelta:
 				// Handle partial JSON for tool calls
 				if currentToolCall != nil {
@@ -456,9 +474,10 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 	// Produce a single merged choice (text + tool calls) to match the non-streaming path and
 	// to ensure Choices[0] always carries both Content and ToolCalls when the model emits both.
 	choice := &llms.ContentChoice{
-		Content:    content.String(),
-		ToolCalls:  toolCalls,
-		StopReason: stopReason,
+		Content:          content.String(),
+		ReasoningContent: reasoning.String(),
+		ToolCalls:        toolCalls,
+		StopReason:       stopReason,
 		Usage: llms.Usage{
 			InputTokens:      uint64(inputTokens),
 			OutputTokens:     uint64(outputTokens),

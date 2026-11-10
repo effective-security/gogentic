@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/transport"
+	"github.com/effective-security/gogentic/mcp/transport/httptransport"
 	"github.com/effective-security/gogentic/mcp/transport/localtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,6 +48,15 @@ const (
 	cityParis = "Paris"
 	errBoom   = "boom"
 	errNope   = "nope"
+
+	missingTool     = "missing"
+	mediaTool       = "media"
+	mediaToolDesc   = "Returns content of every kind."
+	e2eHTTPEndpoint = "/mcp"
+
+	// rpcErrorDeadline bounds calls that must fail fast with a server error;
+	// a reply the client cannot match would surface as a deadline instead.
+	rpcErrorDeadline = 5 * time.Second
 
 	initResultJSON = `{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"s","version":"1"}}`
 )
@@ -93,8 +105,15 @@ type greetArgs struct {
 // and serving over an in-process local transport.
 func newE2EServer(t *testing.T, opts ...ServerOptions) (*Server, *localtransport.Transport) {
 	t.Helper()
-
 	srvTransport := localtransport.New()
+	return newE2EServerOn(t, srvTransport, opts...), srvTransport
+}
+
+// newE2EServerOn builds a server with tools, prompts and resources registered
+// and serving over srvTransport.
+func newE2EServerOn(t *testing.T, srvTransport transport.Transport, opts ...ServerOptions) *Server {
+	t.Helper()
+
 	allOpts := append([]ServerOptions{
 		WithName(e2eServerName),
 		WithVersion(e2eServerVersion),
@@ -155,12 +174,42 @@ func newE2EServer(t *testing.T, opts ...ServerOptions) (*Server, *localtransport
 		}))
 
 	require.NoError(t, srv.Serve())
-	return srv, srvTransport
+	return srv
 }
 
 func newE2EClient(t *testing.T, srvTransport *localtransport.Transport) *Client {
 	t.Helper()
 	cliTransport := localtransport.NewLocalClientTransport(&localBridge{server: srvTransport})
+	return NewClientWithInfo(cliTransport, ClientInfo{
+		Name:    e2eClientName,
+		Version: e2eClientVersion,
+	})
+}
+
+// mountedHTTPTransport is an HTTPTransport mounted on the test's own
+// httptest server, the way an application mounts it on its mux: Start is a
+// no-op, so Serve does not open a listener of its own.
+type mountedHTTPTransport struct {
+	*httptransport.HTTPTransport
+}
+
+func (mountedHTTPTransport) Start(context.Context) error {
+	return nil
+}
+
+// newE2EHTTPClient serves the e2e server over httptransport behind an
+// httptest server and returns a client connected to it over HTTP.
+func newE2EHTTPClient(t *testing.T, opts ...ServerOptions) *Client {
+	t.Helper()
+	srvTransport := httptransport.NewHTTPTransport(e2eHTTPEndpoint)
+	newE2EServerOn(t, mountedHTTPTransport{
+		HTTPTransport: srvTransport,
+	}, opts...)
+
+	ts := httptest.NewServer(srvTransport)
+	t.Cleanup(ts.Close)
+
+	cliTransport := httptransport.NewHTTPClientTransport(e2eHTTPEndpoint).WithBaseURL(ts.URL)
 	return NewClientWithInfo(cliTransport, ClientInfo{
 		Name:    e2eClientName,
 		Version: e2eClientVersion,
@@ -392,7 +441,16 @@ func TestClientServerE2E_Pagination(t *testing.T) {
 	prompts, err := cli.ListPrompts(ctx, nil)
 	require.NoError(t, err)
 	require.Len(t, prompts.Prompts, 2)
+	assert.Equal(t, failPrompt, prompts.Prompts[0].Name)
+	assert.Equal(t, greetPrompt, prompts.Prompts[1].Name)
 	require.NotNil(t, prompts.NextCursor, "a full page must carry a cursor")
+
+	// Two prompts with a limit of two: the cursor of the full page leads to an
+	// empty last page instead of back to the first one.
+	noMorePrompts, err := cli.ListPrompts(ctx, prompts.NextCursor)
+	require.NoError(t, err)
+	assert.Empty(t, noMorePrompts.Prompts)
+	assert.Nil(t, noMorePrompts.NextCursor)
 
 	resources, err := cli.ListResources(ctx, nil)
 	require.NoError(t, err)
@@ -404,6 +462,120 @@ func TestClientServerE2E_Pagination(t *testing.T) {
 	require.Len(t, rest.Resources, 1)
 	assert.Equal(t, textResourceURI, rest.Resources[0].Uri)
 	assert.Nil(t, rest.NextCursor)
+}
+
+// Unknown tools, prompts and resources are JSON-RPC errors. The transports
+// must hand them back under the caller's request ID, otherwise the client
+// cannot match the reply and waits until its deadline.
+func TestClientServerE2E_RPCErrors(t *testing.T) {
+	clients := []struct {
+		name      string
+		newClient func(t *testing.T) *Client
+	}{
+		{
+			name: "local transport",
+			newClient: func(t *testing.T) *Client {
+				_, srvTransport := newE2EServer(t)
+				return newE2EClient(t, srvTransport)
+			},
+		},
+		{
+			name: "http transport",
+			newClient: func(t *testing.T) *Client {
+				return newE2EHTTPClient(t)
+			},
+		},
+	}
+	calls := []struct {
+		name    string
+		call    func(ctx context.Context, cli *Client) error
+		wantErr string
+	}{
+		{
+			name: "unknown tool",
+			call: func(ctx context.Context, cli *Client) error {
+				_, err := cli.CallTool(ctx, missingTool, map[string]any{})
+				return err
+			},
+			wantErr: "failed to call tool: RPC error -32000: unknown tool: missing",
+		},
+		{
+			name: "unknown prompt",
+			call: func(ctx context.Context, cli *Client) error {
+				_, err := cli.GetPrompt(ctx, errNope, greetArgs{Name: "x"})
+				return err
+			},
+			wantErr: "failed to get prompt: RPC error -32000: unknown prompt: nope",
+		},
+		{
+			name: "unknown resource",
+			call: func(ctx context.Context, cli *Client) error {
+				_, err := cli.ReadResource(ctx, missingResourceURI)
+				return err
+			},
+			wantErr: "failed to read resource: RPC error -32000: unknown resource: file:///docs/missing.txt",
+		},
+	}
+	for _, cc := range clients {
+		t.Run(cc.name, func(t *testing.T) {
+			cli := cc.newClient(t)
+			_, err := cli.Initialize(context.Background())
+			require.NoError(t, err)
+
+			for _, call := range calls {
+				t.Run(call.name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), rpcErrorDeadline)
+					defer cancel()
+
+					err := call.call(ctx, cli)
+					assert.EqualError(t, err, call.wantErr)
+					assert.NotErrorIs(t, err, context.DeadlineExceeded)
+				})
+			}
+
+			// The connection is still usable after the errors.
+			resp, err := cli.CallTool(context.Background(), echoTool, echoArgs{Message: "still here"})
+			require.NoError(t, err)
+			require.Len(t, resp.Content, 1)
+			assert.Equal(t, "still here", resp.Content[0].TextContent.Text)
+		})
+	}
+}
+
+// Every kind of content a tool returns reaches the client intact, annotations
+// included.
+func TestClientServerE2E_ContentRoundTrip(t *testing.T) {
+	priority := 0.25
+	userOnly := Annotations{
+		Audience: []Role{RoleUser},
+		Priority: &priority,
+	}
+	assistantOnly := Annotations{
+		Audience: []Role{RoleAssistant},
+	}
+	newContent := func() []*Content {
+		return []*Content{
+			NewTextContent(textResourceBody).WithAnnotations(userOnly),
+			NewImageContent(blobResourceBody, mimeImagePNG).WithAnnotations(assistantOnly),
+			NewTextResourceContent(textResourceURI, textResourceBody, mimeTextPlain),
+			NewBlobResourceContent(blobResourceURI, blobResourceBody, mimeImagePNG).WithAnnotations(userOnly),
+		}
+	}
+
+	srv, srvTransport := newE2EServer(t)
+	require.NoError(t, srv.RegisterTool(mediaTool, mediaToolDesc,
+		func(args echoArgs) (*ToolResponse, error) {
+			return NewToolResponse(newContent()...), nil
+		}))
+	cli := newE2EClient(t, srvTransport)
+	_, err := cli.Initialize(context.Background())
+	require.NoError(t, err)
+
+	resp, err := cli.CallTool(context.Background(), mediaTool, echoArgs{Message: "x"})
+	require.NoError(t, err)
+	assert.Equal(t, newContent(), resp.Content)
+	assert.Nil(t, resp.StructuredContent)
+	assert.Nil(t, resp.Meta)
 }
 
 // scriptedTransport is a client-side transport that answers requests with

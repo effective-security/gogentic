@@ -418,38 +418,54 @@ func (c *Client) createChat(ctx context.Context, payload *ChatRequest) (*ChatCom
 
 func parseStreamingChatResponse(ctx context.Context, r *http.Response, payload *ChatRequest) (*ChatCompletionResponse,
 	error,
-) { //nolint:cyclop,lll
-	scanner := bufio.NewScanner(r.Body)
+) {
 	responseChan := make(chan StreamedChatResponsePayload)
-	go func() {
-		defer close(responseChan)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				continue
-			}
+	// done stops the reader when the consumer returns early, for example when
+	// a streaming callback fails; the caller then closes the body, which
+	// unblocks a reader waiting for more data.
+	done := make(chan struct{})
+	defer close(done)
+	go readStreamingChat(bufio.NewScanner(r.Body), responseChan, done)
+	return combineStreamingChatResponse(ctx, payload, responseChan)
+}
 
-			data := strings.TrimPrefix(line, "data:") // here use `data:` instead of `data: ` for compatibility
-			data = strings.TrimSpace(data)
-			if data == "[DONE]" {
-				return
-			}
-			var streamPayload StreamedChatResponsePayload
-			err := json.NewDecoder(bytes.NewReader([]byte(data))).Decode(&streamPayload)
-			if err != nil {
-				streamPayload.Error = errors.Wrap(err, "error decoding streaming response")
-				responseChan <- streamPayload
-				return
-			}
-			responseChan <- streamPayload
+// readStreamingChat decodes server-sent chat chunks into responseChan until
+// the stream ends, fails, or done is closed. It closes responseChan on return.
+func readStreamingChat(scanner *bufio.Scanner, responseChan chan<- StreamedChatResponsePayload, done <-chan struct{}) {
+	defer close(responseChan)
+	send := func(p StreamedChatResponsePayload) bool {
+		select {
+		case responseChan <- p:
+			return true
+		case <-done:
+			return false
 		}
-		if err := scanner.Err(); err != nil {
-			responseChan <- StreamedChatResponsePayload{Error: errors.Wrap(err, "error reading streaming response")}
+	}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data:") // here use `data:` instead of `data: ` for compatibility
+		data = strings.TrimSpace(data)
+		if data == "[DONE]" {
 			return
 		}
-	}()
-	// Combine response
-	return combineStreamingChatResponse(ctx, payload, responseChan)
+		var streamPayload StreamedChatResponsePayload
+		err := json.NewDecoder(bytes.NewReader([]byte(data))).Decode(&streamPayload)
+		if err != nil {
+			streamPayload.Error = errors.Wrap(err, "error decoding streaming response")
+			send(streamPayload)
+			return
+		}
+		if !send(streamPayload) {
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		send(StreamedChatResponsePayload{Error: errors.Wrap(err, "error reading streaming response")})
+	}
 }
 
 func combineStreamingChatResponse(

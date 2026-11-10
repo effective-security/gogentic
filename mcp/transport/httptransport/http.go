@@ -68,7 +68,9 @@ func (t *HTTPTransport) Send(ctx context.Context, message *transport.BaseJsonRpc
 		"key", key,
 	)
 
+	t.mu.RLock()
 	responseChannel := t.responseMap[int64(key)]
+	t.mu.RUnlock()
 	if responseChannel == nil {
 		logger.ContextKV(ctx, xlog.ERROR,
 			"type", message.Type,
@@ -164,8 +166,9 @@ func (t *HTTPTransport) handleMessage(ctx context.Context, body []byte) (*transp
 	var request transport.BaseJSONRPCRequest
 	if err := json.Unmarshal(body, &request); err == nil {
 		key := atomic.AddInt64(&t.atomicCounter, 1)
+		responseChannel := make(chan *transport.BaseJsonRpcMessage)
 		t.mu.Lock()
-		t.responseMap[key] = make(chan *transport.BaseJsonRpcMessage)
+		t.responseMap[key] = responseChannel
 		t.mu.Unlock()
 
 		prevId := request.Id
@@ -179,13 +182,17 @@ func (t *HTTPTransport) handleMessage(ctx context.Context, body []byte) (*transp
 		}
 
 		// Block until the protocol layer sends the response via Send()
-		responseToUse := <-t.responseMap[key]
+		responseToUse := <-responseChannel
 		t.mu.Lock()
 		delete(t.responseMap, key)
 		t.mu.Unlock()
 
-		if responseToUse.JsonRpcResponse != nil {
+		// Restore the caller's ID on both result and error replies.
+		switch {
+		case responseToUse.JsonRpcResponse != nil:
 			responseToUse.JsonRpcResponse.Id = prevId
+		case responseToUse.JsonRpcError != nil:
+			responseToUse.JsonRpcError.Id = prevId
 		}
 		return responseToUse, nil
 	}
