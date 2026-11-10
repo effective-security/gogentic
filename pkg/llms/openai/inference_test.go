@@ -447,3 +447,83 @@ func assertUnsupported(t *testing.T, err error, param string) {
 	assert.Equal(t, param, ie.Param)
 	assert.True(t, errors.Is(err, ie))
 }
+
+func TestChatOptionalControls(t *testing.T) {
+	f := &fixture{reply: chatTextReply}
+	m := newModel(t, f, openai.WithInferenceAPI(openai.InferenceAPIChat))
+	req := userRequest("hi")
+	topP := 0.25
+	parallel := false
+	strict := true
+	req.TopP = &topP
+	req.ParallelToolCalls = &parallel
+	req.Stop = []string{"END", "STOP"}
+	req.ToolChoice = &llms.InferenceToolChoice{Mode: llms.ToolChoiceRequired}
+	tool := lookupTool()
+	tool.Strict = &strict
+	req.Tools = []llms.InferenceTool{tool}
+
+	_, err := m.Infer(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/chat/completions", f.path)
+	assert.Equal(t, 0.25, f.body["top_p"])
+	assert.Equal(t, false, f.body["parallel_tool_calls"])
+	assert.Equal(t, []any{"END", "STOP"}, f.body["stop"])
+	assert.Equal(t, "required", f.body["tool_choice"])
+	assert.Equal(t, []any{
+		map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "lookup",
+				"description": "",
+				"strict":      true,
+				"parameters": map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+			},
+		},
+	}, f.body["tools"])
+}
+
+func TestResponsesAssistantRefusalReplay(t *testing.T) {
+	f := &fixture{reply: responsesTextReply}
+	m := newModel(t, f)
+	req := userRequest("hi")
+	req.Messages = append(req.Messages,
+		llms.InferenceMessage{
+			Role: llms.InferenceRoleAssistant,
+			Content: []llms.InferenceBlock{
+				{Type: llms.BlockText, Text: "partial"},
+				{Type: llms.BlockRefusal, Text: "cannot help"},
+			},
+		},
+		llms.InferenceMessage{
+			Role: llms.InferenceRoleUser,
+			Content: []llms.InferenceBlock{
+				{Type: llms.BlockText, Text: "please"},
+			},
+		},
+	)
+
+	_, err := m.Infer(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/responses", f.path)
+	input, ok := f.body["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 3)
+	assert.Equal(t, map[string]any{
+		"type": "message",
+		"role": "assistant",
+		"content": []any{
+			map[string]any{
+				"type": "output_text",
+				"text": "partial",
+			},
+			map[string]any{
+				"type":    "refusal",
+				"refusal": "cannot help",
+			},
+		},
+	}, input[1])
+}

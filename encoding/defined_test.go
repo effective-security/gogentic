@@ -78,3 +78,11 @@ type badValidator struct{ dummy.Encoder }
 
 func (badValidator) Validate(any) error            { return errors.New("fail validate") }
 func (badValidator) GetFormatInstructions() string { return "" }
+
+func TestNewTypedOutputParserUnknownMode(t *testing.T) {
+	t.Parallel()
+
+	parser, err := NewTypedOutputParser(testStruct{}, ModeCustom)
+	require.EqualError(t, err, "failed to create encoder: no predefined encoder")
+	assert.Nil(t, parser)
+}

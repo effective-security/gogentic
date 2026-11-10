@@ -19,7 +19,7 @@ env:
   # This number does not change if you re-run the workflow run.
   RUN_NUMBER: ${{ github.run_number }}
   PULL_NUMBER: ${{ github.event.pull_request.number }}
-  MIN_TESTCOV: 80
+  MIN_TESTCOV: 94
 
 jobs:
   detect-noop:

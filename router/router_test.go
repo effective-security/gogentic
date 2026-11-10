@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -561,4 +563,338 @@ func TestUsageInconsistencyIsObserved(t *testing.T) {
 	assert.False(t, res.Response.UsageKnown)
 	assert.True(t, observation.UsageInconsistent)
 	assert.False(t, observation.UsageKnown)
+}
+
+func TestNewRejectsInvalidConfig(t *testing.T) {
+	m := &testModel{}
+	longID := strings.Repeat("i", maxModelNameBytes+1)
+	tooManyTags := map[string]string{}
+	for i := range maxTags + 1 {
+		tooManyTags[strings.Repeat("t", i+1)] = "v"
+	}
+	withTarget := func(mutate func(*Target)) Config {
+		tgt := target("a", m)
+		mutate(&tgt)
+		return Config{Targets: []Target{tgt}}
+	}
+	var nilAdmission *concurrencyLimit
+	cases := []struct {
+		name string
+		cfg  Config
+		err  string
+	}{
+		{
+			name: "nil admission implementation",
+			cfg: Config{
+				Targets:   []Target{target("a", m)},
+				Admission: nilAdmission,
+			},
+			err: "router: admission is a nil implementation",
+		},
+		{
+			name: "negative timeout",
+			cfg: Config{
+				Targets: []Target{target("a", m)},
+				Timeout: -time.Second,
+			},
+			err: "router: timeouts must not be negative",
+		},
+		{
+			name: "negative selector timeout",
+			cfg: Config{
+				Targets:         []Target{target("a", m)},
+				SelectorTimeout: -time.Second,
+			},
+			err: "router: timeouts must not be negative",
+		},
+		{
+			name: "NaN minimum confidence",
+			cfg: Config{
+				Targets:           []Target{target("a", m)},
+				MinimumConfidence: math.NaN(),
+			},
+			err: "router: minimum confidence must be within [0,1]",
+		},
+		{
+			name: "negative minimum confidence",
+			cfg: Config{
+				Targets:           []Target{target("a", m)},
+				MinimumConfidence: -0.1,
+			},
+			err: "router: minimum confidence must be within [0,1]",
+		},
+		{
+			name: "empty target ID",
+			cfg:  withTarget(func(t *Target) { t.ID = "" }),
+			err:  "router: target ID is required",
+		},
+		{
+			name: "oversized target ID",
+			cfg:  withTarget(func(t *Target) { t.ID = longID }),
+			err:  `router: target ID "` + longID + `" exceeds 256 bytes`,
+		},
+		{
+			name: "oversized backend model",
+			cfg:  withTarget(func(t *Target) { t.BackendModel = strings.Repeat("b", maxBackendNameBytes+1) }),
+			err:  `router: target "a" backend model exceeds 1024 bytes`,
+		},
+		{
+			name: "typed nil connector",
+			cfg:  withTarget(func(t *Target) { t.Connector = (*testModel)(nil) }),
+			err:  `router: target "a" requires a connector`,
+		},
+		{
+			name: "negative output limit",
+			cfg:  withTarget(func(t *Target) { t.MaxOutputTokens = -1 }),
+			err:  `router: target "a" output limit must be within [0,1048576]`,
+		},
+		{
+			name: "output limit too high",
+			cfg:  withTarget(func(t *Target) { t.MaxOutputTokens = maxOutputTokens + 1 }),
+			err:  `router: target "a" output limit must be within [0,1048576]`,
+		},
+		{
+			name: "too many tags",
+			cfg:  withTarget(func(t *Target) { t.Tags = tooManyTags }),
+			err:  `router: target "a" has more than 32 tags`,
+		},
+		{
+			name: "empty tag key",
+			cfg:  withTarget(func(t *Target) { t.Tags = map[string]string{"": "v"} }),
+			err:  `router: target "a" has an invalid tag ""`,
+		},
+		{
+			name: "oversized tag value",
+			cfg:  withTarget(func(t *Target) { t.Tags = map[string]string{"tier": strings.Repeat("v", maxTagValueBytes+1)} }),
+			err:  `router: target "a" has an invalid tag "tier"`,
+		},
+		{
+			name: "empty alias",
+			cfg:  withTarget(func(t *Target) { t.Aliases = []string{""} }),
+			err:  `router: target "a" has an empty or oversized alias`,
+		},
+		{
+			name: "oversized alias",
+			cfg:  withTarget(func(t *Target) { t.Aliases = []string{longID} }),
+			err:  `router: target "a" has an empty or oversized alias`,
+		},
+		{
+			name: "fallback names an alias",
+			cfg: Config{
+				Targets: []Target{{
+					ID:           "a",
+					Aliases:      []string{"alias-a"},
+					BackendModel: "backend-a",
+					Connector:    m,
+				}},
+				Fallback: "alias-a",
+			},
+			err: `router: fallback "alias-a" is not a registered target ID`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := New(tc.cfg)
+			require.EqualError(t, err, tc.err)
+			assert.Nil(t, r)
+		})
+	}
+}
+
+func TestNewIsolatesCatalog(t *testing.T) {
+	m := &testModel{}
+	tgt := target("a", m)
+	tgt.Aliases = []string{"alias-a"}
+	cfg := Config{Targets: []Target{tgt}}
+	r, err := New(cfg)
+	require.NoError(t, err)
+	tgt.Aliases[0] = "changed"
+	tgt.Tags["tier"] = "changed"
+
+	req := request()
+	req.Model = "alias-a"
+	res, err := r.Generate(context.Background(), req)
+	require.NoError(t, err, "aliases are copied at construction")
+	assert.Equal(t, "a", res.Model)
+	assert.Equal(t, defaultSelectorTimeout, r.cfg.SelectorTimeout)
+	assert.Nil(t, r.cfg.Targets, "the router keeps its own target copy")
+	assert.Equal(t, "a", r.targets[0].Tags["tier"])
+}
+
+func TestRequestClone(t *testing.T) {
+	req := request()
+	req.Metadata = map[string]string{
+		"k": "v",
+	}
+	clone := req.Clone()
+	assert.Equal(t, req, clone)
+	clone.Metadata["k"] = "changed"
+	clone.Input.Messages[0].Content[0].Text = "changed"
+	assert.Equal(t, "v", req.Metadata["k"])
+	assert.Equal(t, "hello", req.Input.Messages[0].Content[0].Text)
+
+	req.Metadata = nil
+	assert.Nil(t, req.Clone().Metadata, "absent metadata stays absent")
+}
+
+func TestConnectorRejectsNilModels(t *testing.T) {
+	const want = `router: model "" does not implement llms.InferenceModel`
+	c, err := Connector(nil)
+	require.EqualError(t, err, want)
+	assert.Nil(t, c)
+
+	var typedNil *inferenceModel
+	c, err = Connector(typedNil)
+	require.EqualError(t, err, want)
+	assert.Nil(t, c)
+}
+
+func TestSelectorWithoutEligibleTargets(t *testing.T) {
+	m := &testModel{}
+	denied := target("a", m)
+	denied.Allow = func(context.Context) bool { return false }
+	var selected atomic.Int32
+	r, err := New(Config{
+		Targets: []Target{denied},
+		Selector: SelectorFunc(func(context.Context, SelectionInput) (Decision, error) {
+			selected.Add(1)
+			return Decision{TargetID: "a"}, nil
+		}),
+	})
+	require.NoError(t, err)
+	_, err = r.Generate(context.Background(), request())
+	requireRouterError(t, err, KindSelectionUnavailable, "", "no eligible model")
+	assert.Zero(t, selected.Load(), "selector is not consulted without candidates")
+	assert.Zero(t, m.calls.Load())
+}
+
+func TestInvalidSelectorDecisions(t *testing.T) {
+	tooHigh := 1.5
+	negative := -0.5
+	nan := math.NaN()
+	cases := []struct {
+		name     string
+		decision Decision
+		cause    string
+	}{
+		{
+			name: "classification too long",
+			decision: Decision{
+				TargetID:       "a",
+				Classification: strings.Repeat("c", maxClassificationBytes+1),
+			},
+			cause: "classification exceeds 128 bytes",
+		},
+		{
+			name: "confidence above one",
+			decision: Decision{
+				TargetID:   "a",
+				Confidence: &tooHigh,
+			},
+			cause: "confidence must be within [0,1]",
+		},
+		{
+			name: "negative confidence",
+			decision: Decision{
+				TargetID:   "a",
+				Confidence: &negative,
+			},
+			cause: "confidence must be within [0,1]",
+		},
+		{
+			name: "NaN confidence",
+			decision: Decision{
+				TargetID:   "a",
+				Confidence: &nan,
+			},
+			cause: "confidence must be within [0,1]",
+		},
+		{
+			name: "alias instead of target ID",
+			decision: Decision{
+				TargetID: "alias-a",
+			},
+			cause: `selected target "alias-a" is not an eligible target ID`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &testModel{}
+			tgt := target("a", m)
+			tgt.Aliases = []string{"alias-a"}
+			r, err := New(Config{
+				Targets: []Target{tgt},
+				Selector: SelectorFunc(func(context.Context, SelectionInput) (Decision, error) {
+					return tc.decision, nil
+				}),
+			})
+			require.NoError(t, err)
+			_, err = r.Generate(context.Background(), request())
+			re := requireRouterError(t, err, KindSelectionUnavailable, "", "model selection failed")
+			require.EqualError(t, re.Cause, tc.cause)
+			assert.Zero(t, m.calls.Load())
+		})
+	}
+}
+
+func TestCancellationDuringSelectionSkipsInference(t *testing.T) {
+	m := &testModel{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, err := New(Config{
+		Targets:  []Target{target("a", m)},
+		Fallback: "a",
+		Selector: SelectorFunc(func(context.Context, SelectionInput) (Decision, error) {
+			cancel()
+			return Decision{TargetID: "a"}, nil
+		}),
+	})
+	require.NoError(t, err)
+	_, err = r.Generate(ctx, request())
+	requireRouterError(t, err, KindCancelled, "", msgCancelled)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, m.calls.Load(), "a cancelled request never reaches the connector")
+}
+
+func TestInferenceDeadlineIsClassified(t *testing.T) {
+	m := &testModel{
+		infer: func(ctx context.Context, _ llms.InferenceRequest) (*llms.InferenceResponse, error) {
+			<-ctx.Done()
+			return nil, errors.Wrap(ctx.Err(), "provider transport")
+		},
+	}
+	r, err := New(Config{
+		Targets: []Target{target("a", m)},
+		Timeout: 5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	_, err = r.Generate(context.Background(), request())
+	requireRouterError(t, err, KindTimeout, "", msgDeadline)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestTargetOutputLimitIsDefaulted(t *testing.T) {
+	const limit = 64
+	var got []int
+	m := &testModel{
+		infer: func(_ context.Context, in llms.InferenceRequest) (*llms.InferenceResponse, error) {
+			require.NotNil(t, in.MaxTokens)
+			got = append(got, *in.MaxTokens)
+			return textResponse("ok"), nil
+		},
+	}
+	tgt := target("a", m)
+	tgt.MaxOutputTokens = limit
+	r, err := New(Config{Targets: []Target{tgt}})
+	require.NoError(t, err)
+	req := request()
+	_, err = r.Generate(context.Background(), req)
+	require.NoError(t, err)
+	assert.Nil(t, req.Input.MaxTokens, "caller request is not mutated")
+
+	explicit := 10
+	req.Input.MaxTokens = &explicit
+	_, err = r.Generate(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, []int{limit, explicit}, got)
 }

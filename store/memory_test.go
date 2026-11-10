@@ -190,3 +190,45 @@ func Test_MemoryStoreManager(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, len(chats))
 }
+
+func Test_MemoryStore_UnknownTenantAndChat(t *testing.T) {
+	ctx := newChatCtx("")
+	st := store.NewMemoryStore()
+
+	ids, err := st.ListChatIDs(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, ids)
+
+	// An unknown tenant is not an error.
+	info, err := st.GetChatInfo(ctx, "", false)
+	require.NoError(t, err)
+	assert.Nil(t, info)
+
+	mgr := store.NewMemoryStoreManager(st)
+	require.NotNil(t, mgr)
+	deleted, err := mgr.Cleanup(ctx, "unknown-tenant", time.Hour)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), deleted)
+
+	// UpdateChat creates the tenant and the chat on first use.
+	created, err := st.UpdateChat(ctx, "", nil, []string{"t1"})
+	require.NoError(t, err)
+	assert.Equal(t, testUserID, created.UserID)
+	assert.Equal(t, testChatID, created.ChatID)
+	assert.Equal(t, "New Chat", created.Title)
+	assert.Equal(t, []string{"t1"}, created.Tags)
+	assert.Nil(t, created.Metadata)
+
+	ids, err = st.ListChatIDs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{testChatID}, ids)
+
+	// A known tenant with an unknown chat is an error.
+	info, err = st.GetChatInfo(ctx, "other-chat", false)
+	assert.Nil(t, info)
+	assert.EqualError(t, err, "chat not found")
+}
+
+func Test_NewMemoryStoreManager_NotAManager(t *testing.T) {
+	assert.Nil(t, store.NewMemoryStoreManager(&fixedStore{}))
+}

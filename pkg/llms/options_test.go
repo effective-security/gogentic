@@ -122,3 +122,19 @@ func TestWithPromptCachePolicy(t *testing.T) {
 	require.Len(t, cfg.PromptCachePolicy.Breakpoints, 1)
 	assert.Equal(t, llms.PromptCacheTargetMessagePart, cfg.PromptCachePolicy.Breakpoints[0].Target.Kind)
 }
+
+func TestWithCandidateCountAndWithOptions(t *testing.T) {
+	var cfg llms.CallOptions
+	llms.WithCandidateCount(3)(&cfg)
+	assert.Equal(t, 3, cfg.CandidateCount)
+
+	// WithOptions replaces the whole option set, including fields set before.
+	replacement := llms.CallOptions{
+		Model:     "replacement",
+		MaxTokens: 7,
+	}
+	llms.WithOptions(replacement)(&cfg)
+	assert.Equal(t, 0, cfg.CandidateCount)
+	assert.Equal(t, "replacement", cfg.Model)
+	assert.Equal(t, 7, cfg.MaxTokens)
+}

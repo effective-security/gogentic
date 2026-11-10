@@ -153,3 +153,35 @@ func TestRenderTemplate(t *testing.T) {
 		require.ErrorIs(t, err, ErrInvalidTemplateFormat)
 	})
 }
+
+func TestInterpolateJinja2Errors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+		wantErr  string
+	}{
+		{
+			name:     "ParseErrored",
+			template: "{% if %}",
+			wantErr:  `Unable to parse statement "if": Expected either a number, string, keyword or identifier. (Line: 0 Col: 0, near "")`,
+		},
+		{
+			name:     "ExecuteErrored",
+			template: "{{ x() }}",
+			wantErr:  "Unable to Execute template: Unable to render expression at line 1: call([], map[]): x is not callable",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := RenderTemplate(tc.template, TemplateFormatJinja2, map[string]any{
+				"x": 1,
+			})
+			require.EqualError(t, err, tc.wantErr)
+			assert.Empty(t, out)
+		})
+	}
+}

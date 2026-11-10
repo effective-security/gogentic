@@ -908,3 +908,67 @@ func TestUnmarshalJSONToolCallResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestUnmarshalJSONMessageErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expErr string
+	}{
+		{
+			name:   "role is not a string",
+			input:  `{"role":1}`,
+			expErr: "json: cannot unmarshal number into Go struct field MessageContentJSON.role of type llms.Role",
+		},
+		{
+			name:   "parts is not an array",
+			input:  `{"role":"human","parts":"text"}`,
+			expErr: "parts field must be an array",
+		},
+		{
+			name:   "part is not an object",
+			input:  `{"role":"human","parts":["text"]}`,
+			expErr: "json: cannot unmarshal string into Go value of type llms.ContentPartJSON",
+		},
+		{
+			name:   "image_url without payload",
+			input:  `{"role":"human","parts":[{"type":"image_url"}]}`,
+			expErr: "image_url field is required for image_url type",
+		},
+		{
+			name:   "binary without payload",
+			input:  `{"role":"human","parts":[{"type":"binary"}]}`,
+			expErr: "binary field is required for binary type",
+		},
+		{
+			name:   "binary with invalid base64",
+			input:  `{"role":"human","parts":[{"type":"binary","binary":{"data":"!!!","mime_type":"image/png"}}]}`,
+			expErr: "failed to decode binary data: illegal base64 data at input byte 0",
+		},
+		{
+			name:   "tool_call without payload",
+			input:  `{"role":"ai","parts":[{"type":"tool_call"}]}`,
+			expErr: "tool_call field is required for tool_call type",
+		},
+		{
+			name:   "tool_response without payload",
+			input:  `{"role":"tool","parts":[{"type":"tool_response"}]}`,
+			expErr: "tool_response field is required for tool_response type",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var msg Message
+			err := json.Unmarshal([]byte(tc.input), &msg)
+			require.Error(t, err)
+			assert.EqualError(t, err, tc.expErr)
+		})
+	}
+}
+
+func TestUnmarshalJSONMessageNull(t *testing.T) {
+	// A JSON null decodes into an empty message without error.
+	var msg Message
+	require.NoError(t, msg.UnmarshalJSON([]byte(`null`)))
+	assert.Equal(t, Message{}, msg)
+}

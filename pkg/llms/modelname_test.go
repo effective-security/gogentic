@@ -36,6 +36,12 @@ func TestParseModelName(t *testing.T) {
 		{id: "claude-sonnet-4-5-20250929", family: "claude-sonnet", version: []int{4, 5}, snapshot: "20250929"},
 		{id: "claude-3-opus-latest", family: "claude-opus", version: []int{3}, stage: "latest"},
 
+		// A year followed by parts that are not two digits is not a dashed date:
+		// the year is a snapshot and the parts are version components.
+		{id: "model-2025-1-13", family: "model", version: []int{1, 13}, snapshot: "2025"},
+		// A dotted version that overflows int is not a version.
+		{id: "gpt-99999999999999999999.1", family: "gpt"},
+
 		// OpenAI.
 		{id: "gpt-5.1", family: "gpt", version: []int{5, 1}},
 		{id: "gpt-5", family: "gpt", version: []int{5}},

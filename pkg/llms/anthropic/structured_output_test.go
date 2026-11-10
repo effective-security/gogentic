@@ -254,3 +254,59 @@ func TestStructuredOutputObjectAndArraySchema(t *testing.T) {
 	assert.NotEmpty(t, parsed.Steps)
 	assert.NotEmpty(t, parsed.FinalAnswer)
 }
+
+func TestConvertToAnthropicSchema_AllKeywords(t *testing.T) {
+	t.Parallel()
+
+	allowExtra := true
+	prop := &schema.ResponseFormatJSONSchemaProperty{
+		Type:        "object",
+		Title:       "Answer",
+		Description: "The final answer",
+		Required:    []string{"kind"},
+		Properties: map[string]*schema.ResponseFormatJSONSchemaProperty{
+			"kind": {
+				Type:        "string",
+				Description: "Kind of answer",
+				Enum:        []any{"short", "long"},
+				Default:     "short",
+			},
+			"meta": {
+				Type:                 "object",
+				AdditionalProperties: &allowExtra,
+			},
+			"tags": {
+				Type: "array",
+				Items: &schema.ResponseFormatJSONSchemaProperty{
+					Type: "string",
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, map[string]any{
+		"type":                 "object",
+		"title":                "Answer",
+		"description":          "The final answer",
+		"required":             []string{"kind"},
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"kind": map[string]any{
+				"type":        "string",
+				"description": "Kind of answer",
+				"enum":        []any{"short", "long"},
+				"default":     "short",
+			},
+			"meta": map[string]any{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+			"tags": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+		},
+	}, convertToAnthropicSchema(prop))
+}

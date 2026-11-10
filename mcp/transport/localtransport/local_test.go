@@ -613,3 +613,55 @@ func TestTransport_Send(t *testing.T) {
 		}
 	})
 }
+
+func TestTransport_SendEdgeCases(t *testing.T) {
+	t.Run("notification is a no-op", func(t *testing.T) {
+		tr := localtransport.New()
+		err := tr.Send(context.Background(), transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "notifications/tools/list_changed",
+		}))
+		assert.NoError(t, err)
+	})
+
+	t.Run("cancelled context while nobody receives", func(t *testing.T) {
+		tr := localtransport.New()
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		sendErr := make(chan error, 1)
+		tr.SetMessageHandler(func(ctx context.Context, msg *transport.BaseJsonRpcMessage) {
+			id := msg.JsonRpcRequest.Id
+			// HandleMessage is not receiving yet: the handler runs
+			// synchronously, so a send with a cancelled context must give up.
+			sendErr <- tr.Send(cancelled, transport.NewBaseMessageResponse(&transport.BaseJSONRPCResponse{
+				Jsonrpc: "2.0",
+				Id:      id,
+				Result:  json.RawMessage(`{"first":true}`),
+			}))
+			go func() {
+				_ = tr.Send(context.Background(), transport.NewBaseMessageResponse(&transport.BaseJSONRPCResponse{
+					Jsonrpc: "2.0",
+					Id:      id,
+					Result:  json.RawMessage(`{"second":true}`),
+				}))
+			}()
+		})
+
+		body, err := json.Marshal(transport.BaseJSONRPCRequest{
+			Jsonrpc: "2.0",
+			Method:  "test_method",
+			Id:      transport.RequestId(77),
+		})
+		require.NoError(t, err)
+
+		resp, err := tr.HandleMessage(context.Background(), body)
+		require.NoError(t, err)
+		assert.EqualError(t, <-sendErr, "send cancelled: context canceled")
+
+		require.NotNil(t, resp)
+		require.Equal(t, transport.BaseMessageTypeJSONRPCResponseType, resp.Type)
+		assert.Equal(t, transport.RequestId(77), resp.JsonRpcResponse.Id, "original request id must be restored")
+		assert.JSONEq(t, `{"second":true}`, string(resp.JsonRpcResponse.Result))
+	})
+}

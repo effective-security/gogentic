@@ -267,6 +267,10 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | `pkg/llms/anthropic/efforts_recorded_test.go` | The Anthropic effort table agrees with the capabilities in the recorded model list |
 | `skills/loader_test.go` | Discovery from folders and tar archives |
 | `mcp/server_test.go` | Registration, notifications, handler validation |
+| `mcp/client_test.go` | `Client` end to end against a real `Server` over the local transport, and every client error path through a scripted transport |
+| `router/validate_test.go`, `router/dialect/{openai,anthropic}/decode_test.go` | Every request-validation and codec rejection branch, with the exact error kind and parameter |
+| `pkg/llms/bedrock/internal/bedrockclient/*_test.go` | `InvokeModel` request and response shapes per model family over a fake HTTP client, including hand-built streaming event frames |
+| `store/redis_test.go` | Redis store against a Redis container (needs Docker) plus injected client failures |
 
 `Makefile` exports fake provider credentials, so unit tests run without
 secrets. Provider integration tests are guarded by env vars or `t.Skip`.

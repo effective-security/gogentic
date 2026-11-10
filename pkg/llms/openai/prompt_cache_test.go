@@ -139,3 +139,39 @@ func TestApplyPromptCacheToResponsesRequest(t *testing.T) {
 	require.True(t, req.PromptCacheKey.Valid())
 	assert.Equal(t, "resp-key", req.PromptCacheKey.Value)
 }
+
+func TestResolvePromptCacheRequestConfig_NilOptions(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, promptCacheRequestConfig{}, resolvePromptCacheRequestConfig(nil))
+}
+
+func TestPromptCacheRetentionWireValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in            llms.PromptCacheRetention
+		wantChat      string
+		wantResponses responses.ResponseNewParamsPromptCacheRetention
+	}{
+		{
+			in:            llms.PromptCacheRetentionInMemory,
+			wantChat:      "in_memory",
+			wantResponses: "in_memory",
+		},
+		{
+			in:            llms.PromptCacheRetention24h,
+			wantChat:      "24h",
+			wantResponses: responses.ResponseNewParamsPromptCacheRetention24h,
+		},
+		{
+			in:            "7d",
+			wantChat:      "7d",
+			wantResponses: "7d",
+		},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.wantChat, toChatPromptCacheRetention(tc.in), string(tc.in))
+		assert.Equal(t, tc.wantResponses, toResponsesPromptCacheRetention(tc.in), string(tc.in))
+	}
+}

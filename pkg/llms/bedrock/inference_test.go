@@ -11,6 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -261,4 +265,578 @@ func TestValidateInferenceRejections(t *testing.T) {
 	var ie *llms.InferenceError
 	require.ErrorAs(t, err, &ie)
 	assert.Equal(t, "provider.converse", ie.Param)
+}
+
+const (
+	toolArgsJSON      = `{"n":1}`
+	opaqueReasoning   = `{"reasoningText":{"text":"why"}}`
+	transportFailure  = "dial tcp: connection refused"
+	captureFailure    = "boom"
+	decodeErrorPrefix = "decode bedrock inference: "
+)
+
+// requireInferenceError asserts err is an *llms.InferenceError with the exact status and message.
+func requireInferenceError(t *testing.T, err error, status int, message string) {
+	t.Helper()
+	var ie *llms.InferenceError
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, status, ie.Status)
+	assert.EqualError(t, err, message)
+}
+
+func TestValidateInferenceReasoningControls(t *testing.T) {
+	m := (&fixture{t: t, response: textResponse}).model()
+	temperature := 0.5
+	budget := 1024
+	atBudget := 1024
+	aboveBudget := 2048
+
+	err := m.ValidateInference(llms.InferenceRequest{
+		Reasoning: &llms.InferenceReasoning{
+			Effort: llms.EffortLow,
+		},
+		Temperature: &temperature,
+	})
+	var ie *llms.InferenceError
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, paramTemperature, ie.Param, "temperature cannot be combined with thinking")
+
+	err = m.ValidateInference(llms.InferenceRequest{
+		Reasoning: &llms.InferenceReasoning{
+			BudgetTokens: &budget,
+		},
+		MaxTokens: &atBudget,
+	})
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, paramMaxTokens, ie.Param, "explicit budget must stay below max tokens")
+
+	require.NoError(t, m.ValidateInference(llms.InferenceRequest{
+		Reasoning: &llms.InferenceReasoning{
+			BudgetTokens: &budget,
+		},
+		MaxTokens: &aboveBudget,
+	}))
+}
+
+func TestInferSamplingControlsAndExplicitBudget(t *testing.T) {
+	f := &fixture{t: t, response: textResponse}
+	m := f.model()
+	topP := 0.5
+	maxTokens := 4096
+	req := textRequest("hi")
+	req.TopP = &topP
+	req.MaxTokens = &maxTokens
+	req.Stop = []string{"END"}
+	_, err := m.Infer(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"topP":          0.5,
+		"maxTokens":     float64(4096),
+		"stopSequences": []any{"END"},
+	}, f.requests[0]["inferenceConfig"])
+	assert.NotContains(t, f.requests[0], "additionalModelRequestFields")
+
+	budget := 2048
+	req = textRequest("think")
+	req.MaxTokens = &maxTokens
+	req.Reasoning = &llms.InferenceReasoning{
+		BudgetTokens: &budget,
+	}
+	_, err = m.Infer(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"thinking": map[string]any{
+			"type":          "enabled",
+			"budget_tokens": float64(2048),
+		},
+	}, f.requests[1]["additionalModelRequestFields"])
+	assert.Equal(t, map[string]any{
+		"maxTokens": float64(4096),
+	}, f.requests[1]["inferenceConfig"])
+}
+
+func TestInferToolChoiceModesAndSchema(t *testing.T) {
+	const schema = `{"type":"object","properties":{"n":{"type":"integer","enum":[1,2]}},"required":["n"]}`
+	tests := []struct {
+		mode     llms.ToolChoiceMode
+		expected map[string]any
+	}{
+		{
+			mode: llms.ToolChoiceAuto,
+			expected: map[string]any{
+				"auto": map[string]any{},
+			},
+		},
+		{
+			mode: llms.ToolChoiceRequired,
+			expected: map[string]any{
+				"any": map[string]any{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.mode), func(t *testing.T) {
+			f := &fixture{t: t, response: textResponse}
+			m := f.model()
+			req := textRequest("lookup")
+			req.Tools = []llms.InferenceTool{
+				{
+					Name:        "lookup",
+					Description: "Look up a number",
+					Parameters:  json.RawMessage(schema),
+				},
+			}
+			req.ToolChoice = &llms.InferenceToolChoice{
+				Mode: tt.mode,
+			}
+			_, err := m.Infer(context.Background(), req)
+			require.NoError(t, err)
+			toolConfig := f.requests[0]["toolConfig"].(map[string]any)
+			assert.Equal(t, tt.expected, toolConfig["toolChoice"])
+			tools := toolConfig["tools"].([]any)
+			require.Len(t, tools, 1)
+			spec := tools[0].(map[string]any)["toolSpec"].(map[string]any)
+			assert.Equal(t, "lookup", spec["name"])
+			assert.Equal(t, "Look up a number", spec["description"])
+			inputSchema, err := json.Marshal(spec["inputSchema"].(map[string]any)["json"])
+			require.NoError(t, err)
+			assert.JSONEq(t, schema, string(inputSchema), "array members keep their numbers")
+		})
+	}
+}
+
+func TestInferRejectsBeforeSending(t *testing.T) {
+	f := &fixture{t: t, response: textResponse}
+	m := f.model()
+
+	legacy, err := New(WithClient(m.runtimeClient), WithModel("fixture"))
+	require.NoError(t, err)
+	_, err = legacy.Infer(context.Background(), textRequest("hi"))
+	var ie *llms.InferenceError
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, paramConverse, ie.Param)
+
+	req := textRequest("hi")
+	req.Messages = append(req.Messages, llms.InferenceMessage{
+		Role: llms.InferenceRoleAssistant,
+		Content: []llms.InferenceBlock{
+			{
+				Type:      llms.BlockFunctionCall,
+				ID:        "call_1",
+				Name:      "lookup",
+				Arguments: "{",
+			},
+		},
+	})
+	_, err = m.Infer(context.Background(), req)
+	requireInferenceError(t, err, http.StatusBadRequest, "decode bedrock tool arguments: decode document: unexpected EOF")
+	assert.Empty(t, f.requests, "invalid requests never reach bedrock")
+}
+
+func TestInferTransportError(t *testing.T) {
+	transportErr := errors.New(transportFailure)
+	attempts := 0
+	runtime := bedrockruntime.NewFromConfig(aws.Config{
+		Region:      "us-east-1",
+		Credentials: credentials.NewStaticCredentialsProvider("fixture", "fixture", ""),
+		HTTPClient: &http.Client{
+			Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+				attempts++
+				return nil, transportErr
+			}),
+		},
+	})
+	m, err := New(WithClient(runtime), WithModel("fixture"), WithConverse())
+	require.NoError(t, err)
+	_, err = m.Infer(context.Background(), textRequest("hi"))
+	var ie *llms.InferenceError
+	require.ErrorAs(t, err, &ie)
+	assert.Empty(t, ie.Param)
+	assert.ErrorIs(t, err, transportErr)
+	assert.Contains(t, err.Error(), "bedrock converse inference: operation error Bedrock Runtime: Converse")
+	assert.Equal(t, 1, attempts, "converse is never retried")
+}
+
+func TestConverseInputErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     llms.InferenceRequest
+		status  int
+		message string
+		param   string
+	}{
+		{
+			name: "unknown reasoning effort",
+			req: llms.InferenceRequest{
+				Reasoning: &llms.InferenceReasoning{
+					Effort: "extreme",
+				},
+			},
+			status:  http.StatusBadRequest,
+			message: "unsupported inference parameter: reasoning",
+			param:   paramReasoning,
+		},
+		{
+			name: "invalid tool schema",
+			req: llms.InferenceRequest{
+				Tools: []llms.InferenceTool{
+					{
+						Name:       "lookup",
+						Parameters: json.RawMessage(`not json`),
+					},
+				},
+			},
+			status:  http.StatusBadRequest,
+			message: "decode bedrock tool schema: decode document: invalid character 'o' in literal null (expecting 'u')",
+		},
+		{
+			name: "invalid reasoning state",
+			req: llms.InferenceRequest{
+				Messages: []llms.InferenceMessage{
+					{
+						Role: llms.InferenceRoleAssistant,
+						Content: []llms.InferenceBlock{
+							{
+								Type:   llms.BlockReasoning,
+								Opaque: json.RawMessage(`[]`),
+							},
+						},
+					},
+				},
+			},
+			status:  http.StatusBadRequest,
+			message: "decode reasoning state: json: cannot unmarshal array into Go value of type bedrock.reasoningOpaque",
+		},
+		{
+			name: "unknown reasoning state",
+			req: llms.InferenceRequest{
+				Messages: []llms.InferenceMessage{
+					{
+						Role: llms.InferenceRoleAssistant,
+						Content: []llms.InferenceBlock{
+							{
+								Type:   llms.BlockReasoning,
+								Opaque: json.RawMessage(`{}`),
+							},
+						},
+					},
+				},
+			},
+			status:  http.StatusBadRequest,
+			message: "decode reasoning state: unknown reasoning state",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in, err := converseInput(tt.req)
+			assert.Nil(t, in)
+			requireInferenceError(t, err, tt.status, tt.message)
+			var ie *llms.InferenceError
+			require.ErrorAs(t, err, &ie)
+			assert.Equal(t, tt.param, ie.Param)
+		})
+	}
+}
+
+func TestConverseBlocksSkipsStatelessReasoning(t *testing.T) {
+	blocks, err := converseBlocks([]llms.InferenceBlock{
+		{
+			Type: llms.BlockReasoning,
+			Text: "summary only",
+		},
+		{
+			Type: llms.BlockRefusal,
+			Text: "no",
+		},
+		{
+			Type:   llms.BlockReasoning,
+			Opaque: json.RawMessage(opaqueReasoning),
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []types.ContentBlock{
+		&types.ContentBlockMemberText{
+			Value: "no",
+		},
+		&types.ContentBlockMemberReasoningContent{
+			Value: &types.ReasoningContentBlockMemberReasoningText{
+				Value: types.ReasoningTextBlock{
+					Text: aws.String("why"),
+				},
+			},
+		},
+	}, blocks)
+}
+
+func TestConverseOutputErrors(t *testing.T) {
+	reasoning := &types.ContentBlockMemberReasoningContent{
+		Value: &types.ReasoningContentBlockMemberReasoningText{
+			Value: types.ReasoningTextBlock{
+				Text: aws.String("why"),
+			},
+		},
+	}
+	toolUse := &types.ContentBlockMemberToolUse{
+		Value: types.ToolUseBlock{
+			ToolUseId: aws.String("call_1"),
+			Name:      aws.String("lookup"),
+		},
+	}
+	tests := []struct {
+		name    string
+		output  types.ConverseOutput
+		raw     string
+		message string
+	}{
+		{
+			name:    "missing message",
+			output:  nil,
+			raw:     `{}`,
+			message: "missing message",
+		},
+		{
+			name: "undecodable body",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						&types.ContentBlockMemberText{
+							Value: "hi",
+						},
+					},
+				},
+			},
+			raw:     `{`,
+			message: "decode bedrock converse body: unexpected end of JSON input",
+		},
+		{
+			name: "content length mismatch",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						&types.ContentBlockMemberText{
+							Value: "hi",
+						},
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[]}}}`,
+			message: "bedrock content length mismatch",
+		},
+		{
+			name: "text block with tool input",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						&types.ContentBlockMemberText{
+							Value: "hi",
+						},
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"toolUse":{"input":{}}}]}}}`,
+			message: "unexpected tool input",
+		},
+		{
+			name: "tool use without input",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						toolUse,
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"text":"hi"}]}}}`,
+			message: "missing or invalid tool input",
+		},
+		{
+			name: "tool use with non-object input",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						toolUse,
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"toolUse":{"input":[1]}}]}}}`,
+			message: "missing or invalid tool input",
+		},
+		{
+			name: "reasoning block with tool input",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						reasoning,
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"toolUse":{"input":{}}}]}}}`,
+			message: "unexpected tool input",
+		},
+		{
+			name: "unknown reasoning content",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						&types.ContentBlockMemberReasoningContent{
+							Value: &types.UnknownUnionMember{
+								Tag: "future",
+							},
+						},
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"reasoningContent":{"future":{}}}]}}}`,
+			message: "unknown reasoning content",
+		},
+		{
+			name: "non portable content",
+			output: &types.ConverseOutputMemberMessage{
+				Value: types.Message{
+					Content: []types.ContentBlock{
+						&types.ContentBlockMemberImage{},
+					},
+				},
+			},
+			raw:     `{"output":{"message":{"content":[{"image":{}}]}}}`,
+			message: "opaque content outside portable profile",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := converseOutput(&bedrockruntime.ConverseOutput{
+				StopReason: types.StopReasonEndTurn,
+				Output:     tt.output,
+			}, []byte(tt.raw))
+			assert.Nil(t, out)
+			requireInferenceError(t, err, http.StatusBadGateway, decodeErrorPrefix+tt.message)
+		})
+	}
+}
+
+func TestConverseFinishReasons(t *testing.T) {
+	tests := map[types.StopReason]llms.FinishReason{
+		types.StopReasonEndTurn:             llms.FinishStop,
+		types.StopReasonStopSequence:        llms.FinishStop,
+		types.StopReasonMaxTokens:           llms.FinishLength,
+		types.StopReasonToolUse:             llms.FinishToolCalls,
+		types.StopReasonContentFiltered:     llms.FinishContentFilter,
+		types.StopReasonGuardrailIntervened: llms.FinishContentFilter,
+	}
+	for reason, expected := range tests {
+		t.Run(string(reason), func(t *testing.T) {
+			finish, err := converseFinishReason(reason)
+			require.NoError(t, err)
+			assert.Equal(t, expected, finish)
+		})
+	}
+	finish, err := converseFinishReason("mystery")
+	assert.Empty(t, finish)
+	requireInferenceError(t, err, http.StatusBadGateway, `decode bedrock inference: unsupported stop reason "mystery"`)
+}
+
+// failingBody is a response body whose Read or Close fails.
+type failingBody struct {
+	readErr  error
+	closeErr error
+}
+
+func (b failingBody) Read(p []byte) (int, error) {
+	if b.readErr != nil {
+		return 0, b.readErr
+	}
+	return 0, io.EOF
+}
+
+func (b failingBody) Close() error { return b.closeErr }
+
+// deserializeReturning is a next handler that yields the given raw response or error.
+func deserializeReturning(raw any, err error) middleware.DeserializeHandler {
+	return middleware.DeserializeHandlerFunc(func(context.Context, middleware.DeserializeInput) (
+		middleware.DeserializeOutput, middleware.Metadata, error,
+	) {
+		return middleware.DeserializeOutput{
+			RawResponse: raw,
+		}, middleware.Metadata{}, err
+	})
+}
+
+func TestCaptureConverseBody(t *testing.T) {
+	assert.Equal(t, captureConverseBodyID, captureConverseBody{}.ID())
+	failure := errors.New(captureFailure)
+
+	httpResponse := func(body io.ReadCloser) *smithyhttp.Response {
+		return &smithyhttp.Response{
+			Response: &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       body,
+			},
+		}
+	}
+
+	t.Run("captures and restores the body", func(t *testing.T) {
+		var raw []byte
+		ctx := context.WithValue(context.Background(), converseBodyKey{}, &raw)
+		resp := httpResponse(io.NopCloser(strings.NewReader(textResponse)))
+		out, _, err := captureConverseBody{}.HandleDeserialize(ctx, middleware.DeserializeInput{}, deserializeReturning(resp, nil))
+		require.NoError(t, err)
+		assert.Equal(t, textResponse, string(raw))
+		restored, err := io.ReadAll(out.RawResponse.(*smithyhttp.Response).Body)
+		require.NoError(t, err)
+		assert.Equal(t, textResponse, string(restored), "the deserializer still sees the full body")
+	})
+
+	tests := []struct {
+		name    string
+		raw     any
+		nextErr error
+		message string
+	}{
+		{
+			name:    "next handler error",
+			raw:     nil,
+			nextErr: failure,
+			message: captureFailure,
+		},
+		{
+			name:    "non http response",
+			raw:     "raw",
+			message: "",
+		},
+		{
+			name: "nil body",
+			raw: &smithyhttp.Response{
+				Response: &http.Response{},
+			},
+			message: "",
+		},
+		{
+			name: "read error",
+			raw: httpResponse(failingBody{
+				readErr: failure,
+			}),
+			message: "read bedrock converse body: " + captureFailure,
+		},
+		{
+			name: "close error",
+			raw: httpResponse(failingBody{
+				closeErr: failure,
+			}),
+			message: "close bedrock converse body: " + captureFailure,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := []byte("untouched")
+			ctx := context.WithValue(context.Background(), converseBodyKey{}, &raw)
+			out, _, err := captureConverseBody{}.HandleDeserialize(ctx, middleware.DeserializeInput{}, deserializeReturning(tt.raw, tt.nextErr))
+			if tt.message == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tt.message)
+				assert.ErrorIs(t, err, failure)
+			}
+			assert.Equal(t, tt.raw, out.RawResponse)
+			assert.Equal(t, "untouched", string(raw), "nothing is captured on this path")
+		})
+	}
 }

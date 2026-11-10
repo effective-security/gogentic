@@ -23,6 +23,11 @@ func TestChatContext_Basics(t *testing.T) {
 	c.SetChatID("newid")
 	assert.Equal(t, "newid", c.GetChatID())
 
+	// SetOrgID
+	assert.Empty(t, c.GetOrgID())
+	c.SetOrgID("org1")
+	assert.Equal(t, "org1", c.GetOrgID())
+
 	// Metadata
 	val, ok := c.GetMetadata("not-found")
 	assert.Nil(t, val)

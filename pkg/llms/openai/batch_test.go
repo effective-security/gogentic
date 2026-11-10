@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/openai/internal/openaiclient"
+	"github.com/invopop/jsonschema"
+	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -532,4 +535,557 @@ func TestCompletionWindowString(t *testing.T) {
 			assert.Equal(t, tc.want, completionWindowString(tc.in))
 		})
 	}
+}
+
+const (
+	batchOutputFile = "file-output"
+	batchErrorFile  = "file-errors"
+	missingFile     = "file-missing"
+	unknownBatchID  = "batch-unknown"
+)
+
+// newBatchFixture starts a fake batch server with one submitted batch and
+// returns the server, the LLM pointed at it and the batch ID.
+func newBatchFixture(t *testing.T, opts ...Option) (*fakeBatchServer, *LLM, string) {
+	t.Helper()
+	fs := newFakeBatchServer(t)
+	srv := httptest.NewServer(fs.handler())
+	t.Cleanup(srv.Close)
+
+	opts = append([]Option{
+		WithToken("test-token"),
+		WithBaseURL(srv.URL + "/v1"),
+		WithModel("gpt-5-mini"),
+		WithProvider(llms.ProviderOpenAI),
+	}, opts...)
+	llm, err := New(opts...)
+	require.NoError(t, err)
+
+	handle, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
+		{CustomID: "r-1", Messages: []llms.Message{humanMsg("hi")}},
+	})
+	require.NoError(t, err)
+	return fs, llm, handle.ID
+}
+
+// badToolMessage is a tool message that neither request builder accepts.
+func badToolMessage() llms.Message {
+	return llms.MessageFromTextParts(llms.RoleTool, "not a tool response")
+}
+
+func TestSubmitBatch_BuildLineError(t *testing.T) {
+	t.Parallel()
+
+	fs := newFakeBatchServer(t)
+	srv := httptest.NewServer(fs.handler())
+	t.Cleanup(srv.Close)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
+
+	_, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
+		{CustomID: "r-1", Messages: []llms.Message{badToolMessage()}},
+	})
+	require.EqualError(t, err, "failed to build batch line for request: r-1: expected ToolCallResponse for tool role, got llms.TextContent")
+	assert.Empty(t, fs.uploadedJSONL, "nothing is uploaded when a line cannot be built")
+}
+
+func TestSubmitBatch_CreateBatchError(t *testing.T) {
+	t.Parallel()
+
+	fs := newFakeBatchServer(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/files", fs.handleFilesNew)
+	mux.HandleFunc("/v1/batches", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte(`{"error":{"message":"window not allowed","type":"invalid_request_error"}}`))
+		assert.NoError(t, err)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	llm := newTestLLM(t, srv.URL, llms.ProviderOpenAI)
+
+	_, err := llm.SubmitBatch(context.Background(), []llms.BatchRequest{
+		{CustomID: "r-1", Messages: []llms.Message{humanMsg("hi")}},
+	})
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "failed to create batch: "), err.Error())
+	var apiErr *openaisdk.Error
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	assert.NotEmpty(t, fs.uploadedJSONL, "the input file was uploaded before the batch failed")
+}
+
+func TestBatch_NotFound(t *testing.T) {
+	t.Parallel()
+
+	_, llm, _ := newBatchFixture(t)
+	ctx := context.Background()
+
+	_, err := llm.GetBatch(ctx, unknownBatchID)
+	assert.ErrorIs(t, err, llms.ErrBatchNotFound)
+	_, err = llm.CancelBatch(ctx, unknownBatchID)
+	assert.ErrorIs(t, err, llms.ErrBatchNotFound)
+	_, err = llm.FetchBatchResults(ctx, unknownBatchID)
+	assert.ErrorIs(t, err, llms.ErrBatchNotFound)
+}
+
+func TestBatchError(t *testing.T) {
+	t.Parallel()
+
+	assert.NoError(t, batchError(nil))
+	assert.ErrorIs(t, batchError(openaiclient.ErrBatchUnsupported()), llms.ErrBatchNotSupported)
+
+	other := errors.New("other failure")
+	assert.True(t, batchError(other) == other, "an error without a neutral equivalent is returned unchanged")
+
+	badRequest := errors.Wrap(&openaisdk.Error{StatusCode: http.StatusBadRequest}, "failed to get batch")
+	assert.True(t, batchError(badRequest) == badRequest, "a non-404 API error is returned unchanged")
+}
+
+func TestFetchBatchResults_ChatEndpointWithErrorFile(t *testing.T) {
+	t.Parallel()
+
+	fs, llm, id := newBatchFixture(t)
+
+	output := strings.Join([]string{
+		`{"id":"row-1","custom_id":"r-chat","response":{"status_code":200,"request_id":"req-1","body":{"id":"chatcmpl-1","choices":[{"index":0,"message":{"role":"assistant","content":"hi there"},"finish_reason":"stop"},{"index":1,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{"reasoning_tokens":1}}}},"error":null}`,
+		"",
+		"   ",
+		`{"id":"row-2","custom_id":"r-500","response":{"status_code":500,"request_id":"req-2","body":"upstream exploded"},"error":null}`,
+	}, "\n")
+	errorsFile := `{"id":"row-3","custom_id":"r-empty","response":null,"error":null}` + "\n"
+	fs.addFile(batchOutputFile, []byte(output))
+	fs.addFile(batchErrorFile, []byte(errorsFile))
+	fs.setBatchState(id, map[string]any{
+		"status":         "completed",
+		"endpoint":       string(openaiclient.EndpointChatCompletions),
+		"output_file_id": batchOutputFile,
+		"error_file_id":  batchErrorFile,
+	})
+
+	results, err := llm.FetchBatchResults(context.Background(), id)
+	require.NoError(t, err)
+
+	usage := llms.Usage{
+		OutputTokens:    3,
+		InputTokens:     5,
+		TotalTokens:     8,
+		ReasoningTokens: 1,
+	}
+	call := &llms.FunctionCall{
+		Name:      "lookup",
+		Arguments: "{}",
+	}
+	assert.Equal(t, []llms.BatchResult{
+		{
+			CustomID: "r-chat",
+			Response: &llms.ContentResponse{
+				Choices: []*llms.ContentChoice{
+					{
+						Content:    "hi there",
+						StopReason: "stop",
+						Usage:      usage,
+					},
+					{
+						StopReason: "tool_calls",
+						Usage:      usage,
+						FuncCall:   call,
+						ToolCalls: []llms.ToolCall{
+							{
+								ID:           "call_1",
+								Type:         "function",
+								FunctionCall: call,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			CustomID: "r-500",
+			Error: &llms.BatchRequestError{
+				Code:    "http_500",
+				Message: `"upstream exploded"`,
+			},
+		},
+		{
+			CustomID: "r-empty",
+			Error: &llms.BatchRequestError{
+				Message: "no response body and no error",
+			},
+		},
+	}, results)
+}
+
+func TestFetchBatchResults_FileErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		state      map[string]any
+		files      map[string]string
+		wantPrefix string
+	}{
+		{
+			name: "missing output file",
+			state: map[string]any{
+				"status":         "completed",
+				"output_file_id": missingFile,
+			},
+			wantPrefix: "failed to read batch output file " + missingFile + ": failed to download file content: ",
+		},
+		{
+			name: "missing error file",
+			state: map[string]any{
+				"status":        "failed",
+				"error_file_id": missingFile,
+			},
+			wantPrefix: "failed to read batch error file " + missingFile + ": failed to download file content: ",
+		},
+		{
+			name: "malformed output line",
+			state: map[string]any{
+				"status":         "completed",
+				"output_file_id": batchOutputFile,
+			},
+			files: map[string]string{
+				batchOutputFile: "{not json\n",
+			},
+			wantPrefix: "failed to read batch output file " + batchOutputFile + ": failed to unmarshal batch output line: ",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fs, llm, id := newBatchFixture(t)
+			for fileID, body := range tc.files {
+				fs.addFile(fileID, []byte(body))
+			}
+			fs.setBatchState(id, tc.state)
+
+			_, err := llm.FetchBatchResults(context.Background(), id)
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), tc.wantPrefix), err.Error())
+		})
+	}
+}
+
+// errReadCloser fails every read.
+type errReadCloser struct{}
+
+var errBodyRead = errors.New("body read failed")
+
+func (errReadCloser) Read([]byte) (int, error) { return 0, errBodyRead }
+func (errReadCloser) Close() error             { return nil }
+
+// brokenDownloadDoer forwards requests to the fake server but replaces the
+// body of every file download with one that fails to read.
+type brokenDownloadDoer struct{}
+
+func (brokenDownloadDoer) Do(r *http.Request) (*http.Response, error) {
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil || !strings.HasSuffix(r.URL.Path, "/content") {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+	resp.Body = errReadCloser{}
+	return resp, nil
+}
+
+func TestFetchBatchResults_ScanError(t *testing.T) {
+	t.Parallel()
+
+	fs, llm, id := newBatchFixture(t, WithHTTPClient(brokenDownloadDoer{}))
+	fs.addFile(batchOutputFile, []byte(`{"custom_id":"r-1"}`))
+	fs.setBatchState(id, map[string]any{
+		"status":         "completed",
+		"output_file_id": batchOutputFile,
+	})
+
+	_, err := llm.FetchBatchResults(context.Background(), id)
+	require.ErrorIs(t, err, errBodyRead)
+	assert.EqualError(t, err, "failed to read batch output file "+batchOutputFile+": failed to scan batch file: "+errBodyRead.Error())
+}
+
+func TestFetchBatchResults_TerminalWithoutFiles(t *testing.T) {
+	t.Parallel()
+
+	fs, llm, id := newBatchFixture(t)
+	fs.setBatchState(id, map[string]any{
+		"status":       "expired",
+		"expired_at":   1700000300,
+		"cancelled_at": 1700000400,
+	})
+
+	results, err := llm.FetchBatchResults(context.Background(), id)
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}
+
+func TestParseBatchOutputLine_Errors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		line       string
+		endpoint   openaiclient.BatchEndpoint
+		wantPrefix string
+	}{
+		{
+			name:       "chat body",
+			line:       `{"custom_id":"c1","response":{"status_code":200,"body":{"choices":"nope"}}}`,
+			endpoint:   openaiclient.EndpointChatCompletions,
+			wantPrefix: `failed to parse response body for custom_id "c1": failed to unmarshal chat completion body: `,
+		},
+		{
+			name:       "responses body",
+			line:       `{"custom_id":"r1","response":{"status_code":200,"body":"nope"}}`,
+			endpoint:   openaiclient.EndpointResponses,
+			wantPrefix: `failed to parse response body for custom_id "r1": failed to unmarshal responses body: `,
+		},
+		{
+			name:       "unsupported endpoint",
+			line:       `{"custom_id":"e1","response":{"status_code":200,"body":{}}}`,
+			endpoint:   "/v1/embeddings",
+			wantPrefix: `failed to parse response body for custom_id "e1": unsupported batch endpoint "/v1/embeddings"`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseBatchOutputLine([]byte(tc.line), tc.endpoint)
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), tc.wantPrefix), err.Error())
+			assert.Equal(t, llms.BatchResult{}, got)
+		})
+	}
+}
+
+func TestParseBatchOutputLine_ResponsesToolCalls(t *testing.T) {
+	t.Parallel()
+
+	const line = `{"custom_id":"r-tools","response":{"status_code":200,"body":{"id":"resp_1","object":"response","output":[` +
+		`{"id":"fc_1","type":"function_call","call_id":"","name":"lookup","arguments":"{}"},` +
+		`{"id":"fc_2","type":"function_call","call_id":"call_2","name":"other","arguments":"{\"a\":1}"}` +
+		`],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6,"input_tokens_details":{"cached_tokens":1},"output_tokens_details":{"reasoning_tokens":1}}}}}`
+
+	got, err := parseBatchOutputLine([]byte(line), openaiclient.EndpointResponses)
+	require.NoError(t, err)
+	first := &llms.FunctionCall{
+		Name:      "lookup",
+		Arguments: "{}",
+	}
+	assert.Equal(t, llms.BatchResult{
+		CustomID: "r-tools",
+		Response: &llms.ContentResponse{
+			Choices: []*llms.ContentChoice{
+				{
+					Usage: llms.Usage{
+						OutputTokens:    2,
+						InputTokens:     4,
+						CacheReadTokens: 1,
+						TotalTokens:     6,
+						ReasoningTokens: 1,
+					},
+					FuncCall: first,
+					ToolCalls: []llms.ToolCall{
+						{
+							ID:           "fc_1",
+							Type:         "function",
+							FunctionCall: first,
+						},
+						{
+							ID:   "call_2",
+							Type: "function",
+							FunctionCall: &llms.FunctionCall{
+								Name:      "other",
+								Arguments: `{"a":1}`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}, got)
+}
+
+func TestBuildBatchLine_Errors(t *testing.T) {
+	t.Parallel()
+
+	llm := newTestLLM(t, "http://example.test", llms.ProviderOpenAI)
+	unmarshalableTool := llms.Tool{
+		Type: "function",
+		Function: &llms.FunctionDefinition{
+			Name: "bad",
+			Parameters: &jsonschema.Schema{
+				Type:    "object",
+				Default: func() {},
+			},
+		},
+	}
+	tests := []struct {
+		name       string
+		req        llms.BatchRequest
+		endpoint   openaiclient.BatchEndpoint
+		wantErr    string
+		wantPrefix string
+	}{
+		{
+			name: "missing custom id",
+			req: llms.BatchRequest{
+				Messages: []llms.Message{humanMsg("hi")},
+			},
+			endpoint: openaiclient.EndpointResponses,
+			wantErr:  "invalid argument: BatchRequest.CustomID is required",
+		},
+		{
+			name: "responses build",
+			req: llms.BatchRequest{
+				CustomID: "r",
+				Messages: []llms.Message{badToolMessage()},
+			},
+			endpoint: openaiclient.EndpointResponses,
+			wantErr:  "expected ToolCallResponse for tool role, got llms.TextContent",
+		},
+		{
+			name: "chat build",
+			req: llms.BatchRequest{
+				CustomID: "c",
+				Messages: []llms.Message{badToolMessage()},
+			},
+			endpoint: openaiclient.EndpointChatCompletions,
+			wantErr:  "expected part of type ToolCallResponse for role tool, got llms.TextContent",
+		},
+		{
+			name: "chat marshal",
+			req: llms.BatchRequest{
+				CustomID: "c",
+				Messages: []llms.Message{humanMsg("hi")},
+				Options: []llms.CallOption{
+					llms.WithTools([]llms.Tool{unmarshalableTool}),
+				},
+			},
+			endpoint:   openaiclient.EndpointChatCompletions,
+			wantPrefix: "failed to marshal chat body: ",
+		},
+		{
+			name: "unsupported endpoint",
+			req: llms.BatchRequest{
+				CustomID: "e",
+				Messages: []llms.Message{humanMsg("hi")},
+			},
+			endpoint: "/v1/embeddings",
+			wantErr:  `unsupported batch endpoint "/v1/embeddings"`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			line, err := llm.buildBatchLine(tc.req, tc.endpoint)
+			require.Error(t, err)
+			assert.Nil(t, line)
+			if tc.wantErr != "" {
+				assert.EqualError(t, err, tc.wantErr)
+			}
+			if tc.wantPrefix != "" {
+				assert.True(t, strings.HasPrefix(err.Error(), tc.wantPrefix), err.Error())
+			}
+		})
+	}
+}
+
+func TestBatchHandleFromSDK(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, batchHandleFromSDK(nil))
+
+	at := func(sec int64) *time.Time {
+		v := time.Unix(sec, 0).UTC()
+		return &v
+	}
+	tests := []struct {
+		name          string
+		batch         openaisdk.Batch
+		wantCompleted *time.Time
+	}{
+		{
+			name: "failed",
+			batch: openaisdk.Batch{
+				FailedAt:    200,
+				ExpiredAt:   300,
+				CancelledAt: 400,
+			},
+			wantCompleted: at(200),
+		},
+		{
+			name: "expired",
+			batch: openaisdk.Batch{
+				ExpiredAt:   300,
+				CancelledAt: 400,
+			},
+			wantCompleted: at(300),
+		},
+		{
+			name: "cancelled",
+			batch: openaisdk.Batch{
+				CancelledAt: 400,
+			},
+			wantCompleted: at(400),
+		},
+		{
+			name: "still running",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := tc.batch
+			h := batchHandleFromSDK(&b)
+			require.NotNil(t, h)
+			assert.Equal(t, tc.wantCompleted, h.CompletedAt)
+			assert.Nil(t, h.CreatedAt)
+			assert.Nil(t, h.ExpiresAt)
+			assert.Nil(t, h.Metadata)
+		})
+	}
+
+	b := &openaisdk.Batch{
+		ID:          "batch-x",
+		Status:      openaisdk.BatchStatusCompleted,
+		CreatedAt:   100,
+		CompletedAt: 150,
+		FailedAt:    160,
+		ExpiresAt:   500,
+		Metadata: map[string]string{
+			"job": "nightly",
+		},
+		RequestCounts: openaisdk.BatchRequestCounts{
+			Total:     3,
+			Completed: 2,
+			Failed:    1,
+		},
+	}
+	assert.Equal(t, &llms.BatchHandle{
+		ID:       "batch-x",
+		Provider: llms.ProviderOpenAI,
+		Status:   llms.BatchStatusCompleted,
+		RequestCounts: llms.BatchRequestCounts{
+			Total:     3,
+			Completed: 2,
+			Failed:    1,
+		},
+		CreatedAt:   at(100),
+		CompletedAt: at(150),
+		ExpiresAt:   at(500),
+		Metadata: map[string]string{
+			"job": "nightly",
+		},
+		ProviderMeta: b,
+	}, batchHandleFromSDK(b))
+}
+
+func TestBatchStatusFromSDK_Unknown(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, llms.BatchStatus("paused"), batchStatusFromSDK(openaisdk.BatchStatus("paused")))
 }

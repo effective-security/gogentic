@@ -8,7 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -764,4 +766,183 @@ func TestFactory_EffortReachesTheWire(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, map[string]any{"thinkingLevel": "MINIMAL"}, cfg["thinkingConfig"])
 	})
+}
+
+// A provider asked for by type that has no default model is built by its
+// constructor, which chooses the model, once per type. Resolve cannot name
+// that model.
+func TestFactory_ProviderTypeWithoutDefault(t *testing.T) {
+	const constructorChoice = "constructor-choice"
+	ctx := context.Background()
+	errDown := errors.New("constructor failed")
+	orig := NewLLM
+	t.Cleanup(func() { NewLLM = orig })
+	var (
+		calls int
+		fail  bool
+	)
+	NewLLM = func(cfg *ProviderConfig, preferredModels []string, _ *Options) (llms.Model, error) {
+		calls++
+		assert.Empty(t, preferredModels, "the constructor chooses the model")
+		if fail {
+			return nil, errDown
+		}
+		return &stubModel{
+			built: built{
+				provider: cfg.Name,
+				model:    constructorChoice,
+			},
+		}, nil
+	}
+	newFactory := func() Factory {
+		return New(&Config{
+			Providers: []*ProviderConfig{{
+				Name:  "CLAUDE",
+				Token: "fakekey",
+				AvailableModels: []string{
+					"claude-fable-*",
+				},
+				OpenAI: OpenAIConfig{
+					APIType: string(llms.ProviderAnthropic),
+				},
+			}},
+		})
+	}
+	opts := ModelOptions{
+		ProviderType: llms.ProviderAnthropic,
+	}
+
+	f := newFactory()
+	res, err := Resolve(ctx, f, opts)
+	require.EqualError(t, err, "provider CLAUDE has no usable default model")
+	assert.Nil(t, res)
+
+	model, err := f.GetModel(ctx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, constructorChoice, model.GetName())
+	again, err := f.GetModel(ctx, opts)
+	require.NoError(t, err)
+	assert.Same(t, model, again)
+	assert.Equal(t, 1, calls)
+
+	// A derived factory shares the client; the filter does not apply to a
+	// request by type.
+	derived := f.WithModelFilter(func(context.Context, string, string, string) bool {
+		return false
+	})
+	fromDerived, err := derived.GetModel(ctx, opts)
+	require.NoError(t, err)
+	assert.Same(t, model, fromDerived)
+	assert.Equal(t, 1, calls)
+
+	// A constructor failure is returned and nothing is cached.
+	fail = true
+	f = newFactory()
+	model, err = f.GetModel(ctx, opts)
+	require.ErrorIs(t, err, errDown)
+	assert.Nil(t, model)
+	assert.Empty(t, f.(*factory).byType)
+}
+
+// A provider type no provider has is not found.
+func TestFactory_ResolveUnknownProviderType(t *testing.T) {
+	stubNewLLM(t)
+	f := New(loadEffortFixture(t))
+	res, err := Resolve(context.Background(), f, ModelOptions{
+		ProviderType: llms.ProviderCloudflare,
+	})
+	require.EqualError(t, err, "provider not found for type: CLOUDFLARE")
+	assert.Nil(t, res)
+}
+
+// A model whose client cannot be built gives way to the next one; the
+// default model cannot give way.
+func TestFactory_ConstructionFailure(t *testing.T) {
+	const broken = "broken"
+	ctx := context.Background()
+	errBroken := errors.New("cannot build")
+	orig := NewLLM
+	t.Cleanup(func() { NewLLM = orig })
+	NewLLM = func(cfg *ProviderConfig, preferredModels []string, _ *Options) (llms.Model, error) {
+		model, err := cfg.FindModel(preferredModels...)
+		if err != nil {
+			return nil, err
+		}
+		if model == broken {
+			return nil, errBroken
+		}
+		return &stubModel{
+			built: built{
+				provider: cfg.Name,
+				model:    model,
+			},
+		}, nil
+	}
+	newFactory := func(defaultModel string) Factory {
+		return New(&Config{
+			Providers: []*ProviderConfig{{
+				Name:         "OPENAI",
+				Token:        "fakekey",
+				DefaultModel: defaultModel,
+				AvailableModels: []string{
+					broken,
+					"works",
+				},
+				OpenAI: OpenAIConfig{
+					APIType: string(llms.ProviderOpenAI),
+				},
+			}},
+		})
+	}
+
+	f := newFactory("fallback")
+	model, err := f.GetModel(ctx, ModelOptions{
+		PreferredModels: []string{broken},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "fallback", model.GetName())
+
+	model, err = f.GetModel(ctx, ModelOptions{
+		PreferredModels: []string{broken, "works"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "works", model.GetName())
+
+	f = newFactory(broken)
+	model, err = f.GetModel(ctx, ModelOptions{})
+	require.ErrorIs(t, err, errBroken)
+	assert.Nil(t, model)
+
+	model, err = f.GetModel(ctx, ModelOptions{
+		ProviderType: llms.ProviderOpenAI,
+	})
+	require.ErrorIs(t, err, errBroken)
+	assert.Nil(t, model)
+}
+
+func TestFormatRetirement(t *testing.T) {
+	assert.Empty(t, formatRetirement(time.Time{}))
+	retiresAt := time.Date(2026, time.November, 30, 17, 0, 0, 0, time.UTC)
+	assert.Equal(t, "2026-11-30", formatRetirement(retiresAt))
+}
+
+// A configuration that is not part of the factory gets a policy of its own,
+// placed after the configured providers.
+func TestFactory_PolicyForForeignConfig(t *testing.T) {
+	f := New(loadEffortFixture(t)).(*factory)
+	foreign := &ProviderConfig{
+		Name:         "foreign",
+		DefaultModel: "gpt-5.1",
+		OpenAI: OpenAIConfig{
+			APIType: string(llms.ProviderOpenAI),
+		},
+	}
+	policy := f.policyFor(foreign)
+	require.NotNil(t, policy)
+	assert.Same(t, foreign, policy.cfg)
+	assert.Equal(t, len(f.policies), policy.index)
+	assert.Equal(t, llms.ProviderOpenAI, policy.typ)
+
+	configured := f.cfg.Providers[0]
+	assert.Same(t, f.policies[0], f.policyFor(configured))
 }

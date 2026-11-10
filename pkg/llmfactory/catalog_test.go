@@ -1467,6 +1467,8 @@ func TestModelList_Lookup(t *testing.T) {
 		active("gpt-4o-2024-08-06"),
 		active("openai/gpt-5.5:batch"),
 		active("gemini-3-pro-preview"),
+		active("o3-2025-04-16"),
+		retired("o3-2025-06-10"),
 	})
 	tests := []struct {
 		id         string
@@ -1483,6 +1485,8 @@ func TestModelList_Lookup(t *testing.T) {
 		{id: "claude-3-7-sonnet-latest", wantID: "claude-3-7-sonnet-20250219", wantServed: true},
 		// The newest snapshot describes it.
 		{id: "gpt-4o", wantID: "gpt-4o-2024-08-06", wantServed: true},
+		// A snapshot in service describes it before a newer retired one.
+		{id: "o3", wantID: "o3-2025-04-16", wantServed: true},
 		// Another version, variant, route or stage is another model.
 		{id: "claude-haiku-4-6"},
 		{id: "claude-haiku-5"},
@@ -1506,4 +1510,49 @@ func TestModelList_Lookup(t *testing.T) {
 	assert.False(t, ok)
 	assert.False(t, none.serves("claude-haiku-4-5"))
 	assert.Empty(t, none.lifecycle("claude-haiku-4-5"))
+}
+
+// A caller of Refresh does not wait past its context for a fetch.
+func TestCatalog_RefreshDoesNotWaitPastItsContext(t *testing.T) {
+	stubNewLLM(t)
+	lister := &fakeLister{}
+	lister.serve(active("claude-fable-5-2"))
+	stubModelLister(t, map[string]*fakeLister{
+		matrixProvider: lister,
+	})
+	f := New(matrixConfig(true))
+	catalog := catalogOf(t, f, matrixProvider)
+	release := lister.hold()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := RefreshModels(ctx, f)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.EqualError(t, err, "provider ANTHROPIC: refresh model list: context canceled")
+
+	// The fetch goes on and its list is used.
+	release()
+	require.EqualValues(t, 1, settled(t, catalog))
+	res := resolveBoth(t, f, ModelOptions{
+		PreferredModels: []string{"claude-fable-5-1"},
+	})
+	assert.Equal(t, "claude-fable-5-2", res.Model)
+}
+
+// A provider whose lister cannot be built is resolved without a list, and
+// the failure is reported by Refresh.
+func TestCatalog_ListerCannotBeCreated(t *testing.T) {
+	stubNewLLM(t)
+	built := stubModelLister(t, map[string]*fakeLister{})
+	f := New(matrixConfig(true))
+
+	err := RefreshModels(context.Background(), f)
+	require.EqualError(t, err, "provider ANTHROPIC: create model lister: no lister for provider ANTHROPIC")
+	assert.Zero(t, *built)
+
+	res := resolveBoth(t, f, ModelOptions{
+		PreferredModels: []string{"claude-fable-5-1"},
+	})
+	assert.Equal(t, "claude-fable-5-1", res.Model)
+	assert.False(t, res.Verified)
 }

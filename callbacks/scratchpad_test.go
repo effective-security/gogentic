@@ -2,6 +2,7 @@ package callbacks
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,4 +248,86 @@ func Test_run_print_format(t *testing.T) {
 
 	exp := "2024-01-01 12:00:00 run1: hello again\n"
 	assert.Equal(t, exp, r.w.String())
+}
+
+type skilledAssistant struct {
+	fakeAssistant
+	skills skills.Skills
+}
+
+func (a *skilledAssistant) GetSkills() skills.Skills { return a.skills }
+
+func TestScratchpad_StartRun_NoChatContext(t *testing.T) {
+	t.Parallel()
+	sp := NewScratchpad(ModeDefault)
+	sp.StartRun(context.Background())
+	assert.Empty(t, sp.runs)
+}
+
+func TestScratchpad_DefaultModeTruncatesToolOutput(t *testing.T) {
+	TimeNowFn = func() time.Time { return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) }
+	defer func() { TimeNowFn = time.Now }()
+
+	sp := NewScratchpad(ModeDefault)
+	ctx, _ := newTestChatContext()
+	sp.StartRun(ctx)
+
+	ast := &skilledAssistant{
+		fakeAssistant: fakeAssistant{name: "A1"},
+		skills: skills.Skills{
+			{
+				Name: "triage",
+			},
+			{
+				Name: "search",
+			},
+		},
+	}
+	tool := &fakeTool{name: "T1"}
+	long := strings.Repeat("x", 170)
+
+	sp.OnAssistantStart(ctx, ast, "input")
+	sp.OnToolEnd(ctx, tool, "A1", "tinput", long)
+	sp.OnAssistantError(ctx, ast, "input", errors.New("fail"), []llms.Message{
+		llms.MessageFromToolCalls(llms.RoleAI, llms.ToolCall{
+			ID:   "c1",
+			Type: "function",
+			FunctionCall: &llms.FunctionCall{
+				Name:      "T1",
+				Arguments: "{}",
+			},
+		}),
+		llms.MessageFromToolResponse(llms.RoleTool, llms.ToolCallResponse{
+			ToolCallID: "c1",
+			Name:       "T1",
+			Content:    long,
+		}),
+	})
+
+	_, output := sp.EndRun(ctx)
+	truncated := strings.Repeat("x", 160) + "... (10 more)"
+	exp := `2024-01-01 12:00:00 run1: === Run Started: chatid ===
+2024-01-01 12:00:00 run1: step1 A1 *** Assistant Start ***
+2024-01-01 12:00:00 run1: step1 A1 Skills: triage, search
+2024-01-01 12:00:00 run1: step1 A1 Input:
+input
+2024-01-01 12:00:00 run1: step1 A1 T1 Tool Output:
+` + truncated + `
+2024-01-01 12:00:00 run1: step1 A1 T1 *** Tool End ***
+2024-01-01 12:00:00 run1: step1 A1 *** Error *** fail
+2024-01-01 12:00:00 run1: step1 A1 Messages:
+[0] ai:
+  - ToolCall: c1 (T1), input: {}
+  * 0 texts, 1 tool calls, 0 tool responses, content length: 14
+[1] tool:
+  - ToolCallResponse: c1 (T1), response size: 170
+  ` + truncated + `
+  * 0 texts, 0 tool calls, 1 tool responses, content length: 174
+
+2024-01-01 12:00:00 run1: Assistant calls: 1, Failed: 1
+2024-01-01 12:00:00 run1: Tool calls: 0, Failed: 0, Not Found: 0
+2024-01-01 12:00:00 run1: LLM calls: 0, Messages: 0, Bytes Out: 0, Bytes In: 0, Bytes Total: 0
+2024-01-01 12:00:00 run1: === Run Ended. Duration: 0s ===
+`
+	assert.Equal(t, exp, string(output))
 }

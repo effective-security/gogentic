@@ -202,3 +202,150 @@ func TestExactHTTPClientInjection(t *testing.T) {
 		})
 	}
 }
+
+// A factory without exact resolution is refused.
+func TestResolveExact_FactoryWithoutExactResolver(t *testing.T) {
+	m, err := ResolveExact(context.Background(), plainFactory{}, "provider", "model", "")
+	require.EqualError(t, err, "factory does not support exact model resolution")
+	assert.Nil(t, m)
+}
+
+// A provider or model that cannot name a configured model is not found,
+// before any provider is consulted.
+func TestExactResolution_InvalidNames(t *testing.T) {
+	built := stubNewLLM(t)
+	cfg := &Config{
+		Providers: []*ProviderConfig{{
+			Name:            "one",
+			AvailableModels: []string{"chosen"},
+			OpenAI: OpenAIConfig{
+				APIType: string(llms.ProviderOpenAI),
+			},
+		}},
+	}
+	f := New(cfg)
+	tests := []struct {
+		name     string
+		provider string
+		model    string
+		orgID    string
+	}{
+		{
+			name:  "no provider",
+			model: "chosen",
+		},
+		{
+			name:     "no model",
+			provider: "one",
+		},
+		{
+			name:     "NUL in the model",
+			provider: "one",
+			model:    "chosen\x00",
+		},
+		{
+			name:     "NUL in the org",
+			provider: "one",
+			model:    "chosen",
+			orgID:    "tenant\x00",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := ResolveExact(context.Background(), f, tt.provider, tt.model, tt.orgID)
+			require.ErrorIs(t, err, ErrModelNotFound)
+			assert.Nil(t, m)
+		})
+	}
+	assert.Empty(t, *built)
+}
+
+// A constructor that builds another model than the one asked for is an
+// error, and nothing is cached.
+func TestExactResolution_ConstructorBuildsAnotherModel(t *testing.T) {
+	cfg := &Config{
+		Providers: []*ProviderConfig{{
+			Name:            "one",
+			AvailableModels: []string{"chosen"},
+			OpenAI: OpenAIConfig{
+				APIType: string(llms.ProviderOpenAI),
+			},
+		}},
+	}
+	orig := NewLLM
+	t.Cleanup(func() { NewLLM = orig })
+
+	tests := []struct {
+		name  string
+		model llms.Model
+	}{
+		{
+			name: "another model",
+			model: &stubModel{
+				built: built{
+					provider: "one",
+					model:    "other",
+				},
+			},
+		},
+		{
+			name: "no model",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			NewLLM = func(*ProviderConfig, []string, *Options) (llms.Model, error) {
+				return tt.model, nil
+			}
+			f := New(cfg).(*factory)
+			m, err := f.GetModelExact(context.Background(), "one", "chosen", "")
+			require.EqualError(t, err, "factory returned a different model")
+			assert.Nil(t, m)
+			assert.Empty(t, f.byName)
+		})
+	}
+}
+
+// When two calls build the same model at once, the client cached first is
+// the one both get.
+func TestExactResolution_FirstCachedClientWins(t *testing.T) {
+	cfg := &Config{
+		Providers: []*ProviderConfig{{
+			Name:            "one",
+			AvailableModels: []string{"chosen"},
+			OpenAI: OpenAIConfig{
+				APIType: string(llms.ProviderOpenAI),
+			},
+		}},
+	}
+	f := New(cfg).(*factory)
+	orig := NewLLM
+	t.Cleanup(func() { NewLLM = orig })
+
+	var constructed []llms.Model
+	NewLLM = func(_ *ProviderConfig, preferred []string, _ *Options) (llms.Model, error) {
+		m := &stubModel{
+			built: built{
+				provider: "one",
+				model:    preferred[0],
+			},
+		}
+		constructed = append(constructed, m)
+		if len(constructed) == 1 {
+			// Another call resolves the model while this one constructs it.
+			_, err := f.GetModelExact(context.Background(), "one", "chosen", "")
+			require.NoError(t, err)
+		}
+		return m, nil
+	}
+
+	m, err := f.GetModelExact(context.Background(), "one", "chosen", "")
+	require.NoError(t, err)
+	require.Len(t, constructed, 2)
+	assert.Same(t, constructed[1], m, "the client cached by the other call is returned")
+
+	again, err := f.GetModelExact(context.Background(), "one", "chosen", "")
+	require.NoError(t, err)
+	assert.Same(t, m, again)
+	assert.Len(t, constructed, 2)
+}

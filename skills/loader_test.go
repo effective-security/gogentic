@@ -2,11 +2,14 @@ package skills_test
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/effective-security/gogentic/skills"
@@ -462,4 +465,274 @@ func buildSkillsTar(t *testing.T, srcDir, dst string, gzipIt bool) {
 	if gw != nil {
 		require.NoError(t, gw.Close())
 	}
+}
+
+const (
+	skillFile     = "SKILL.md"
+	validSkill    = "---\ndescription: A valid skill.\n---\nValid body."
+	agentOn       = "agent-on"
+	agentOff      = "agent-off"
+	defaultClient = "default"
+)
+
+// tarEntry describes one regular file written by writeTar.
+type tarEntry struct {
+	name string
+	body string
+}
+
+// writeTar writes a plain (uncompressed) tar archive containing entries to dst.
+func writeTar(t *testing.T, dst string, entries []tarEntry) {
+	t.Helper()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, e := range entries {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     e.name,
+			Mode:     0o644,
+			Size:     int64(len(e.body)),
+			Typeflag: tar.TypeReg,
+		}))
+		_, err := tw.Write([]byte(e.body))
+		require.NoError(t, err)
+	}
+	require.NoError(t, tw.Close())
+	require.NoError(t, os.WriteFile(dst, buf.Bytes(), 0o600))
+}
+
+func TestLoadConfig_MissingFile(t *testing.T) {
+	t.Parallel()
+	cfg, err := skills.LoadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	assert.Nil(t, cfg)
+}
+
+func Test_LoadFromTar_SkipsAndDisabledAgents(t *testing.T) {
+	t.Parallel()
+
+	tarPath := filepath.Join(t.TempDir(), "skills.tar")
+	writeTar(t, tarPath, []tarEntry{
+		{
+			name: ".",
+		},
+		{
+			name: "../evil/" + skillFile,
+			body: validSkill,
+		},
+		{
+			name: skillFile,
+			body: validSkill,
+		},
+		{
+			name: "broken/" + skillFile,
+			body: "---\nname: broken\n---\nmissing description",
+		},
+		{
+			name: "unclosed/" + skillFile,
+			body: "---\nname: never-applied\nno closing delimiter",
+		},
+		{
+			name: ".agent-off/hidden/" + skillFile,
+			body: validSkill,
+		},
+		{
+			name: "multi/" + skillFile,
+			body: "---\ndescription: Shared skill.\nagents: agent-on, agent-off\n---\nMulti body.",
+		},
+	})
+
+	cfg := &skills.Config{
+		EnableDefaultSkills: true,
+		Paths:               []string{tarPath},
+		Agents: map[string]*skills.AgentConfig{
+			agentOff: {
+				Disabled: true,
+			},
+		},
+	}
+	loader, err := skills.NewLoader(cfg, "")
+	require.NoError(t, err)
+	assert.Equal(t, defaultClient, loader.ClientName())
+	assert.Equal(t, []string{agentOn, defaultClient}, loader.Agents())
+
+	list := loader.Skills("")
+	require.Len(t, list, 1)
+	assert.Equal(t, "unclosed", list[0].Name)
+	assert.Equal(t, "---\nname: never-applied\nno closing delimiter", list[0].Body)
+	assert.Equal(t, "/unclosed", list[0].Location)
+
+	list = loader.Skills(agentOn)
+	assert.Equal(t, []string{"multi", "unclosed"}, list.Names())
+	assert.Equal(t, []string{agentOn, agentOff}, list[0].Agents)
+
+	assert.Nil(t, loader.Skills(agentOff))
+}
+
+func Test_LoadFromTar_ReadErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("corrupt_header", func(t *testing.T) {
+		t.Parallel()
+		tarPath := filepath.Join(t.TempDir(), "corrupt.tar")
+		require.NoError(t, os.WriteFile(tarPath, bytes.Repeat([]byte("x"), 1024), 0o600))
+
+		_, err := skills.NewLoader(&skills.Config{
+			Paths: []string{tarPath},
+		}, "")
+		require.ErrorIs(t, err, tar.ErrHeader)
+		require.EqualError(t, err, "failed to load tar file: failed to read tar file: archive/tar: invalid tar header")
+	})
+
+	t.Run("truncated_entry", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		full := filepath.Join(dir, "full.tar")
+		writeTar(t, full, []tarEntry{
+			{
+				name: "big/" + skillFile,
+				body: strings.Repeat("a", 2048),
+			},
+		})
+		data, err := os.ReadFile(full)
+		require.NoError(t, err)
+
+		const headerAndPartialBody = 512 + 100
+		truncated := filepath.Join(dir, "truncated.tar")
+		require.NoError(t, os.WriteFile(truncated, data[:headerAndPartialBody], 0o600))
+
+		_, err = skills.NewLoader(&skills.Config{
+			Paths: []string{truncated},
+		}, "")
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		require.EqualError(t, err, "failed to load tar file: failed to read tar entry: big/SKILL.md: unexpected EOF")
+	})
+}
+
+func TestLoad_SkipsInvalidEntries(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	writeSkillFile(t, dir, "good", validSkill)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("not a skill"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "no-skill-md"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "md-is-dir", skillFile), 0o755))
+	writeSkillFile(t, dir, "bad-yaml", "---\ndescription: [unclosed\n---\nbody")
+	require.NoError(t, os.Symlink("does-not-exist", filepath.Join(dir, "dangling")))
+	require.NoError(t, os.Symlink("loop", filepath.Join(dir, "loop")))
+
+	loader, err := skills.NewLoader(&skills.Config{
+		EnableDefaultSkills: true,
+		Paths:               []string{dir},
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"good"}, loader.Skills("").Names())
+}
+
+func TestLoad_StrictErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unreadable_skill_file", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		skillPath := filepath.Join(dir, "md-is-dir", skillFile)
+		require.NoError(t, os.MkdirAll(skillPath, 0o755))
+
+		_, err := skills.NewLoader(&skills.Config{
+			Strict: true,
+			Paths:  []string{dir},
+		}, "")
+		require.EqualError(t, err, "failed to load directory: failed to parse skill file: "+skillPath+
+			": failed to read skill file: read "+skillPath+": is a directory")
+	})
+
+	t.Run("invalid_frontmatter", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		skillPath := writeSkillFile(t, dir, "bad-yaml", "---\ndescription: [unclosed\n---\nbody")
+
+		_, err := skills.NewLoader(&skills.Config{
+			Strict: true,
+			Paths:  []string{dir},
+		}, "")
+		require.EqualError(t, err, "failed to load directory: failed to parse skill file: "+skillPath+
+			": failed to parse frontmatter: "+skillPath+": yaml: line 1: did not find expected ',' or ']'")
+	})
+
+	t.Run("path_is_file", func(t *testing.T) {
+		t.Parallel()
+		file := filepath.Join(t.TempDir(), "file")
+		require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
+
+		_, err := skills.NewLoader(&skills.Config{
+			Paths: []string{file},
+		}, "")
+		require.ErrorIs(t, err, syscall.ENOTDIR)
+	})
+}
+
+func TestLoad_UnreadableAgentFolderIsSkipped(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions")
+	}
+	dir := t.TempDir()
+	writeSkillFile(t, dir, "good", validSkill)
+	locked := filepath.Join(dir, ".agent-locked")
+	writeSkillFile(t, locked, "hidden", validSkill)
+	require.NoError(t, os.Chmod(locked, 0))
+	t.Cleanup(func() {
+		require.NoError(t, os.Chmod(locked, 0o755))
+	})
+
+	loader, err := skills.NewLoader(&skills.Config{
+		EnableDefaultSkills: true,
+		Paths:               []string{dir},
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{defaultClient}, loader.Agents())
+	assert.Equal(t, []string{"good"}, loader.Skills("agent-locked").Names())
+}
+
+// TestLoad_StandardPaths changes HOME and the working directory, so it must
+// not run in parallel with other tests.
+func TestLoad_StandardPaths(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(cwd)
+
+	userDir := filepath.Join(home, ".agents", "skills")
+	projectDir := filepath.Join(cwd, ".agents", "skills")
+	writeSkillFile(t, userDir, "shared", "---\ndescription: User version.\n---\nbody")
+	writeSkillFile(t, userDir, "user-only", validSkill)
+	writeSkillFile(t, projectDir, "shared", "---\ndescription: Project version.\n---\nbody")
+
+	clientUserDir := filepath.Join(home, ".agents", ".my-client", "skills")
+	clientProjectDir := filepath.Join(cwd, ".agents", ".my-client", "skills")
+	writeSkillFile(t, filepath.Join(clientUserDir, ".agent-a"), "client-agent-skill", validSkill)
+	writeSkillFile(t, clientProjectDir, "client-project-skill", validSkill)
+
+	cfg := &skills.Config{
+		EnableDefaultSkills: true,
+		EnableStandardPaths: true,
+	}
+
+	t.Run("no_client", func(t *testing.T) {
+		loader, err := skills.NewLoader(cfg, "")
+		require.NoError(t, err)
+		assert.Equal(t, defaultClient, loader.ClientName())
+
+		list := loader.Skills("")
+		assert.Equal(t, []string{"shared", "user-only"}, list.Names())
+		assert.Equal(t, "Project version.", list[0].Description)
+	})
+
+	t.Run("client", func(t *testing.T) {
+		loader, err := skills.NewLoader(cfg, "my-client")
+		require.NoError(t, err)
+		assert.Equal(t, "my-client", loader.ClientName())
+		assert.Equal(t, []string{"agent-a", defaultClient}, loader.Agents())
+		assert.Equal(t, []string{"client-project-skill"}, loader.Skills("").Names())
+		assert.Equal(t, []string{"client-agent-skill", "client-project-skill"}, loader.Skills("agent-a").Names())
+	})
 }
