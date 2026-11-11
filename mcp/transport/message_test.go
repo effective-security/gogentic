@@ -121,7 +121,12 @@ func TestParseMessage(t *testing.T) {
 		{
 			name:    "error that is not an object",
 			data:    `{"jsonrpc":"2.0","id":1,"error":"x"}`,
-			wantErr: "failed to unmarshal JSON-RPC error: json: cannot unmarshal string into Go struct field BaseJSONRPCError.error of type transport.BaseJSONRPCErrorInner",
+			wantErr: "invalid JSON-RPC error: error member is not an object",
+		},
+		{
+			name:    "null error",
+			data:    `{"jsonrpc":"2.0","id":1,"error":null}`,
+			wantErr: "invalid JSON-RPC error: error member is not an object",
 		},
 		{
 			name:    "response without id",

@@ -270,6 +270,8 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 		{
 			name:     "text and tool use become separate choices",
 			response: `{"content":[{"type":"text","text":"checking"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{"city":"Paris"}}],"stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5}}`,
+			// F-060: the usage is on the first choice only, so it is not
+			// counted twice.
 			expected: []*llms.ContentChoice{
 				{
 					Content:    "checking",
@@ -279,7 +281,6 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 				{
 					ToolCalls:  toolCalls,
 					StopReason: AnthropicCompletionReasonToolUse,
-					Usage:      usage,
 				},
 			},
 		},
@@ -303,6 +304,7 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 			}, llms.CallOptions{})
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, res.Choices)
+			assert.Equal(t, &usage, res.Usage(), "the message usage is counted once")
 			for _, choice := range res.Choices {
 				for _, tc := range choice.ToolCalls {
 					// F-001: callers read the tool call through these accessors.
@@ -528,7 +530,6 @@ func TestCreateAnthropicCompletionStreamingToolCalls(t *testing.T) {
 				},
 			},
 			StopReason: AnthropicCompletionReasonToolUse,
-			Usage:      usage,
 		},
 	}
 

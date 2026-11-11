@@ -298,34 +298,32 @@ func createAnthropicCompletion(ctx context.Context,
 
 // anthropicChoices builds the choices of one Anthropic message, the same way
 // for streaming and non-streaming calls: a text choice when there is text and
-// a tool-call choice when there are tool calls, each carrying the whole
-// message usage, or a single empty choice when the model produced neither.
+// a tool-call choice when there are tool calls, or a single empty choice when
+// the model produced neither. The message usage is on the first choice only,
+// because ContentResponse.Usage sums the choices.
 func anthropicChoices(text string, toolCalls []llms.ToolCall, stopReason string, inputTokens, outputTokens int) []*llms.ContentChoice {
-	usage := llms.Usage{
-		InputTokens:  uint64(inputTokens),
-		OutputTokens: uint64(outputTokens),
-		TotalTokens:  uint64(inputTokens + outputTokens),
-	}
 	var choices []*llms.ContentChoice
 	if text != "" {
 		choices = append(choices, &llms.ContentChoice{
 			Content:    text,
 			StopReason: stopReason,
-			Usage:      usage,
 		})
 	}
 	if len(toolCalls) > 0 {
 		choices = append(choices, &llms.ContentChoice{
 			ToolCalls:  toolCalls,
 			StopReason: stopReason,
-			Usage:      usage,
 		})
 	}
 	if len(choices) == 0 {
 		choices = append(choices, &llms.ContentChoice{
 			StopReason: stopReason,
-			Usage:      usage,
 		})
+	}
+	choices[0].Usage = llms.Usage{
+		InputTokens:  uint64(inputTokens),
+		OutputTokens: uint64(outputTokens),
+		TotalTokens:  uint64(inputTokens + outputTokens),
 	}
 	return choices
 }

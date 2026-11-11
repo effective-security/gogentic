@@ -27,7 +27,6 @@ choice. Source symbols are stable references; line numbers are omitted.
 | [F-056](#f-056) | `mcp` · `Server.Serve`; `httptransport.HTTPTransport.Start`              | `Serve` blocks with the HTTP transport; documented start sequence is wrong     | Bug      | Medium   | Needs Decision |
 | [F-057](#f-057) | `mcp/transport/httptransport` · `HTTPTransport.Send`, `handleRequest`    | `Send` ignores cancellation; `errorHandler` read without the lock              | Race     | Low      | Open           |
 | [F-059](#f-059) | `assistants` · `executeToolCalls`                                        | Provider-native tool calls are run as missing tools, and the next turn fails   | Bug      | Low      | Needs Decision |
-| [F-060](#f-060) | `pkg/llms/bedrock/internal/bedrockclient` · `anthropicChoices`           | Usage is counted twice when a message has text and tool calls                  | Bug      | Medium   | Open           |
 | [F-061](#f-061) | `pkg/schema` · `JSONSchema`                                              | Writes the global `jsonschema.Version` on every call                           | Race     | Low      | Open           |
 | [F-062](#f-062) | `pkg/schema` · `New`; `mcp` · `RegisterTool`                             | Exported chan, func or complex fields panic in the reflector                   | Crash    | Low      | Open           |
 | [F-063](#f-063) | `mcp/transport/...` · server `HandleMessage`, `Close`                    | Server transports misread unknown messages; some `Close` methods race          | Race     | Low      | Open           |
@@ -181,16 +180,6 @@ OpenAI Responses API leaves the call out but still sends its
   model accepts the history that real providers reject.
 - Decide how native calls are kept in the history (skipped, or carried as a
   provider-specific part; see [F-055](#f-055)) before a provider returns them.
-
-### F-060
-
-**Bedrock Anthropic usage is doubled.** `anthropicChoices` (streaming and
-non-streaming `InvokeModel`) returns a text choice and a tool-call choice for
-one message, and each carries the whole message usage.
-`ContentResponse.Usage`, which the assistant uses for token metrics and
-`Response.Usage`, sums the choices, so a turn with text and tool calls counts
-its tokens twice. The native `pkg/llms/anthropic` provider returns one merged
-choice. By reading; found while fixing F-020.
 
 ### F-061
 

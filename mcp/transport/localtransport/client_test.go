@@ -614,7 +614,12 @@ func TestLocalMcpClientTransport_SendDispatch(t *testing.T) {
 		{
 			name:    "error that is not an object",
 			body:    `{"jsonrpc":"2.0","id":1,"error":"x"}`,
-			wantErr: "received invalid response: failed to unmarshal JSON-RPC error: json: cannot unmarshal string into Go struct field BaseJSONRPCError.error of type transport.BaseJSONRPCErrorInner",
+			wantErr: "received invalid response: invalid JSON-RPC error: error member is not an object",
+		},
+		{
+			name:    "null error",
+			body:    `{"jsonrpc":"2.0","id":1,"error":null}`,
+			wantErr: "received invalid response: invalid JSON-RPC error: error member is not an object",
 		},
 	}
 	for _, tc := range invalid {

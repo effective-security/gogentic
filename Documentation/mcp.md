@@ -289,7 +289,8 @@ type Transport interface {
 
 The client transports classify a reply body with `transport.ParseMessage`:
 `method` with `id` is a request, `method` alone a notification, `error` an
-error response and `result` a response. Anything else fails `Send` with
+error response and `result` a response. Anything else, including an `error`
+member that is not an object (such as `null`), fails `Send` with
 `received invalid response: ...` instead of reaching the client as an error.
 
 The stdio and SSE server transports run the close handler once per started

@@ -571,6 +571,63 @@ func Test_Assistant_Run_RetryWithoutStore(t *testing.T) {
 	assert.Equal(t, []string{"human: " + extraInput}, messageTexts(input.Messages))
 }
 
+// The retry continues the failed attempt's full history, so the tool
+// exchange is resent even when SkipToolHistory leaves it out of the
+// response and the store.
+func Test_Assistant_Run_RetryKeepsToolExchange(t *testing.T) {
+	const callID = "call_1"
+	toolExchange := []string{
+		"ai: ToolCall: " + callID + " (" + runToolName + "), input: " + runToolArgs,
+		"tool: response " + callID + " " + runToolName + ": " + runToolResult,
+	}
+	for _, withStore := range []bool{false, true} {
+		t.Run(fmt.Sprintf("store=%t", withStore), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			model := newRunModel(ctrl, llms.ProviderOpenAI)
+			opts := []assistants.Option{
+				assistants.WithSkipToolHistory(true),
+			}
+			if withStore {
+				opts = append(opts, assistants.WithMessageStore(store.NewMemoryStore()))
+			}
+			tool := newLookupTool(ctrl)
+			tool.EXPECT().Call(gomock.Any(), runToolArgs).Return(runToolResult, nil).Times(1)
+			a := newRunAssistant(model, opts...).WithTools(tool)
+
+			wantRetryHistory := append([]string{
+				"system: " + runSystemPrompt,
+				"human: " + runUserInput,
+			}, toolExchange...)
+			wantRetryHistory = append(wantRetryHistory,
+				"ai: "+runUnparsable,
+				"human: "+runRetryInput,
+			)
+			gomock.InOrder(
+				model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(toolCallResponse(functionCall(callID, runToolName)), nil),
+				model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(textResponse(runUnparsable), nil),
+				model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, msgs []llms.Message, _ ...llms.CallOption) (*llms.ContentResponse, error) {
+						assert.Equal(t, wantRetryHistory, messageTexts(msgs))
+						return textResponse(runAnswerJSON), nil
+					}),
+			)
+
+			var out chatmodel.OutputResult
+			resp, err := a.Run(newRunCtx(), &assistants.CallInput{Input: runUserInput}, &out)
+			require.NoError(t, err)
+			assert.Equal(t, runAnswer, out.Content)
+			assert.Equal(t, []string{
+				"human: " + runUserInput,
+				"ai: " + runUnparsable,
+				"human: " + runRetryInput,
+				"ai: " + runAnswer,
+			}, messageTexts(resp.Messages), "SkipToolHistory still leaves the tool exchange out of the response")
+		})
+	}
+}
+
 func Test_Assistant_Run_UnparsableOutputAfterRetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	model := newRunModel(ctrl, llms.ProviderOpenAI)

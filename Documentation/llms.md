@@ -118,8 +118,9 @@ provider; `GetFunctionCallName` and `GetFunctionCallArguments` read the
 function only for that type.
 
 Anthropic models on native `BEDROCK` (`InvokeModel`) return the text and the
-tool calls of one message as two choices, each carrying the whole message
-usage, whether or not the call streams. When streaming, tool calls are
+tool calls of one message as two choices, whether or not the call streams.
+The message usage is on the first choice only, so `ContentResponse.Usage`
+counts it once. When streaming, tool calls are
 assembled from `input_json_delta` events, a call that receives no input gets
 `"{}"` as its arguments, and only text deltas reach `WithStreamingFunc`.
 
