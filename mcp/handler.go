@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"runtime/debug"
 	"slices"
@@ -30,11 +31,13 @@ var (
 	resourceResponseType = reflect.TypeFor[*ResourceResponse]()
 )
 
-// handler is a user handler of a tool, prompt or resource whose signature
-// was accepted by validateToolHandler, validatePromptHandler or
-// validateResourceHandler.
+// handler is a user handler of a tool, prompt or resource, as parsed by
+// parseHandler.
 type handler struct {
 	kind string
+	// name identifies the handler in logs: the tool or prompt name, or the
+	// resource URI.
+	name string
 	fn   reflect.Value
 	// takesContext is set when the first argument is a context.Context.
 	takesContext bool
@@ -43,24 +46,84 @@ type handler struct {
 	argType reflect.Type
 }
 
-// newHandler describes a validated handler of the given kind.
-func newHandler(kind string, fn any) *handler {
+// parseHandler checks that fn is a func([context.Context,] [T]) (result, error)
+// and describes it. The signature is read once, here, so that registration
+// and calls cannot disagree about it.
+func parseHandler(kind, name string, fn any, result reflect.Type) (*handler, error) {
 	v := reflect.ValueOf(fn)
+	if v.Kind() != reflect.Func || v.IsNil() {
+		return nil, errors.Errorf("handler must be a non-nil function, got %T", fn)
+	}
 	t := v.Type()
-	numIn := t.NumIn()
+	if t.IsVariadic() {
+		return nil, errors.Errorf("handler must not be variadic, got %s", t)
+	}
+
 	h := &handler{
 		kind: kind,
+		name: name,
 		fn:   v,
 	}
-	next := 0
-	if numIn > 0 && t.In(0) == contextType {
+	first := 0
+	if t.NumIn() > 0 && t.In(0) == contextType {
 		h.takesContext = true
-		next = 1
+		first = 1
 	}
-	if next < numIn {
-		h.argType = t.In(next)
+	switch t.NumIn() - first {
+	case 0:
+	case 1:
+		h.argType = t.In(first)
+	default:
+		return nil, errors.Errorf("handler must take an optional context.Context and at most one argument, got %s", t)
 	}
-	return h
+
+	if numOut := t.NumOut(); numOut != 2 {
+		return nil, errors.Errorf("handler must return exactly two values, got %d", numOut)
+	}
+	if out := t.Out(0); out != result {
+		return nil, errors.Errorf("handler must return %s, got %s", result, out)
+	}
+	if out := t.Out(1); out != errorType {
+		return nil, errors.Errorf("handler must return error, got %s", out)
+	}
+	return h, nil
+}
+
+// parsePromptHandler parses a prompts/get handler. Its arguments, when it
+// takes any, are a struct whose fields are all string or *string, as prompt
+// arguments are strings.
+func parsePromptHandler(name string, fn any) (*handler, error) {
+	h, err := parseHandler(handlerKindPrompt, name, fn, promptResponseType)
+	if err != nil {
+		return nil, err
+	}
+	if h.argType == nil {
+		return h, nil
+	}
+	if h.argType.Kind() != reflect.Struct {
+		return nil, errors.Errorf("prompt arguments must be a struct, got %s", h.argType)
+	}
+	for field := range h.argType.Fields() {
+		kind := field.Type.Kind()
+		if kind != reflect.String &&
+			(kind != reflect.Pointer || field.Type.Elem().Kind() != reflect.String) {
+			return nil, errors.Errorf("all fields of the struct must be of type string or *string, found %s", kind)
+		}
+	}
+	return h, nil
+}
+
+// parseResourceHandler parses a resources/read handler of the resource at
+// uri, which takes no arguments besides an optional context.
+func parseResourceHandler(uri string, fn any) (*handler, error) {
+	h, err := parseHandler(handlerKindResource, uri, fn, resourceResponseType)
+	if err != nil {
+		return nil, err
+	}
+	if h.argType != nil {
+		return nil, errors.Errorf("resource handler must take no arguments besides context.Context, got %s", h.fn.Type())
+	}
+	return h, nil
 }
 
 // callHandler runs h for one request and returns the response it produced.
@@ -70,23 +133,21 @@ func newHandler(kind string, fn any) *handler {
 // error the handler returned. err reports that the handler could not
 // produce a response: the arguments did not decode, the handler panicked,
 // or it returned neither a response nor an error. A panic is recovered so
-// that a faulty handler fails its request instead of the server.
+// that a faulty handler fails its request instead of the server; the panic
+// value can hold internal data, so only the server log receives it.
 func callHandler[R any](ctx context.Context, h *handler, raw json.RawMessage) (resp *R, handlerErr error, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
-		cause, ok := r.(error)
-		if !ok {
-			cause = errors.Errorf("%v", r)
-		}
 		resp, handlerErr = nil, nil
-		err = errors.Wrapf(cause, "internal error: %s panicked", h.kind)
+		err = errors.Errorf("internal error: %s panicked", h.kind)
 		logger.ContextKV(ctx, xlog.ERROR,
 			"reason", "panic",
 			"handler", h.kind,
-			"err", err.Error(),
+			"name", h.name,
+			"panic", fmt.Sprint(r),
 			"stack", string(debug.Stack()),
 		)
 	}()
@@ -146,114 +207,20 @@ func newPromptCall(h *handler) func(context.Context, baseGetPromptRequestParamsA
 	}
 }
 
-// newResourceRead returns the resources/read function of the handler of the
-// resource at uri. An error is sent as a text resource at the same uri.
-func newResourceRead(uri string, h *handler) func(context.Context) *resourceResponseSent {
+// newResourceRead returns the resources/read function of a resource handler,
+// whose name is the resource URI. An error is sent as a text resource at the
+// same URI.
+func newResourceRead(h *handler) func(context.Context) *resourceResponseSent {
 	return func(ctx context.Context) *resourceResponseSent {
 		resp, handlerErr, err := callHandler[ResourceResponse](ctx, h, nil)
 		if err == nil {
 			err = handlerErr
 		}
 		if err != nil {
-			return newResourceResponseSentError(uri, err)
+			return newResourceResponseSentError(h.name, err)
 		}
 		return newResourceResponseSent(resp)
 	}
-}
-
-// funcTypeOf returns the type of a handler, or an error when the handler is
-// not a function the server can call with a fixed argument list.
-func funcTypeOf(handler any) (reflect.Type, error) {
-	t := reflect.TypeOf(handler)
-	if t == nil || t.Kind() != reflect.Func {
-		return nil, errors.Errorf("handler must be a function, got %T", handler)
-	}
-	if t.IsVariadic() {
-		return nil, errors.Errorf("handler must not be variadic, got %s", t)
-	}
-	return t, nil
-}
-
-// validateResults checks that a handler of type t returns (want, error).
-func validateResults(t, want reflect.Type) error {
-	if numOut := t.NumOut(); numOut != 2 {
-		return errors.Errorf("handler must return exactly two values, got %d", numOut)
-	}
-	if out := t.Out(0); out != want {
-		return errors.Errorf("handler must return %s, got %s", want, out)
-	}
-	if out := t.Out(1); out != errorType {
-		return errors.Errorf("handler must return error, got %s", out)
-	}
-	return nil
-}
-
-// validateToolHandler checks that handler is
-// func([context.Context,] T) (*ToolResponse, error).
-func validateToolHandler(handler any) error {
-	t, err := funcTypeOf(handler)
-	if err != nil {
-		return err
-	}
-	numIn := t.NumIn()
-	if numIn != 1 && numIn != 2 {
-		return errors.Errorf("handler must take exactly one or two arguments, got %d", numIn)
-	}
-	if numIn == 2 && t.In(0) != contextType {
-		return errors.Errorf("when a handler has 2 arguments, handler must take context.Context as the first argument, got %s", t.In(0))
-	}
-	return validateResults(t, toolResponseType)
-}
-
-// validatePromptHandler checks that handler is
-// func([context.Context,] T) (*PromptResponse, error), where T is a struct
-// whose fields are all string or *string, as prompt arguments are strings.
-func validatePromptHandler(handler any) error {
-	t, err := funcTypeOf(handler)
-	if err != nil {
-		return err
-	}
-	var argType reflect.Type
-	switch numIn := t.NumIn(); numIn {
-	case 2:
-		if first := t.In(0); first != contextType {
-			return errors.Errorf("when a handler has 2 arguments, the first argument must be context.Context, got %s", first)
-		}
-		argType = t.In(1)
-	case 1:
-		argType = t.In(0)
-	default:
-		return errors.Errorf("handler must take one or two arguments, got %d", numIn)
-	}
-
-	if argType.Kind() != reflect.Struct {
-		return errors.New("argument must be a struct")
-	}
-	for field := range argType.Fields() {
-		kind := field.Type.Kind()
-		if kind != reflect.String &&
-			(kind != reflect.Pointer || field.Type.Elem().Kind() != reflect.String) {
-			return errors.Errorf("all fields of the struct must be of type string or *string, found %s", kind)
-		}
-	}
-	return validateResults(t, promptResponseType)
-}
-
-// validateResourceHandler checks that handler is
-// func([context.Context]) (*ResourceResponse, error).
-func validateResourceHandler(handler any) error {
-	t, err := funcTypeOf(handler)
-	if err != nil {
-		return err
-	}
-	numIn := t.NumIn()
-	if numIn > 1 {
-		return errors.Errorf("handler must take no or one arguments, got %d", numIn)
-	}
-	if numIn == 1 && t.In(0) != contextType {
-		return errors.Errorf("when a handler has 1 argument, it must be context.Context, got %s", t.In(0))
-	}
-	return validateResults(t, resourceResponseType)
 }
 
 // argumentsSchema returns the JSON Schema of a handler's arguments type,

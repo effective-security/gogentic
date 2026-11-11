@@ -28,7 +28,7 @@ func TestBatch_UnsupportedProvider(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	for _, provider := range []ProviderType{ProviderAzure, ProviderAzureAD, ProviderPerplexity, ProviderOpenRouter, ProviderOpenAIBedrock} {
+	for _, provider := range []ProviderType{ProviderAzure, ProviderAzureAD, ProviderOpenRouter, ProviderOpenAIBedrock} {
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
 			c := newTestClient(t, provider, testModel, "", failingDoer())

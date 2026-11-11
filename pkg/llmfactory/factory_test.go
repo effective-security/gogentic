@@ -28,7 +28,6 @@ func Test_Factory(t *testing.T) {
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
 	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
@@ -129,13 +128,6 @@ func Test_Factory(t *testing.T) {
 	fm = model.(*fakeLLM)
 	assert.Equal(t, "us.anthropic.claude-opus-4-20250514-v1:0", fm.model)
 	assert.Equal(t, "BEDROCK", fm.provider)
-
-	model, err = f.GetModel(ctx, llmfactory.ModelOptions{ProviderType: llms.ProviderPerplexity})
-	require.NoError(t, err)
-	require.NotNil(t, model)
-	fm = model.(*fakeLLM)
-	assert.Equal(t, "sonar", fm.model)
-	assert.Equal(t, "PERPLEXITY", fm.provider)
 
 	// Test AssistantModel with specific assistant
 	model, err = f.GetModel(ctx, llmfactory.ModelOptions{AssistantName: "orchestrator"})
@@ -304,7 +296,6 @@ func Test_Load(t *testing.T) {
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
 	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
@@ -327,7 +318,6 @@ func Test_CreateLLM(t *testing.T) {
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "fakekey")
 	t.Setenv("TAVILY_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
 	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
@@ -369,12 +359,6 @@ func Test_CreateLLM(t *testing.T) {
 
 	// Test Bedrock provider
 	cfg.OpenAI.APIType = string(llms.ProviderBedrock)
-	model, err = llmfactory.CreateLLM(cfg, nil, nil)
-	require.NoError(t, err)
-	require.NotNil(t, model)
-
-	// Test Perplexity provider
-	cfg.OpenAI.APIType = string(llms.ProviderPerplexity)
 	model, err = llmfactory.CreateLLM(cfg, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, model)
@@ -860,7 +844,6 @@ func Test_ModelByNameWithFallback(t *testing.T) {
 func Test_ProviderConfigWithTokens(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "fakekey")
 	t.Setenv("ANTHROPIC_API_KEY", "fakekey")
-	t.Setenv("PERPLEXITY_TOKEN", "fakekey")
 	t.Setenv("GOOGLEAI_TOKEN", "fakekey")
 	t.Setenv("AZURE_OPENAI_API_KEY", "fakekey")
 	t.Setenv("AZURE_OPENAI_URL", "https://azure.example")
@@ -1451,8 +1434,6 @@ const (
 	chatReply = `{"choices":[{"message":{"content":"hello"},"finish_reason":"stop"}]}`
 	// converseReply answers a Bedrock Converse request.
 	converseReply = `{"output":{"message":{"role":"assistant","content":[{"text":"hello"}]}},"stopReason":"end_turn","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}`
-	// cloudflareReply answers a Cloudflare Workers AI request.
-	cloudflareReply = `{"result":{"response":"hello"},"success":true,"errors":[],"messages":[]}`
 )
 
 // sentRequest is one request a provider client sent.
@@ -1549,13 +1530,11 @@ func Test_CreateLLM_NoModel(t *testing.T) {
 		llms.ProviderOpenAI,
 		llms.ProviderOpenRouter,
 		llms.ProviderOpenAIBedrock,
-		llms.ProviderPerplexity,
 		llms.ProviderAzure,
 		llms.ProviderAnthropic,
 		llms.ProviderGoogleAI,
 		llms.ProviderBedrock,
 		llms.ProviderAnthropicBedrock,
-		llms.ProviderCloudflare,
 	}
 	for _, apiType := range apiTypes {
 		t.Run(string(apiType), func(t *testing.T) {
@@ -1720,6 +1699,7 @@ func Test_CreateLLM_OpenAICompatibleWire(t *testing.T) {
 	)
 	tests := []struct {
 		apiType       llms.ProviderType
+		apiVersion    string
 		options       *llmfactory.Options
 		wantPath      string
 		wantOrgHeader bool
@@ -1736,8 +1716,11 @@ func Test_CreateLLM_OpenAICompatibleWire(t *testing.T) {
 			wantOrgHeader: true,
 		},
 		{
-			apiType:  llms.ProviderPerplexity,
-			wantPath: "/chat/completions",
+			// Azure before the Responses API uses Chat Completions on the
+			// deployment, and has no organization or project.
+			apiType:    llms.ProviderAzure,
+			apiVersion: "2024-10-21",
+			wantPath:   "/openai/deployments/" + fixtureModel + "/chat/completions",
 		},
 	}
 	for _, tt := range tests {
@@ -1751,6 +1734,7 @@ func Test_CreateLLM_OpenAICompatibleWire(t *testing.T) {
 				AvailableModels: []string{fixtureModel},
 				OpenAI: llmfactory.OpenAIConfig{
 					APIType:      string(tt.apiType),
+					APIVersion:   tt.apiVersion,
 					BaseURL:      server.URL,
 					Organization: fixtureOrg,
 					Project:      fixtureProject,
@@ -1767,8 +1751,8 @@ func Test_CreateLLM_OpenAICompatibleWire(t *testing.T) {
 			req := sent[0]
 			assert.Equal(t, tt.wantPath, req.path)
 			assert.Equal(t, fixtureModel, req.body["model"])
+			assert.Equal(t, "Bearer "+fixtureToken, req.header.Get(headerAuthorization))
 			if tt.wantOrgHeader {
-				assert.Equal(t, "Bearer "+fixtureToken, req.header.Get(headerAuthorization))
 				assert.Equal(t, fixtureOrg, req.header.Get("OpenAI-Organization"))
 				assert.Equal(t, fixtureProject, req.header.Get("OpenAI-Project"))
 			}
@@ -1803,36 +1787,6 @@ func Test_CreateOpenRouterLLM_UsesFactoryClient(t *testing.T) {
 	require.Len(t, sent, 1)
 	assert.Equal(t, "https://openrouter.ai/api/v1/responses", sent[0].url)
 	assert.Equal(t, referer, sent[0].header.Get("HTTP-Referer"))
-	assert.Equal(t, "Bearer "+fixtureToken, sent[0].header.Get(headerAuthorization))
-}
-
-// Cloudflare sends its requests to the configured server through the factory
-// HTTP client.
-func Test_CreateCloudflareLLM(t *testing.T) {
-	const serverURL = "https://cloudflare.test/client/v4/accounts/acct"
-	client := &recordingClient{
-		t:     t,
-		reply: cloudflareReply,
-	}
-	cfg := &llmfactory.ProviderConfig{
-		Name:            "P",
-		Token:           fixtureToken,
-		AvailableModels: []string{fixtureModel},
-		OpenAI: llmfactory.OpenAIConfig{
-			APIType: string(llms.ProviderCloudflare),
-			BaseURL: serverURL,
-		},
-	}
-	model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, llmfactory.NewOptions(llmfactory.WithHTTPClient(client)))
-	require.NoError(t, err)
-	assert.Equal(t, fixtureModel, model.GetName())
-	assert.Equal(t, llms.ProviderCloudflare, model.GetProviderType())
-	generateHello(t, model)
-
-	sent := client.sent()
-	require.Len(t, sent, 1)
-	assert.Equal(t, "cloudflare.test", sent[0].host)
-	assert.True(t, strings.HasSuffix(sent[0].path, "/ai/run/"+fixtureModel), "path %s", sent[0].path)
 	assert.Equal(t, "Bearer "+fixtureToken, sent[0].header.Get(headerAuthorization))
 }
 

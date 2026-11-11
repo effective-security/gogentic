@@ -258,7 +258,7 @@ func Test_GetCallOptions_WebSearchTool(t *testing.T) {
 		},
 		{
 			name:          "provider without web_search",
-			provider:      llms.ProviderPerplexity,
+			provider:      llms.ProviderBedrock,
 			wantWebSearch: 0,
 			wantTotal:     1,
 		},

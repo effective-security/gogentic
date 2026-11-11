@@ -314,13 +314,6 @@ func TestListModels_NotSupported(t *testing.T) {
 		opts []openai.Option
 	}{
 		{
-			name: "PERPLEXITY",
-			opts: []openai.Option{
-				openai.WithProvider(llms.ProviderPerplexity),
-				openai.WithModel("sonar-pro"),
-			},
-		},
-		{
 			name: "AZURE",
 			opts: []openai.Option{
 				openai.WithProvider(llms.ProviderAzure),

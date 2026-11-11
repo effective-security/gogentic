@@ -169,7 +169,7 @@ func TestCreateModelLister(t *testing.T) {
 		})
 	}
 
-	for _, apiType := range []string{"AZURE", "AZURE_AD", "BEDROCK", "ANTHROPIC_BEDROCK", "OPENAI_BEDROCK", "PERPLEXITY", "CLOUDFLARE", "", "unknown"} {
+	for _, apiType := range []string{"AZURE", "AZURE_AD", "BEDROCK", "ANTHROPIC_BEDROCK", "OPENAI_BEDROCK", "", "unknown"} {
 		t.Run("unsupported "+apiType, func(t *testing.T) {
 			cfg := &ProviderConfig{
 				Name:  "P",

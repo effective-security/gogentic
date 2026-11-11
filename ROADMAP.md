@@ -14,7 +14,7 @@ Where the library stands today, and what is still missing. See
 - Multi-agent delegation: any assistant can be wrapped as a tool, with
   callback propagation and usage roll-up — [Orchestration](Documentation/orchestration.md)
 - Multi-provider factory (OpenAI, Anthropic, Azure, Bedrock, Google AI,
-  OpenRouter, Perplexity, Cloudflare) with per-assistant and per-organization
+  OpenRouter) with per-assistant and per-organization
   model routing, capability filtering and a model allow/deny hook; model
   patterns, a deny-list, and a default reasoning effort and effort ceiling set
   in configuration and mapped to the levels each model accepts —

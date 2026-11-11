@@ -245,11 +245,6 @@ func TestIsResponsesAPI(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "perplexity",
-			provider: ProviderPerplexity,
-			want:     false,
-		},
-		{
 			name:       "azure threshold date",
 			provider:   ProviderAzure,
 			apiVersion: "2025-03-01",
@@ -315,7 +310,6 @@ func TestSetHeaders(t *testing.T) {
 		name        string
 		provider    ProviderType
 		wantAuth    string
-		wantAPIKey  string
 		org         string
 		project     string
 		wantOrg     string
@@ -355,11 +349,6 @@ func TestSetHeaders(t *testing.T) {
 			provider: ProviderOpenRouter,
 			wantAuth: bearerTestToken,
 		},
-		{
-			name:       "perplexity api key",
-			provider:   ProviderPerplexity,
-			wantAPIKey: testToken,
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -373,7 +362,7 @@ func TestSetHeaders(t *testing.T) {
 			assert.Equal(t, contentTypeJSON, req.Header.Get(headerContentType))
 			assert.Equal(t, customHeaderValue, req.Header.Get(headerCustom))
 			assert.Equal(t, tc.wantAuth, req.Header.Get(headerAuthorization))
-			assert.Equal(t, tc.wantAPIKey, req.Header.Get(headerAPIKey))
+			assert.Empty(t, req.Header.Values(headerAPIKey), "every provider authenticates with a bearer token")
 			if tc.org == "" {
 				assert.Empty(t, req.Header.Values(headerOrganization), "organization header must be absent")
 				assert.Empty(t, req.Header.Values(headerProject), "project header must be absent")

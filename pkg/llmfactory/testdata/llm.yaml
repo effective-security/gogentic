@@ -1,5 +1,5 @@
 ---
-# supported provider types: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|PERPLEXITY
+# supported provider types: OPENAI|AZURE|AZURE_AD|OPENROUTER|OPENAI_BEDROCK|ANTHROPIC|ANTHROPIC_BEDROCK|BEDROCK|GOOGLEAI
 default_provider: OPENAI
 providers:
   # the first provider is the default one if default_provider is not set
@@ -61,15 +61,6 @@ providers:
       - us.anthropic.claude-sonnet-4-20250514-v1:0
     open_ai:
       api_type: BEDROCK
-
-  - name: PERPLEXITY
-    token: env://PERPLEXITY_TOKEN
-    default_model: sonar
-    available_models:
-      - sonar
-    open_ai:
-      base_url: https://api.perplexity.ai
-      api_type: PERPLEXITY
 
   - name: GOOGLEAI
     token: env://GOOGLEAI_TOKEN

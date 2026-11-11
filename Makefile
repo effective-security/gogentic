@@ -7,7 +7,6 @@ export OPENAI_API_KEY=fakekey
 export AWS_BEARER_TOKEN_BEDROCK=fakekey
 export TAVILY_API_KEY=fakekey
 export ANTHROPIC_API_KEY=fakekey
-export PERPLEXITY_TOKEN=fakekey
 export GOOGLEAI_TOKEN=fakekey
 export GEMINI_API_KEY=fakekey
 export GOOGLE_API_KEY=fakekey

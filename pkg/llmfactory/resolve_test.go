@@ -382,7 +382,6 @@ func TestFactory_ProviderPrefix(t *testing.T) {
 		// Not a type in upper case, a type nobody is configured with, and an
 		// unknown prefix: all part of a model ID that no provider offers.
 		{"gemini/gemini-3-pro", "fallback", "fallback-model"},
-		{"PERPLEXITY/sonar", "fallback", "fallback-model"},
 		{"MISTRAL/large", "fallback", "fallback-model"},
 		// Without a prefix the first provider that offers the model wins.
 		{"gemini-3-pro", "google", "gemini-3-pro"},
@@ -849,9 +848,9 @@ func TestFactory_ResolveUnknownProviderType(t *testing.T) {
 	stubNewLLM(t)
 	f := New(loadEffortFixture(t))
 	res, err := Resolve(context.Background(), f, ModelOptions{
-		ProviderType: llms.ProviderCloudflare,
+		ProviderType: llms.ProviderType("UNSUPPORTED"),
 	})
-	require.EqualError(t, err, "provider not found for type: CLOUDFLARE")
+	require.EqualError(t, err, "provider not found for type: UNSUPPORTED")
 	assert.Nil(t, res)
 }
 

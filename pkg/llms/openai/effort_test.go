@@ -192,7 +192,7 @@ func TestReasoningEffort_Levels(t *testing.T) {
 	}
 
 	t.Run("models without a reasoning control ignore every level", func(t *testing.T) {
-		for _, model := range []string{"gpt-4o", "gpt-35-turbo", "anthropic/claude-opus-4.8", "sonar-pro", "omni-moderation-latest", "o3x-preview"} {
+		for _, model := range []string{"gpt-4o", "gpt-35-turbo", "anthropic/claude-opus-4.8", "omni-moderation-latest", "o3x-preview"} {
 			effort, ok := sentEffort(t, model, nil, llms.WithReasoningEffort(llms.ReasoningEffortMax))
 			assert.False(t, ok, "model %s: unexpected reasoning effort %q", model, effort)
 		}
@@ -559,7 +559,7 @@ func TestReasoningEffort_ChatCompletions(t *testing.T) {
 		},
 		{
 			name:   "model without a reasoning control ignores the ceiling",
-			model:  "sonar-pro",
+			model:  "gpt-4o",
 			policy: llms.EffortPolicy{Max: llms.ReasoningEffortLow},
 			want:   notSent,
 		},
@@ -567,10 +567,12 @@ func TestReasoningEffort_ChatCompletions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fixture{reply: chatTextReply}
+			// Azure at its default API version uses Chat Completions.
 			m, err := openai.New(
-				openai.WithProvider(llms.ProviderPerplexity),
+				openai.WithProvider(llms.ProviderAzure),
 				openai.WithBaseURL("https://chat.test"),
 				openai.WithModel(tt.model),
+				openai.WithEmbeddingModel("embeddings"),
 				openai.WithToken("fixture"),
 				openai.WithHTTPClient(f.client(t)),
 				openai.WithEffortPolicy(tt.policy),

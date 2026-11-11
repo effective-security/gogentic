@@ -684,3 +684,49 @@ func TestSchemaFromAnyErrors(t *testing.T) {
 	_, err = schema.FromAny([]int{1})
 	require.EqualError(t, err, errUnmarshalArray)
 }
+
+func TestObjectFields(t *testing.T) {
+	city := &jsonschema.Schema{
+		Type: "string",
+	}
+	props := jsonschema.NewProperties()
+	props.Set("city", city)
+
+	tests := []struct {
+		name         string
+		in           *jsonschema.Schema
+		wantProps    map[string]any
+		wantRequired []string
+	}{
+		{
+			name: "nil schema",
+		},
+		{
+			name: "object without properties",
+			in: &jsonschema.Schema{
+				Type:     "object",
+				Required: []string{},
+			},
+		},
+		{
+			name: "properties and required",
+			in: &jsonschema.Schema{
+				Type:       "object",
+				Properties: props,
+				Required:   []string{"city"},
+			},
+			wantProps: map[string]any{
+				"city": city,
+			},
+			wantRequired: []string{"city"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotProps, gotRequired := schema.ObjectFields(tt.in)
+			assert.Equal(t, tt.wantProps, gotProps)
+			// nil, not empty: SDKs that omit only zero values would send [].
+			assert.Equal(t, tt.wantRequired, gotRequired)
+		})
+	}
+}

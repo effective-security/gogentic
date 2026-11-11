@@ -519,13 +519,14 @@ func (o *LLM) responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, erro
 			},
 		}, nil
 	case string(openaiclient.ToolTypeFunction):
-		if _, err := t.RequireFunction(); err != nil {
+		fn, err := t.RequireFunction()
+		if err != nil {
 			return responses.ToolUnionParam{}, err
 		}
 		// Convert jsonschema.Schema to map[string]any
 		var paramsMap map[string]any
-		if t.Function.Parameters != nil {
-			b, err := json.Marshal(t.Function.Parameters)
+		if fn.Parameters != nil {
+			b, err := json.Marshal(fn.Parameters)
 			if err != nil {
 				return responses.ToolUnionParam{}, errors.Wrap(err, "marshal function parameters")
 			}
@@ -534,14 +535,14 @@ func (o *LLM) responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, erro
 			}
 		}
 		// Strict mode requires additionalProperties: false at every object level.
-		if t.Function.Strict {
+		if fn.Strict {
 			enforceStrictSchema(paramsMap)
 		}
 		ft := &responses.FunctionToolParam{
-			Name:        t.Function.Name,
-			Description: param.NewOpt(t.Function.Description),
+			Name:        fn.Name,
+			Description: param.NewOpt(fn.Description),
 			Parameters:  paramsMap,
-			Strict:      param.NewOpt(t.Function.Strict),
+			Strict:      param.NewOpt(fn.Strict),
 		}
 		return responses.ToolUnionParam{OfFunction: ft}, nil
 	default:

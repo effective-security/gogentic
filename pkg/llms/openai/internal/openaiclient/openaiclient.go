@@ -35,7 +35,6 @@ const (
 	ProviderOpenRouter    ProviderType = "OPENROUTER"
 	ProviderAzure         ProviderType = "AZURE"
 	ProviderAzureAD       ProviderType = "AZURE_AD"
-	ProviderPerplexity    ProviderType = "PERPLEXITY"
 )
 
 // ToolType is the type of a tool.
@@ -294,16 +293,7 @@ func (c *Client) setHeaders(req *http.Request) {
 		req.Header.Set(key, value)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.Provider == ProviderOpenAI ||
-		c.Provider == ProviderAzure ||
-		c.Provider == ProviderAzureAD ||
-		c.Provider == "OPEN_AI" ||
-		c.Provider == ProviderOpenAIBedrock ||
-		c.Provider == ProviderOpenRouter {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	} else {
-		req.Header.Set("api-key", c.token)
-	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
 	if c.organization != "" {
 		req.Header.Set("OpenAI-Organization", c.organization)
 	}

@@ -331,7 +331,7 @@ What each provider reports:
 
 The other provider types return `llms.ErrModelListNotSupported` (test with
 `errors.Is`): `AZURE` and `AZURE_AD`, where requests name deployments;
-`PERPLEXITY`; `OPENAI_BEDROCK`; and the Anthropic client built with
+`OPENAI_BEDROCK`; and the Anthropic client built with
 `NewBedrock`. No request is made in that case.
 
 The factory reads these lists for the providers with `discovery` enabled, to
@@ -472,7 +472,7 @@ model, err = anthropic.New(
 model, err = anthropic.NewBedrock(anthropic.WithAWSConfig(awsCfg))
 ```
 
-The `openai` package also backs Azure, OpenRouter, Perplexity and
+The `openai` package also backs Azure, OpenRouter and
 OpenAI-on-Bedrock — `openai.WithProvider` selects the dialect, and the
 capability table keys off that same `ProviderType`. See
 [`pkg/llmfactory/factory.go`](../pkg/llmfactory/factory.go) for the exact
