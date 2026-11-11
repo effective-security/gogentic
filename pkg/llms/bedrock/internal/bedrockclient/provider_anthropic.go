@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
+	"github.com/effective-security/gogentic/pkg/schema"
 )
 
 // Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages.html
@@ -169,22 +170,15 @@ func anthropicTools(tools []llms.Tool) ([]anthropicTool, error) {
 		if err != nil {
 			return nil, errors.WithMessagef(err, "bedrock anthropic: tool [%d]", i)
 		}
-		inputSchema := anthropicInputSchema{
-			Type: "object",
-		}
-		if params := fn.Parameters; params != nil {
-			if params.Properties != nil {
-				inputSchema.Properties = make(map[string]any, params.Properties.Len())
-				for pair := params.Properties.Oldest(); pair != nil; pair = pair.Next() {
-					inputSchema.Properties[pair.Key] = pair.Value
-				}
-			}
-			inputSchema.Required = params.Required
-		}
+		properties, required := schema.ObjectFields(fn.Parameters)
 		res[i] = anthropicTool{
 			Name:        fn.Name,
 			Description: fn.Description,
-			InputSchema: inputSchema,
+			InputSchema: anthropicInputSchema{
+				Type:       "object",
+				Properties: properties,
+				Required:   required,
+			},
 		}
 	}
 	return res, nil

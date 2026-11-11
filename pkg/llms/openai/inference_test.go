@@ -426,7 +426,7 @@ func TestValidateInferenceRejections(t *testing.T) {
 	assertUnsupported(t, chatModel.ValidateInference(req), "messages.content.order")
 	require.NoError(t, responsesModel.ValidateInference(req))
 
-	for _, provider := range []llms.ProviderType{llms.ProviderOpenAI, llms.ProviderAzure, llms.ProviderAzureAD, llms.ProviderOpenRouter, llms.ProviderPerplexity, llms.ProviderOpenAIBedrock} {
+	for _, provider := range []llms.ProviderType{llms.ProviderOpenAI, llms.ProviderAzure, llms.ProviderAzureAD, llms.ProviderOpenRouter, llms.ProviderOpenAIBedrock} {
 		opts := []openai.Option{openai.WithProvider(provider), openai.WithBaseURL("https://example.test/v1")}
 		switch provider {
 		case llms.ProviderAzure, llms.ProviderAzureAD:

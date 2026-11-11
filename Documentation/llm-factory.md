@@ -129,13 +129,11 @@ field, because it decides both the client implementation and the
 | `OPENAI` (or `OPEN_AI`) | `pkg/llms/openai` | Set `open_ai.organization` / `open_ai.project` if needed |
 | `AZURE`, `AZURE_AD` | `pkg/llms/openai` | Requires `base_url` and `api_version` |
 | `OPENROUTER` | `pkg/llms/openai` | Defaults `base_url` to `https://openrouter.ai/api/v1`; `headers` are forwarded |
-| `PERPLEXITY` | `pkg/llms/openai` | Set `base_url: https://api.perplexity.ai` |
 | `OPENAI_BEDROCK` | `pkg/llms/openai` | OpenAI-compatible models on Bedrock; uses `WithAWSConfigFactory` |
 | `ANTHROPIC` | `pkg/llms/anthropic` | |
 | `ANTHROPIC_BEDROCK` | `pkg/llms/anthropic` (Bedrock mode) | Uses `WithAWSConfigFactory` |
 | `BEDROCK` | `pkg/llms/bedrock` | Native Bedrock runtime API |
 | `GOOGLEAI` | `pkg/llms/googleai` | |
-| `CLOUDFLARE` | `pkg/llms/cloudflare` | `base_url` maps to the server URL, which defaults to `https://api.cloudflare.com/client/v4/accounts`; an invalid one fails model creation. The account ID cannot be set from configuration yet (F-015) |
 
 An unknown `api_type` fails at model construction with
 `unsupported provider type: X`.
@@ -518,7 +516,7 @@ with discovery and is cut to `high` without.
 | `OPENAI`, `AZURE`, `AZURE_AD`, `OPENROUTER`, `OPENAI_BEDROCK` | `reasoning.effort` on the Responses API, `reasoning_effort` on Chat Completions. `none` is sent as `none` or `minimal`, whichever the model has, else as its lowest level. | Responses API: `low`; `none` on `gpt-5.1`; `medium` on the pro tier from 5.2; `high` on `gpt-5-pro` and `gpt-5.6-sol`; nothing for IDs with a vendor prefix and for generations after 5.6. Chat Completions: nothing. |
 | `ANTHROPIC`, `ANTHROPIC_BEDROCK` | From 4.6: adaptive thinking plus `output_config.effort`. Before 4.6: a thinking token budget, with `max_tokens` raised above it when needed; Opus 4.5 also gets the effort. `none` sends the lowest effort and turns thinking off in the form the model accepts: no thinking parameter before 5.0, `disabled` on Opus 5, Sonnet 5 and Haiku 5.5, `between_tools` on Sonnet 5.5. Opus 5.5, Fable and Mythos always think, so `none` only lowers their effort. | `output_config.effort: low` on 4.6 to 4.9; nothing on older and on 5.x models. |
 | `GOOGLEAI` | From Gemini 3: `thinkingLevel`. Gemini 2.5, which rejects a level: a `thinkingBudget` of 1024, 8192 or 24576 tokens for `low`, `medium` and `high`. `none` is sent as `MINIMAL` or a zero budget where the model has it, else as its lowest level. Models before 2.5 get nothing. The model is the one the client was built with; a model named by `llms.WithModel` is not sent to the API. | Nothing. |
-| `BEDROCK`, `CLOUDFLARE`, and models without a reasoning control | Nothing; effort is ignored. | Nothing. |
+| `BEDROCK`, and models without a reasoning control | Nothing; effort is ignored. | Nothing. |
 
 The settings are applied inside the provider client
 (`openai.WithEffortPolicy`, `anthropic.WithEffortPolicy`,
@@ -651,8 +649,8 @@ Adapt the resolved model with `router.Connector(model)`; see [router.md](router.
 
 ## Known limits
 
-- `AZURE`, `AZURE_AD`, `BEDROCK`, `ANTHROPIC_BEDROCK`, `OPENAI_BEDROCK`,
-  `PERPLEXITY` and `CLOUDFLARE` have no discovery, and so no family fallback:
+- `AZURE`, `AZURE_AD`, `BEDROCK`, `ANTHROPIC_BEDROCK` and `OPENAI_BEDROCK`
+  have no discovery, and so no family fallback:
   there a pattern selects among the exact IDs listed in `available_models`.
 - A model retired between two refreshes fails until the next refresh. `refresh`
   bounds that window; `RefreshModels` closes it on demand.

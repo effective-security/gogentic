@@ -11,7 +11,6 @@ import (
 	"github.com/effective-security/gogentic/pkg/llms"
 	"github.com/effective-security/gogentic/pkg/llms/anthropic"
 	"github.com/effective-security/gogentic/pkg/llms/bedrock"
-	"github.com/effective-security/gogentic/pkg/llms/cloudflare"
 	"github.com/effective-security/gogentic/pkg/llms/googleai"
 	"github.com/effective-security/gogentic/pkg/llms/openai"
 	"github.com/effective-security/gogentic/skills"
@@ -252,8 +251,6 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 		return newOpenRouter(cfg, preferredModels, opts)
 	case string(llms.ProviderOpenAIBedrock):
 		return newOpenAIBedrock(cfg, preferredModels, opts)
-	case string(llms.ProviderPerplexity):
-		return newPerplexity(cfg, preferredModels, opts)
 	case string(llms.ProviderAzure), string(llms.ProviderAzureAD):
 		return newAzure(cfg, preferredModels, opts)
 	case string(llms.ProviderAnthropic):
@@ -264,8 +261,6 @@ func CreateLLM(cfg *ProviderConfig, preferredModels []string, opts *Options) (ll
 		return newBedrock(cfg, preferredModels, opts)
 	case string(llms.ProviderAnthropicBedrock):
 		return newAnthropicBedrock(cfg, preferredModels, opts)
-	case string(llms.ProviderCloudflare):
-		return newCloudflare(cfg, preferredModels, opts)
 	}
 	return nil, errors.Errorf("unsupported provider type: %s", provType)
 }
@@ -333,24 +328,6 @@ func newOpenAIBedrock(cfg *ProviderConfig, preferredModels []string, options *Op
 			cfg.HTTPClient = options.HTTPClient
 		}
 		opts = append(opts, openai.WithAWSConfig(cfg))
-	}
-	return openai.New(opts...)
-}
-
-func newPerplexity(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
-	var opts []openai.Option
-	model, err := cfg.FindModel(preferredModels...)
-	if err != nil {
-		return nil, err
-	}
-	opts = append(opts, openai.WithProvider(llms.ProviderPerplexity), openai.WithModel(model))
-	opts = append(opts, openAIEffort(options)...)
-
-	if cfg.Token != "" {
-		opts = append(opts, openai.WithToken(cfg.Token))
-	}
-	if cfg.OpenAI.BaseURL != "" {
-		opts = append(opts, openai.WithBaseURL(cfg.OpenAI.BaseURL))
 	}
 	return openai.New(opts...)
 }
@@ -447,25 +424,6 @@ func newAnthropicBedrock(cfg *ProviderConfig, preferredModels []string, options 
 		opts = append(opts, anthropic.WithAWSConfig(cfg))
 	}
 	return anthropic.NewBedrock(opts...)
-}
-
-func newCloudflare(cfg *ProviderConfig, preferredModels []string, options *Options) (llms.Model, error) {
-	var opts []cloudflare.Option
-	model, err := cfg.FindModel(preferredModels...)
-	if err != nil {
-		return nil, err
-	}
-	opts = append(opts, cloudflare.WithModel(model))
-	if cfg.Token != "" {
-		opts = append(opts, cloudflare.WithToken(cfg.Token))
-	}
-	if cfg.OpenAI.BaseURL != "" {
-		opts = append(opts, cloudflare.WithServerURL(cfg.OpenAI.BaseURL))
-	}
-	if options != nil && options.HTTPClient != nil {
-		opts = append(opts, cloudflare.WithHTTPClient(options.HTTPClient))
-	}
-	return cloudflare.New(opts...)
 }
 
 // openAIEffort returns the option that hands the model's effort settings to

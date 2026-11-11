@@ -307,7 +307,7 @@ func Test_Real_WebSearch_Text(t *testing.T) {
 }
 
 func Test_Real_Providers(t *testing.T) {
-	//providers := []string{"OPENAI","OPENAI_BEDROCK","ANTHROPIC", "GOOGLEAI", "PERPLEXITY", "BEDROCK"}
+	//providers := []string{"OPENAI","OPENAI_BEDROCK","ANTHROPIC", "GOOGLEAI", "BEDROCK"}
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "set your key here")
 	providerType := llms.ProviderOpenAIBedrock
 

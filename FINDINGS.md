@@ -13,16 +13,12 @@ choice. Source symbols are stable references; line numbers are omitted.
 | --- | ------------------ | ----- | ---- | -------- | ------ |
 | [F-011](#f-011) | `assistants` · `Assistant.Run` | Retry after unparsable output loses the question, overwrites the input, keeps tools | Bug | Medium | Open |
 | [F-014](#f-014) | `pkg/llmfactory` · `newOpenAIBedrock`, `newAnthropicBedrock` | Factory HTTP client is ignored for the Bedrock-hosted OpenAI and Anthropic clients | Bug | Medium | Open |
-| [F-015](#f-015) | `pkg/llmfactory` · Cloudflare provider | No way to configure the Cloudflare account ID | Bug | Medium | Needs Decision |
 | [F-016](#f-016) | `pkg/llms/googleai` · `convertCandidates` | Tool calls accumulate across candidates | Bug | Medium | Open |
 | [F-017](#f-017) | `pkg/llms/googleai` · `convertParts`; `pkg/llmutils` · `DownloadImageData` | Image URL parts are sent with MIME type `png` instead of `image/png` | Bug | Medium | Open |
 | [F-018](#f-018) | `pkg/llms/bedrock` · `LLM.Infer` | Transport failures report status 0 instead of 502 | Bug | Medium | Open |
 | [F-020](#f-020) | `pkg/llms/bedrock/internal/bedrockclient` · `parseStreamingCompletionResponse` | Streaming drops tool calls and total token usage | Bug | Medium | Open |
 | [F-021](#f-021) | `pkg/llms/anthropic` · `GenerateStreamingContent` | Streamed tool call without input has empty arguments that fail on the next turn | Bug | Medium | Open |
 | [F-022](#f-022) | `pkg/llms/anthropic` · `ToTools` | `web_search` tools are sent as web fetch tools | Bug | Medium | Needs Decision |
-| [F-024](#f-024) | `pkg/llms/cloudflare` · `LLM.GenerateContent` | Streaming returns empty content | Bug | Medium | Open |
-| [F-025](#f-025) | `pkg/llms/cloudflare/internal/cloudflareclient` · `Client.CreateEmbedding` | Embeddings call the chat model; `WithEmbeddingModel` is ignored | Bug | Medium | Open |
-| [F-026](#f-026) | `pkg/llms/cloudflare/internal/cloudflareclient` · `Client.GenerateContent` | Streaming error handling loses the error | Bug | Medium | Open |
 | [F-027](#f-027) | `router/dialect` · `OpenOpaque` | Accepts a JSON `null` provider state | Bug | Medium | Open |
 | [F-032](#f-032) | `mcp` · `ToolResponse` | Client cannot see the server's `isError` flag | Bug | Medium | Open |
 | [F-034](#f-034) | `mcp/transport/{localtransport,httptransport}` · client `Send` | Notifications and requests in a response are dispatched as errors | Bug | Medium | Open |
@@ -75,14 +71,6 @@ proxies, timeouts and instrumentation are bypassed.
   `cfg.HTTPClient`.
 - Native `BEDROCK` uses the factory client.
 
-### F-015
-
-**No Cloudflare account ID in factory configuration.** The factory cannot set
-`cloudflare.WithAccountID`, so the endpoint becomes
-`<base_url>//ai/run/<model>`. Decide where the account ID goes in
-`ProviderConfig` (a new field, or a `base_url` that already ends in the
-account).
-
 ### F-016
 
 **Gemini tool calls accumulate across candidates.** `convertCandidates`
@@ -128,30 +116,6 @@ call back in the history fails in `HandleAIMessage` with
 `Type == "web_search"` becomes `WebFetchTool20250910` or
 `WebFetchTool20260209`, not a web search tool. Decide whether fetch was
 intended.
-
-### F-024
-
-**Cloudflare streaming returns empty content.** With a streaming function,
-`LLM.GenerateContent` returns `Choices[0].Content == ""` because streamed
-chunks are never collected into the response.
-
-### F-025
-
-**Cloudflare embeddings use the chat model.** `Client.CreateEmbedding` posts
-to the chat model's endpoint; the embedding model passed to `NewClient` via
-`WithEmbeddingModel` is stored and never used.
-
-### F-026
-
-**Cloudflare streaming error handling.** In `Client.GenerateContent` with
-streaming on:
-
-- A 400 with `{"errors":[{"message":"bad"}]}` produces an error with an empty
-  message; the scanner has already consumed the body before `ReadAll`.
-- The status is checked only after the first line parses as JSON, so a
-  non-JSON error page returns a JSON syntax error.
-- `scanner.Err()` is ignored; a read error or a line over 512000 bytes ends
-  the call with an empty response and a nil error.
 
 ### F-027
 

@@ -33,9 +33,9 @@ global registry. You compose a small number of interfaces and call them.
                               ▼
         ┌───────────────────────────────────────────────┐
         │  pkg/llms  (Model interface, messages, opts)  │
-        │  openai · anthropic · bedrock · googleai ·    │
-        │  cloudflare  (+ Azure/OpenRouter/Perplexity   │
-        │               via the openai client)          │
+        │  openai · anthropic · bedrock · googleai      │
+        │  (+ Azure/OpenRouter/OpenAI-on-Bedrock        │
+        │   via the openai client)                      │
         └───────────────────────────────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ Dependencies point downwards only. `pkg/llms` knows nothing about assistants;
 | `mcp`                                                     | MCP server and client.                                                                                                             |
 | `mcp/transport/...`                                       | `stdio`, `httptransport` (HTTP + SSE endpoint), `sse` (server push), `localtransport` (in-process).                                |
 | `pkg/llms`                                                | `Model` interface, message/content types, `CallOption`s, provider capability table, prompt caching and batch contracts.            |
-| `pkg/llms/{openai,anthropic,bedrock,googleai,cloudflare}` | Provider implementations.                                                                                                          |
+| `pkg/llms/{openai,anthropic,bedrock,googleai}`            | Provider implementations.                                                                                                          |
 | `pkg/llmfactory`                                          | Config → `llms.Model`. Assistant→model mapping, per-org overrides, capability filtering, model allow/deny filter.                  |
 | `pkg/prompts`                                             | Prompt templates (Go template, Jinja2, f-string), chat prompts, few-shot.                                                          |
 | `pkg/schema`                                              | Go type → JSON Schema, and JSON Schema → provider response format.                                                                 |

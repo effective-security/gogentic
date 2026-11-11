@@ -112,7 +112,7 @@ func TestApplyPromptCacheToChatRequest(t *testing.T) {
 			},
 		}
 
-		applyPromptCacheToChatRequest(req, openaiclient.ProviderPerplexity, &opts)
+		applyPromptCacheToChatRequest(req, openaiclient.ProviderOpenRouter, &opts)
 		assert.Empty(t, req.PromptCacheKey)
 		assert.Empty(t, req.PromptCacheRetention)
 	})

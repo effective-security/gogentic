@@ -4,10 +4,13 @@ Version 1.0 makes the LLM factory cope with two things that used to need a
 code change or a config edit on short notice: providers retiring and renaming
 models, and reasoning effort that differs from model to model.
 
-An existing `llm.yaml` and existing code keep working. Every new feature is
-switched on by adding a key or a suffix to the configuration; a file without
-them resolves the same models as 0.21. The few changes you get without asking
-are listed under [Changes to check when upgrading](#changes-to-check-when-upgrading).
+An existing `llm.yaml` and existing code keep working, except with the
+Perplexity and Cloudflare providers, which
+[are no longer supported](#perplexity-and-cloudflare-are-no-longer-supported).
+Every new feature is switched on by adding a key or a suffix to the
+configuration; a file without them resolves the same models as 0.21. The few
+changes you get without asking are listed under
+[Changes to check when upgrading](#changes-to-check-when-upgrading).
 
 The router is not part of this release: it has its own reasoning controls and
 is not affected by the effort settings described here.
@@ -24,6 +27,7 @@ is not affected by the effort settings described here.
 | [Model lists as an API](#model-lists-as-an-api) | `llms.ModelLister` on OpenAI, OpenRouter, Anthropic and Google AI | Optional |
 | [Configuration validated at load](#configuration-is-validated-at-load) | A mistyped entry fails at load instead of being skipped at run time | Call `Config.Validate` for a config built in code |
 | [Logs and metrics](#logs-and-metrics) | Substitutions and failed list fetches are visible | Alert on two new counters |
+| [Perplexity and Cloudflare are no longer supported](#perplexity-and-cloudflare-are-no-longer-supported) | Two providers that were never tested end to end are gone | Move their assistants to a supported provider |
 
 ## What changed
 
@@ -226,6 +230,25 @@ date), `model_not_listed` and `model_list_failed`, each once per fetched list.
 
 Details: [LLM Factory → Logs and metrics](llm-factory.md#logs-and-metrics).
 
+### Perplexity and Cloudflare are no longer supported
+
+The `PERPLEXITY` and `CLOUDFLARE` provider types are removed. Neither could be
+tested end to end, and neither was used in production.
+
+- **Configuration.** A provider with `api_type: PERPLEXITY` or
+  `api_type: CLOUDFLARE` still loads, but creating a model from it fails with
+  `unsupported provider type: PERPLEXITY` (or `CLOUDFLARE`).
+- **Go code.** The `pkg/llms/cloudflare` package and the
+  `llms.ProviderPerplexity` and `llms.ProviderCloudflare` constants are removed,
+  so code that uses them stops compiling. `llms.ParseProviderType` rejects both
+  names with `invalid provider type`.
+- **Authentication of the OpenAI client.** `pkg/llms/openai` now sends the token
+  as `Authorization: Bearer` for every provider type. It used to send an
+  `api-key` header for Perplexity and for provider types it did not recognize.
+
+Remove those providers from `llm.yaml`, and move the assistants that used them
+to another provider in `assistant_models`.
+
 ## What to update to benefit
 
 None of this is required. Each step is independent.
@@ -348,6 +371,7 @@ These apply without any change to your configuration.
 | `gpt-5.2-pro`, `gpt-5.4-pro` and `gpt-5.5-pro` get `medium` when no level is requested | They got `low` in 0.21, which these models do not accept | Nothing |
 | Anthropic `max_tokens` defaults to 8192 | Anthropic calls that set no maximum. It was 4096. Claude 3 Haiku and Opus, which are deprecated, stop at 4096 output tokens and reject the new default. | Pass `llms.WithMaxTokens` to keep a lower limit, and always for Claude 3 Haiku and Opus |
 | Claude 5.x gets the current web search and web fetch tools | Calls with web tools on Fable, Mythos, Opus 5.x and Sonnet 5.x, which were sent the legacy tool versions | Nothing |
+| Perplexity and Cloudflare are removed | Configurations with `api_type: PERPLEXITY` or `CLOUDFLARE`, and code that uses `pkg/llms/cloudflare`, `llms.ProviderPerplexity` or `llms.ProviderCloudflare` | See [Perplexity and Cloudflare are no longer supported](#perplexity-and-cloudflare-are-no-longer-supported) |
 | An upper-case provider type is a provider prefix | A reference such as `OPENAI/gpt-5.1` when no provider is named `OPENAI`: it now reaches the providers of that type. A lower-case prefix such as `openai/` stays part of the model ID. | Nothing |
 
 The `llmfactory.Factory` interface did not change, so your own implementations
@@ -356,7 +380,7 @@ and mocks of it still compile.
 ## Limits
 
 - Discovery is not available for `AZURE`, `AZURE_AD`, `BEDROCK`,
-  `ANTHROPIC_BEDROCK`, `OPENAI_BEDROCK`, `PERPLEXITY` and `CLOUDFLARE`.
+  `ANTHROPIC_BEDROCK` and `OPENAI_BEDROCK`.
   Patterns there select among the models listed by name, and a retired model
   is not replaced.
 - With discovery, a model the provider accepts but does not list is treated as
@@ -375,7 +399,11 @@ and mocks of it still compile.
 
 ## Upgrade checklist
 
-- [ ] Build. Fix any use of a `ReasoningEffort` constant as an `int`.
+- [ ] Remove `PERPLEXITY` and `CLOUDFLARE` providers from `llm.yaml` and move
+      their assistants to another provider.
+- [ ] Build. Fix any use of a `ReasoningEffort` constant as an `int`, and of
+      `pkg/llms/cloudflare`, `llms.ProviderPerplexity` or
+      `llms.ProviderCloudflare`.
 - [ ] Load your `llm.yaml` with `LoadConfig` and fix what it reports.
 - [ ] Read [Changes to check when upgrading](#changes-to-check-when-upgrading),
       in particular the Anthropic `max_tokens` default and the cost of requested

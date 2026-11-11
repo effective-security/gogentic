@@ -24,12 +24,14 @@ const (
 	llmTestToken     = "test-token"
 	llmTestModel     = "gpt-test"
 	llmTestEmbedding = "embed-test"
-	chatPath         = "/chat/completions"
-	responsesPath    = "/responses"
-	embeddingsPath   = "/embeddings"
-	toolLookup       = "lookup"
-	toolCallID       = "call_1"
-	imageURL         = "https://example.test/cat.png"
+	// chatPath is where Azure, at its default API version, sends Chat
+	// Completions requests for the llmTestModel deployment.
+	chatPath       = "/openai/deployments/" + llmTestModel + "/chat/completions"
+	responsesPath  = "/responses"
+	embeddingsPath = "/embeddings"
+	toolLookup     = "lookup"
+	toolCallID     = "call_1"
+	imageURL       = "https://example.test/cat.png"
 )
 
 // captureServer is an httptest server that records each request and serves
@@ -94,13 +96,15 @@ func (s *captureServer) lastHeader() http.Header {
 	return s.header
 }
 
-// newChatLLM builds an LLM on a provider that uses Chat Completions.
+// newChatLLM builds an LLM that uses Chat Completions: Azure at its default
+// API version, which predates the Responses API.
 func newChatLLM(t *testing.T, baseURL string, opts ...Option) *LLM {
 	t.Helper()
 	opts = append([]Option{
-		WithProvider(llms.ProviderPerplexity),
+		WithProvider(llms.ProviderAzure),
 		WithToken(llmTestToken),
 		WithModel(llmTestModel),
+		WithEmbeddingModel(llmTestEmbedding),
 		WithBaseURL(baseURL),
 	}, opts...)
 	llm, err := New(opts...)
@@ -233,7 +237,7 @@ func TestGenerateContentFromChat(t *testing.T) {
 	}, resp)
 
 	assert.Equal(t, []string{chatPath}, srvState.requestPaths())
-	assert.Equal(t, llmTestToken, srvState.lastHeader().Get("api-key"), "perplexity authenticates with api-key")
+	assert.Equal(t, "Bearer "+llmTestToken, srvState.lastHeader().Get("Authorization"))
 	body := srvState.lastJSON()
 	assert.Equal(t, llmTestModel, body["model"])
 	assert.Equal(t, float64(2), body["n"])
@@ -774,7 +778,7 @@ func TestBuildResponsesRequestBody_Defaults(t *testing.T) {
 
 	llm := &LLM{
 		client: &openaiclient.Client{
-			Provider: openaiclient.ProviderPerplexity,
+			Provider: openaiclient.ProviderOpenRouter,
 		},
 	}
 	req, err := llm.buildResponsesRequestBody([]llms.Message{

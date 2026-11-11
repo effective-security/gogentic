@@ -21,8 +21,6 @@ const (
 	ProviderAzureAD ProviderType = "AZURE_AD"
 	// ProviderBedrock is the type of provider for Bedrock Mantle models.
 	ProviderBedrock ProviderType = "BEDROCK"
-	// ProviderCloudflare is the type of provider for Cloudflare models.
-	ProviderCloudflare ProviderType = "CLOUDFLARE"
 	// ProviderGoogleAI is the type of provider for Google AI models.
 	ProviderGoogleAI ProviderType = "GOOGLEAI"
 	// ProviderOpenAI is the type of provider for OpenAI models.
@@ -31,8 +29,6 @@ const (
 	ProviderOpenAIBedrock ProviderType = "OPENAI_BEDROCK"
 	// ProviderOpenRouter is the type of provider for OpenRouter models.
 	ProviderOpenRouter ProviderType = "OPENROUTER"
-	// ProviderPerplexity is the type of provider for Perplexity models.
-	ProviderPerplexity ProviderType = "PERPLEXITY"
 )
 
 // ParseProviderType converts a provider type name or one of its common aliases
@@ -51,8 +47,6 @@ func ParseProviderType(s string) (ProviderType, error) {
 		return ProviderAzureAD, nil
 	case "BEDROCK":
 		return ProviderBedrock, nil
-	case "CLOUDFLARE":
-		return ProviderCloudflare, nil
 	case "GOOGLEAI", "GOOGLE_AI", "GEMINI":
 		return ProviderGoogleAI, nil
 	case "OPENAI", "OPEN_AI":
@@ -61,8 +55,6 @@ func ParseProviderType(s string) (ProviderType, error) {
 		return ProviderOpenAIBedrock, nil
 	case "OPENROUTER":
 		return ProviderOpenRouter, nil
-	case "PERPLEXITY":
-		return ProviderPerplexity, nil
 	default:
 		return "", errors.Errorf("invalid provider type: %s", s)
 	}
@@ -204,14 +196,6 @@ var providerCapabilities = map[ProviderType]Capability{
 		CapabilityFunctionCalling |
 		CapabilityMultiToolCalling |
 		CapabilitySystemPrompt,
-
-	ProviderCloudflare: CapabilityText,
-
-	ProviderPerplexity: CapabilityText |
-		CapabilitySystemPrompt |
-		CapabilityJSONResponse |
-		CapabilityJSONSchema |
-		CapabilityJSONSchemaStrict,
 
 	ProviderAzure: CapabilityText |
 		CapabilityJSONResponse |

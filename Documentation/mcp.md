@@ -58,19 +58,21 @@ empty. A non-positive `n` disables pagination.
 The server reflects your handler to derive the JSON Schema, so the signature is
 part of the contract.
 
-**Tools** — one or two arguments; with two, the first must be
-`context.Context`. Returns `(*mcp.ToolResponse, error)`.
+**Tools** — an optional `context.Context` first, then at most one arguments
+value `T`. Returns `(*mcp.ToolResponse, error)`.
 
 ```go
 func(ctx context.Context, args T) (*mcp.ToolResponse, error)
 func(args T) (*mcp.ToolResponse, error)
+func(ctx context.Context) (*mcp.ToolResponse, error)
+func() (*mcp.ToolResponse, error)
 ```
 
 `T` may be any struct; `jsonschema` tags describe it to the caller.
 
 **Prompts** — same argument rules, returns `(*mcp.PromptResponse, error)`.
 `T` must be a struct whose fields are all `string` or `*string` (MCP prompt
-arguments are strings by protocol).
+arguments are strings by protocol). A prompt without `T` takes no arguments.
 
 ```go
 func(ctx context.Context, args chatmodel.MCPInputRequest) (*mcp.PromptResponse, error)
@@ -82,14 +84,15 @@ func(ctx context.Context, args chatmodel.MCPInputRequest) (*mcp.PromptResponse, 
 A mismatched signature is rejected by `RegisterTool` / `RegisterPrompt` /
 `RegisterResource` with a descriptive error, not at call time: argument count
 and types, both result types (`*mcp.ToolResponse`, `*mcp.PromptResponse` or
-`*mcp.ResourceResponse`, then `error`), a variadic function, and a handler
-that is not a function at all, for example
+`*mcp.ResourceResponse`, then `error`), a variadic function, a nil function
+(including a typed nil, such as an unset handler field), and a handler that is
+not a function at all, for example
 `handler must return *mcp.ResourceResponse, got string`.
 
 A request without `arguments`, or with `"arguments": null`, calls the handler
-with the zero value of `T`. A handler without `T` (a tool taking only a
-context) is listed with the input schema `{"type":"object","properties":{}}`
-and ignores the arguments it is sent.
+with the zero value of `T`. A tool without `T` is listed with the input schema
+`{"type":"object","properties":{}}`, a prompt without `T` with no arguments,
+and both ignore the arguments they are sent.
 
 ### Registration API
 
@@ -153,7 +156,8 @@ at the URI that was read.
 
 The same applies when the handler cannot produce a response: arguments that
 do not decode (`failed to unmarshal arguments: ...`), a handler that panics
-(`internal error: tool panicked: ...`, with the stack in the server log), and
+(`internal error: tool panicked`; the panic value, which can hold internal
+data, and the stack go only to the server log, with the tool name), and
 a handler that returns neither a response nor an error
 (`tool handler returned neither a response nor an error`). A faulty handler
 fails its own request; it does not crash the server.

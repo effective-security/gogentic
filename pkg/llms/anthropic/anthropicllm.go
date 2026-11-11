@@ -606,21 +606,15 @@ func ToTools(tools []llms.Tool, model string) ([]anthropic.ToolUnionParam, error
 			return nil, errors.WithMessagef(err, "anthropic: tool [%d]", i)
 		}
 
+		properties, required := schema.ObjectFields(fn.Parameters)
 		inputSchema := anthropic.ToolInputSchemaParam{
-			Type: "object",
+			Type:     "object",
+			Required: required,
 		}
-		if params := fn.Parameters; params != nil {
-			// Convert Properties from orderedmap to regular map for Anthropic SDK
-			if params.Properties != nil {
-				properties := make(map[string]any, params.Properties.Len())
-				for pair := params.Properties.Oldest(); pair != nil; pair = pair.Next() {
-					properties[pair.Key] = pair.Value
-				}
-				inputSchema.Properties = properties
-			}
-			if len(params.Required) > 0 {
-				inputSchema.Required = params.Required
-			}
+		// Properties is an interface: a nil map in it would be sent as
+		// "properties": null.
+		if properties != nil {
+			inputSchema.Properties = properties
 		}
 
 		sdkTools[i] = anthropic.ToolUnionParam{

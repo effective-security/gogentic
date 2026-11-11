@@ -124,7 +124,7 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 |---------|--------|------|
 | Server | `Server`, `NewServer`, `Serve`, `RegisterTool/Prompt/Resource/ResourceTemplate` | `server.go` |
 | Server options | `WithName`, `WithVersion`, `WithInstructions`, `WithPaginationLimit`, `WithProtocol` | `server.go` |
-| Handler validation, call & schema | `validateToolHandler`, `validatePromptHandler`, `validateResourceHandler`, `newHandler`, `callHandler` (decodes arguments, recovers panics), `argumentsSchema`, `newPromptSchema` | `handler.go` |
+| Handler signature, call & schema | `parseHandler` (reads the signature once, at registration), `parsePromptHandler`, `parseResourceHandler`, `callHandler` (decodes arguments, recovers panics and logs them), `argumentsSchema`, `newPromptSchema` | `handler.go` |
 | Client | `Client`, `NewClient`, `NewClientWithInfo`, `Initialize`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`, `ListResources`, `ReadResource`, `Ping` | `client.go` |
 | Content | `Content`, `NewTextContent`, `NewImageContent`, `NewTextResourceContent`, `NewBlobResourceContent`, `Annotations` | `content_api.go` |
 | Responses | `ToolResponse`, `PromptResponse`, `ResourceResponse` | `tool_api.go`, `prompt_api.go`, `resource_api.go` |
@@ -155,8 +155,8 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 | Serialization | message marshal/unmarshal | `marshaling.go` |
 
 Provider implementations: `pkg/llms/openai` (also Azure, OpenRouter,
-Perplexity, OpenAI-on-Bedrock), `pkg/llms/anthropic` (`New`, `NewBedrock`),
-`pkg/llms/bedrock`, `pkg/llms/googleai`, `pkg/llms/cloudflare`. Wire protocol
+OpenAI-on-Bedrock), `pkg/llms/anthropic` (`New`, `NewBedrock`),
+`pkg/llms/bedrock`, `pkg/llms/googleai`. Wire protocol
 details live under each provider's `internal/` directory. The OpenAI, Anthropic
 and Google packages each have an `efforts.go` that maps a reasoning effort to
 the levels a model accepts (`effortProfileFor`), and a `WithEffortPolicy`
@@ -199,7 +199,7 @@ that needs no model name.
 | Concept | Symbol | File |
 |---------|--------|------|
 | Reflection | `New` (type-cached), `JSONSchema`, `buildSchema` | `schema.go` |
-| Function parameters | `Schema.Parameters`, `ToFunctionSchema`, `refResolver` | `schema.go` |
+| Function parameters | `Schema.Parameters`, `ToFunctionSchema`, `refResolver`, `ObjectFields` (properties and required names for provider SDKs) | `schema.go` |
 | Ad-hoc schemas | `FromAny`, `MustFromAny` | `schema.go` |
 | Response formats | `NewResponseFormat`, `ResponseFormat`, `ResponseFormatJSONSchema`, `toOpenAISchema` | `response_format.go` |
 
@@ -253,6 +253,7 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | File | Covers |
 |------|--------|
 | `assistants/assistants_test.go` | The loop with mocked models |
+| `assistants/assistant_test.go`, `assistant_run_test.go` | Builder, system prompt and MCP methods; `Run` edge cases: model selection, history, limits, output retries, malformed tool calls |
 | `assistants/assistants_real_test.go` | End-to-end against live providers; **skipped by default** (`t.Skip` in `loadOpenAIConfigOrSkipRealTest`) |
 | `assistants/assistant_tool_test.go` | Assistant-as-tool, including input parsing and MCP registration |
 | `pkg/llmfactory/factory_test.go` | Model resolution, org overrides, capability filtering |
@@ -267,8 +268,11 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | `pkg/llms/{openai,anthropic,googleai}/models_test.go` | Model listing against lists recorded from each API (`testdata/models_*.json`): pages, lifecycle stages, errors. `TestIntegrationListModels*` call the live APIs and are skipped under `make test` |
 | `pkg/llms/anthropic/efforts_recorded_test.go` | The Anthropic effort table agrees with the capabilities in the recorded model list |
 | `skills/loader_test.go` | Discovery from folders and tar archives |
-| `mcp/server_test.go` | Registration, notifications, handler validation, handler panics and missing arguments, concurrent `prompts/list` (run with `-race`) |
-| `mcp/client_test.go` | `Client` end to end against a real `Server` over the local transport, and every client error path through a scripted transport |
+| `mcp/server_test.go` | Server options, `Serve`, registration and list-changed notifications, initialize and ping, response marshaling |
+| `mcp/handler_test.go` | Handler signatures accepted and rejected at registration, and tool, prompt and resource calls: errors, panics, missing arguments, handlers without arguments |
+| `mcp/server_list_test.go` | The list methods and their pagination, and concurrent `prompts/list` (run with `-race`) |
+| `mcp/client_test.go` | `Client` end to end against a real `Server` over the local transport and over HTTP |
+| `mcp/client_scripted_test.go` | Every client error path through a scripted transport: initialization, request failures, argument encoding |
 | `router/validate_test.go`, `router/dialect/{openai,anthropic}/decode_test.go` | Every request-validation and codec rejection branch, with the exact error kind and parameter |
 | `pkg/llms/bedrock/internal/bedrockclient/*_test.go` | `InvokeModel` request and response shapes per model family over a fake HTTP client, including hand-built streaming event frames |
 | `store/redis_test.go` | Redis store against a Redis container (needs Docker) plus injected client failures |

@@ -23,7 +23,6 @@ func TestParseProviderType(t *testing.T) {
 		{"AZURE_OPENAI", llms.ProviderAzure},
 		{"AZURE_AD", llms.ProviderAzureAD},
 		{"BEDROCK", llms.ProviderBedrock},
-		{"CLOUDFLARE", llms.ProviderCloudflare},
 		{"GOOGLEAI", llms.ProviderGoogleAI},
 		{"GOOGLE_AI", llms.ProviderGoogleAI},
 		{"GEMINI", llms.ProviderGoogleAI},
@@ -32,7 +31,6 @@ func TestParseProviderType(t *testing.T) {
 		{"OPENAI_BEDROCK", llms.ProviderOpenAIBedrock},
 		{"BEDROCK_OPENAI", llms.ProviderOpenAIBedrock},
 		{"OPENROUTER", llms.ProviderOpenRouter},
-		{"PERPLEXITY", llms.ProviderPerplexity},
 		// Matching ignores case.
 		{"gemini", llms.ProviderGoogleAI},
 		{"Azure_Ad", llms.ProviderAzureAD},
@@ -64,12 +62,10 @@ func TestParseProviderType_CoversEveryProvider(t *testing.T) {
 		llms.ProviderAzure,
 		llms.ProviderAzureAD,
 		llms.ProviderBedrock,
-		llms.ProviderCloudflare,
 		llms.ProviderGoogleAI,
 		llms.ProviderOpenAI,
 		llms.ProviderOpenAIBedrock,
 		llms.ProviderOpenRouter,
-		llms.ProviderPerplexity,
 	}
 	for _, provider := range providers {
 		got, err := llms.ParseProviderType(string(provider))
@@ -92,12 +88,10 @@ func TestCapabilityModels(t *testing.T) {
 		llms.ProviderAzure,
 		llms.ProviderAzureAD,
 		llms.ProviderBedrock,
-		llms.ProviderCloudflare,
 		llms.ProviderGoogleAI,
 		llms.ProviderOpenAI,
 		llms.ProviderOpenAIBedrock,
 		llms.ProviderOpenRouter,
-		llms.ProviderPerplexity,
 	}
 	for _, provider := range all {
 		assert.Equal(t, listers[provider], provider.Supports(llms.CapabilityModels), "provider %s", provider)

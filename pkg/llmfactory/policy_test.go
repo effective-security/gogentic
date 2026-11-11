@@ -297,7 +297,6 @@ func TestLoadConfig_Validates(t *testing.T) {
 		"AWS_BEARER_TOKEN_BEDROCK",
 		"AZURE_OPENAI_API_KEY",
 		"GOOGLEAI_TOKEN",
-		"PERPLEXITY_TOKEN",
 		"OPENROUTER_API_KEY",
 	} {
 		t.Setenv(name, "fakekey")

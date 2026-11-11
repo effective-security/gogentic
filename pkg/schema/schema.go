@@ -228,3 +228,23 @@ func FromAny(t any) (*jsonschema.Schema, error) {
 	}
 	return schema, nil
 }
+
+// ObjectFields returns the properties of the object schema s as a map, and the
+// names of its required properties, for provider SDKs that take a tool's input
+// schema in that form. properties is nil when s is nil or has no properties;
+// required is nil when no property is required.
+func ObjectFields(s *jsonschema.Schema) (properties map[string]any, required []string) {
+	if s == nil {
+		return nil, nil
+	}
+	if s.Properties != nil {
+		properties = make(map[string]any, s.Properties.Len())
+		for pair := s.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			properties[pair.Key] = pair.Value
+		}
+	}
+	if len(s.Required) > 0 {
+		required = s.Required
+	}
+	return properties, required
+}

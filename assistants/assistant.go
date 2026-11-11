@@ -726,6 +726,13 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			executedCount++
 			lock.Unlock()
 
+			// TODO:
+			// This only prevents the nil dereference; provider-native calls still enter the generic function-tool loop.
+			// For a call such as web_search with no FunctionCall, toolName is looked up as a user tool,
+			// a synthetic RoleTool "not found" response is appended, and the next request is sent with a history that
+			// OpenAI Chat Completions, Anthropic, Bedrock, and Google AI reject because the call has no function payload.
+			// Native calls need to be skipped or preserved/handled through a provider-specific path rather than
+			// converted into a tool-not-found result.
 			toolCall.Type = values.StringsCoalesce(toolCall.Type, llms.ToolTypeFunction)
 			toolName := toolCall.GetFunctionCallName()
 			if toolCall.ID == "" {

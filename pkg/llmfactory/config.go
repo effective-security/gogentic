@@ -51,7 +51,7 @@ type OrgConfig struct {
 
 // ProviderConfig defines a single provider instance and its available models.
 // The OpenAI field conveys the API style for both OpenAI proper and
-// OpenAI‑compatible APIs (Azure, Perplexity, Cloudflare, etc.).
+// OpenAI‑compatible APIs (Azure, OpenRouter, OpenAI on Bedrock).
 //
 // Model names in DefaultModel and AvailableModels may carry a default
 // reasoning effort after a comma ("gpt-5.1,medium") and may be patterns in
@@ -92,7 +92,8 @@ type DiscoveryConfig struct {
 }
 
 // OpenAIConfig specifies API parameters for OpenAI‑style providers. APIType
-// selects the provider family: OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY.
+// selects the provider family:
+// OPENAI|AZURE|AZURE_AD|OPENROUTER|OPENAI_BEDROCK|ANTHROPIC|ANTHROPIC_BEDROCK|BEDROCK|GOOGLEAI.
 type OpenAIConfig struct {
 	// Converse enables the optional Bedrock portable inference connector.
 	Converse bool `json:"converse,omitempty" yaml:"converse,omitempty"`
@@ -102,7 +103,7 @@ type OpenAIConfig struct {
 	BaseURL      string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	APIVersion   string `json:"api_version,omitempty" yaml:"api_version,omitempty"`
 	// APIType specifies the type of API to use:
-	// OPENAI|AZURE|AZURE_AD|CLOUDFLARE|ANTHROPIC|GOOGLEAI|BEDROCK|OPENROUTER|PERPLEXITY
+	// OPENAI|AZURE|AZURE_AD|OPENROUTER|OPENAI_BEDROCK|ANTHROPIC|ANTHROPIC_BEDROCK|BEDROCK|GOOGLEAI
 	APIType string `json:"api_type,omitempty" yaml:"api_type,omitempty"`
 	// Organization is the organization ID for the OpenAI API.
 	Organization string `json:"organization,omitempty" yaml:"organization,omitempty"`

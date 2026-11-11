@@ -22,7 +22,7 @@ go get github.com/effective-security/gogentic
 | Typed, schema-validated results | `encoding`, `pkg/schema` | [Structured Output](Documentation/structured-output.md) |
 | Tools with generated JSON Schema parameters | `tools` | [Tools](Documentation/tools.md) |
 | Multi-agent delegation (an assistant *is* a tool) | `assistants` | [Orchestration](Documentation/orchestration.md) |
-| One config for OpenAI, Anthropic, Azure, Bedrock, Google AI, OpenRouter, Perplexity, Cloudflare | `pkg/llmfactory`, `pkg/llms` | [LLM Factory](Documentation/llm-factory.md), [LLM Providers](Documentation/llms.md) |
+| One config for OpenAI, Anthropic, Azure, Bedrock, Google AI, OpenRouter | `pkg/llmfactory`, `pkg/llms` | [LLM Factory](Documentation/llm-factory.md), [LLM Providers](Documentation/llms.md) |
 | Per-assistant and per-organization model routing, capability filtering, quota hooks | `pkg/llmfactory` | [Model resolution](Documentation/llm-factory.md#model-resolution) |
 | Model patterns, reasoning effort in configuration, and retired models replaced from the provider's own model list | `pkg/llmfactory` | [Model discovery](Documentation/llm-factory.md#model-discovery), [Reasoning effort](Documentation/llm-factory.md#reasoning-effort) |
 | Agent Skills (`SKILL.md`) with progressive disclosure | `skills` | [Skills](Documentation/skills.md) |

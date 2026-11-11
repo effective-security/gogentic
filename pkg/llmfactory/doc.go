@@ -33,8 +33,8 @@
 //	      default: [OPENAI/gpt-5.1-mini]
 //
 // open_ai.api_type selects the provider family and therefore the capability
-// set: OPENAI|AZURE|AZURE_AD|OPENROUTER|PERPLEXITY|OPENAI_BEDROCK|ANTHROPIC|
-// ANTHROPIC_BEDROCK|BEDROCK|GOOGLEAI|CLOUDFLARE.
+// set: OPENAI|AZURE|AZURE_AD|OPENROUTER|OPENAI_BEDROCK|ANTHROPIC|
+// ANTHROPIC_BEDROCK|BEDROCK|GOOGLEAI.
 //
 // # 2. Load and resolve a model
 //

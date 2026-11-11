@@ -221,14 +221,14 @@ func NewServer(transport transport.Transport, options ...ServerOptions) *Server 
 }
 
 // RegisterTool registers a tool whose handler is
-// func([context.Context,] T) (*ToolResponse, error). The input schema of
-// the tool is reflected from T. A handler of another signature is rejected.
+// func([context.Context,] [T]) (*ToolResponse, error). The input schema of
+// the tool is reflected from T; a handler without T takes an empty object. A
+// handler of another signature, or a nil one, is rejected.
 func (s *Server) RegisterTool(name string, description string, handler any) error {
-	err := validateToolHandler(handler)
+	h, err := parseHandler(handlerKindTool, name, handler, toolResponseType)
 	if err != nil {
 		return err
 	}
-	h := newHandler(handlerKindTool, handler)
 
 	s.tools.Store(name, &tool{
 		Name:            name,
@@ -259,9 +259,9 @@ func (s *Server) DeregisterTool(name string) error {
 
 // RegisterResource registers the resource at uri, whose handler is
 // func([context.Context]) (*ResourceResponse, error). A handler of another
-// signature is rejected.
+// signature, or a nil one, is rejected.
 func (s *Server) RegisterResource(uri string, name string, description string, mimeType string, handler any) error {
-	err := validateResourceHandler(handler)
+	h, err := parseResourceHandler(uri, handler)
 	if err != nil {
 		return err
 	}
@@ -270,7 +270,7 @@ func (s *Server) RegisterResource(uri string, name string, description string, m
 		Description: description,
 		Uri:         uri,
 		mimeType:    mimeType,
-		Handler:     newResourceRead(uri, newHandler(handlerKindResource, handler)),
+		Handler:     newResourceRead(h),
 	})
 	return s.sendResourceListChangedNotification()
 }
@@ -313,15 +313,15 @@ func (s *Server) DeregisterResourceTemplate(uriTemplate string) error {
 }
 
 // RegisterPrompt registers a prompt whose handler is
-// func([context.Context,] T) (*PromptResponse, error), where T is a struct of
-// string or *string fields, one per prompt argument. A handler of another
-// signature is rejected.
+// func([context.Context,] [T]) (*PromptResponse, error), where T is a struct
+// of string or *string fields, one per prompt argument; a handler without T
+// takes no arguments. A handler of another signature, or a nil one, is
+// rejected.
 func (s *Server) RegisterPrompt(name string, description string, handler any) error {
-	err := validatePromptHandler(handler)
+	h, err := parsePromptHandler(name, handler)
 	if err != nil {
 		return err
 	}
-	h := newHandler(handlerKindPrompt, handler)
 	s.prompts.Store(name, &prompt{
 		Name:              name,
 		Description:       description,
