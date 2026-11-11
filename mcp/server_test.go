@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -359,6 +361,42 @@ func TestHandleListPromptsPagination(t *testing.T) {
 	assert.Nil(t, promptsResp.NextCursor, "Expected no next cursor when pagination is disabled")
 }
 
+// TestHandleListPrompts_Concurrent lists prompts from many goroutines; the
+// race detector reports the listing writing into the shared prompt schemas
+// (F-033).
+func TestHandleListPrompts_Concurrent(t *testing.T) {
+	srv, _ := newServedServer(t)
+	require.NoError(t, srv.RegisterPrompt(greetPrompt, greetPromptDesc, func(args greetArgs) (*PromptResponse, error) {
+		return nil, nil
+	}))
+
+	// The schema is complete at registration, so a listing has nothing to
+	// write into it. This fails without -race on the old code, which filled
+	// in the name and description on every listing.
+	registered, ok := srv.prompts.Load(greetPrompt)
+	require.True(t, ok)
+	assert.Equal(t, greetPrompt, registered.PromptInputSchema.Name)
+	require.NotNil(t, registered.PromptInputSchema.Description)
+	assert.Equal(t, greetPromptDesc, *registered.PromptInputSchema.Description)
+
+	const listers = 8
+	var wg sync.WaitGroup
+	for range listers {
+		wg.Go(func() {
+			resp, err := srv.handleListPrompts(context.Background(), &transport.BaseJSONRPCRequest{}, protocol.RequestHandlerExtra{})
+			assert.NoError(t, err)
+			list, ok := resp.(ListPromptsResponse)
+			if assert.True(t, ok) && assert.Len(t, list.Prompts, 1) {
+				assert.Equal(t, greetPrompt, list.Prompts[0].Name)
+				if assert.NotNil(t, list.Prompts[0].Description) {
+					assert.Equal(t, greetPromptDesc, *list.Prompts[0].Description)
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
+
 func TestHandleListResourcesNoParams(t *testing.T) {
 	mockTransport := testingutils.NewMockTransport()
 	server := NewServer(mockTransport)
@@ -566,6 +604,8 @@ const (
 	listChangedResources = "notifications/resources/list_changed"
 	templateURI          = "file:///{path}"
 	missingResourceURI   = "file:///docs/missing.txt"
+	panicResourceURI     = "file:///docs/panic.txt"
+	emptyResourceURI     = "file:///docs/empty.txt"
 )
 
 type ctxKey struct{}
@@ -665,12 +705,32 @@ func TestRegisterTool_Validation(t *testing.T) {
 		{
 			name:    "wrong response type",
 			handler: func(echoArgs) (string, error) { return "", nil },
-			wantErr: "handler must return *tools.ToolResponse, got string",
+			wantErr: "handler must return *mcp.ToolResponse, got string",
+		},
+		{
+			name:    "response is not a pointer",
+			handler: func(echoArgs) (ToolResponse, error) { return ToolResponse{}, nil },
+			wantErr: "handler must return *mcp.ToolResponse, got mcp.ToolResponse",
 		},
 		{
 			name:    "wrong error type",
 			handler: func(echoArgs) (*ToolResponse, string) { return nil, "" },
 			wantErr: "handler must return error, got string",
+		},
+		{
+			name:    "nil handler",
+			handler: nil,
+			wantErr: "handler must be a function, got <nil>",
+		},
+		{
+			name:    "not a function",
+			handler: "echo",
+			wantErr: "handler must be a function, got string",
+		},
+		{
+			name:    "variadic",
+			handler: func(...echoArgs) (*ToolResponse, error) { return nil, nil },
+			wantErr: "handler must not be variadic, got func(...mcp.echoArgs) (*mcp.ToolResponse, error)",
 		},
 	}
 	for _, tc := range tcs {
@@ -703,6 +763,22 @@ func TestRegisterResource_Validation(t *testing.T) {
 			name:    "single return value",
 			handler: func() *ResourceResponse { return nil },
 			wantErr: "handler must return exactly two values, got 1",
+		},
+		{
+			// F-028: this handler used to register and crash resources/read.
+			name:    "wrong response type",
+			handler: func() (string, error) { return "x", nil },
+			wantErr: "handler must return *mcp.ResourceResponse, got string",
+		},
+		{
+			name:    "wrong error type",
+			handler: func(context.Context) (*ResourceResponse, string) { return nil, "" },
+			wantErr: "handler must return error, got string",
+		},
+		{
+			name:    "nil handler",
+			handler: nil,
+			wantErr: "handler must be a function, got <nil>",
 		},
 	}
 	for _, tc := range tcs {
@@ -743,6 +819,27 @@ func TestRegisterPrompt_Validation(t *testing.T) {
 			name:    "non string field",
 			handler: func(intArgs) (*PromptResponse, error) { return nil, nil },
 			wantErr: "all fields of the struct must be of type string or *string, found int",
+		},
+		{
+			name:    "single return value",
+			handler: func(greetArgs) *PromptResponse { return nil },
+			wantErr: "handler must return exactly two values, got 1",
+		},
+		{
+			// F-028: this handler used to register and crash prompts/get.
+			name:    "wrong response type",
+			handler: func(greetArgs) (string, error) { return "x", nil },
+			wantErr: "handler must return *mcp.PromptResponse, got string",
+		},
+		{
+			name:    "wrong error type",
+			handler: func(context.Context, greetArgs) (*PromptResponse, bool) { return nil, false },
+			wantErr: "handler must return error, got bool",
+		},
+		{
+			name:    "not a function",
+			handler: 42,
+			wantErr: "handler must be a function, got int",
 		},
 	}
 	for _, tc := range tcs {
@@ -936,6 +1033,12 @@ func TestHandleToolCalls_HandlerBehaviors(t *testing.T) {
 	require.NoError(t, srv.RegisterTool("panic-err", "panics with error", func(args echoArgs) (*ToolResponse, error) {
 		panic(errors.New("kaboom"))
 	}))
+	require.NoError(t, srv.RegisterTool("panic-str", "panics with a string", func(args echoArgs) (*ToolResponse, error) {
+		panic("kaboom")
+	}))
+	require.NoError(t, srv.RegisterTool("no-response", "returns nothing", func(args echoArgs) (*ToolResponse, error) {
+		return nil, nil
+	}))
 
 	t.Run("context is forwarded", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), ctxKey{}, "v1")
@@ -962,6 +1065,56 @@ func TestHandleToolCalls_HandlerBehaviors(t *testing.T) {
 		assert.Nil(t, sent.Response)
 		assert.EqualError(t, sent.Error, "internal error: tool panicked: kaboom")
 	})
+
+	t.Run("panic with other value", func(t *testing.T) {
+		sent := callTool(t, srv, context.Background(), `{"name":"panic-str","arguments":{"message":"x"}}`)
+		assert.Nil(t, sent.Response)
+		assert.EqualError(t, sent.Error, "internal error: tool panicked: kaboom")
+	})
+
+	t.Run("neither response nor error", func(t *testing.T) {
+		sent := callTool(t, srv, context.Background(), `{"name":"no-response","arguments":{"message":"x"}}`)
+		assert.Nil(t, sent.Response)
+		assert.EqualError(t, sent.Error, "tool handler returned neither a response nor an error")
+		// Used to dereference the nil response while marshaling.
+		b, err := json.Marshal(sent)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"content":[{"type":"text","text":"tool handler returned neither a response nor an error"}],"isError":true}`, string(b))
+	})
+
+	// F-029: absent and null arguments give the handler zero-value arguments.
+	for _, params := range []string{
+		`{"name":"ctx-tool"}`,
+		`{"name":"ctx-tool","arguments":null}`,
+	} {
+		t.Run("arguments "+params, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ctxKey{}, "v1")
+			sent := callTool(t, srv, ctx, params)
+			require.NoError(t, sent.Error)
+			require.Len(t, sent.Response.Content, 1)
+			assert.Equal(t, "v1:", sent.Response.Content[0].TextContent.Text)
+		})
+	}
+}
+
+func TestHandleToolCalls_HandlerWithoutArguments(t *testing.T) {
+	srv, _ := newServedServer(t)
+	require.NoError(t, srv.RegisterTool("ctx-only", "takes only a context", func(ctx context.Context) (*ToolResponse, error) {
+		v, _ := ctx.Value(ctxKey{}).(string)
+		return NewToolResponse(NewTextContent(v)), nil
+	}))
+
+	tl, ok := srv.tools.Load("ctx-only")
+	require.True(t, ok)
+	b, err := json.Marshal(tl.ToolInputSchema)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(b))
+
+	ctx := context.WithValue(context.Background(), ctxKey{}, "v1")
+	sent := callTool(t, srv, ctx, `{"name":"ctx-only","arguments":{"ignored":true}}`)
+	require.NoError(t, sent.Error)
+	require.Len(t, sent.Response.Content, 1)
+	assert.Equal(t, "v1", sent.Response.Content[0].TextContent.Text)
 }
 
 func getPrompt(t *testing.T, srv *Server, params string) *promptResponseSent {
@@ -984,9 +1137,11 @@ func TestHandlePromptCalls(t *testing.T) {
 	require.NoError(t, srv.RegisterPrompt(failPrompt, failPromptDesc, func(ctx context.Context, args greetArgs) (*PromptResponse, error) {
 		return nil, errors.New(errBoom)
 	}))
-	// Return arity is not validated at registration time, only at call time.
-	require.NoError(t, srv.RegisterPrompt("one-result", "returns one value", func(args greetArgs) *PromptResponse {
-		return nil
+	require.NoError(t, srv.RegisterPrompt("panic_prompt", "panics", func(args greetArgs) (*PromptResponse, error) {
+		panic("kaboom")
+	}))
+	require.NoError(t, srv.RegisterPrompt("empty_prompt", "returns nothing", func(args greetArgs) (*PromptResponse, error) {
+		return nil, nil
 	}))
 
 	t.Run("success", func(t *testing.T) {
@@ -1009,13 +1164,34 @@ func TestHandlePromptCalls(t *testing.T) {
 	t.Run("arguments of wrong type", func(t *testing.T) {
 		sent := getPrompt(t, srv, `{"name":"greet","arguments":{"name":5}}`)
 		assert.Nil(t, sent.Response)
-		assert.EqualError(t, sent.Error, "failed to unmarshal arguments: json: cannot unmarshal number into Go struct field .name of type string")
+		assert.EqualError(t, sent.Error, "failed to unmarshal arguments: json: cannot unmarshal number into Go struct field greetArgs.name of type string")
 	})
 
-	t.Run("handler with wrong arity", func(t *testing.T) {
-		sent := getPrompt(t, srv, `{"name":"one-result","arguments":{"name":"Ann"}}`)
+	// F-029: absent arguments failed with "unexpected end of JSON input" and
+	// null arguments with "arguments must be a struct".
+	for _, params := range []string{
+		`{"name":"greet"}`,
+		`{"name":"greet","arguments":null}`,
+	} {
+		t.Run("arguments "+params, func(t *testing.T) {
+			sent := getPrompt(t, srv, params)
+			require.NoError(t, sent.Error)
+			require.NotNil(t, sent.Response)
+			require.Len(t, sent.Response.Messages, 1)
+			assert.Equal(t, "Hello, ", sent.Response.Messages[0].Content.TextContent.Text)
+		})
+	}
+
+	t.Run("panic", func(t *testing.T) {
+		sent := getPrompt(t, srv, `{"name":"panic_prompt","arguments":{"name":"Ann"}}`)
 		assert.Nil(t, sent.Response)
-		assert.EqualError(t, sent.Error, "handler must return exactly two values, got 1")
+		assert.EqualError(t, sent.Error, "internal error: prompt panicked: kaboom")
+	})
+
+	t.Run("neither response nor error", func(t *testing.T) {
+		sent := getPrompt(t, srv, `{"name":"empty_prompt","arguments":{"name":"Ann"}}`)
+		assert.Nil(t, sent.Response)
+		assert.EqualError(t, sent.Error, "prompt handler returned neither a response nor an error")
 	})
 
 	t.Run("unknown prompt", func(t *testing.T) {
@@ -1038,6 +1214,12 @@ func TestHandleResourceCalls(t *testing.T) {
 	require.NoError(t, srv.RegisterResource(failResourceURI, "broken", "Broken", mimeTextPlain, func() (*ResourceResponse, error) {
 		return nil, errors.New(errBoom)
 	}))
+	require.NoError(t, srv.RegisterResource(panicResourceURI, "panics", "Panics", mimeTextPlain, func() (*ResourceResponse, error) {
+		panic("kaboom")
+	}))
+	require.NoError(t, srv.RegisterResource(emptyResourceURI, "empty", "Empty", mimeTextPlain, func() (*ResourceResponse, error) {
+		return nil, nil
+	}))
 
 	read := func(ctx context.Context, uri string) *resourceResponseSent {
 		resp, err := srv.handleResourceCalls(ctx, &transport.BaseJSONRPCRequest{
@@ -1059,6 +1241,20 @@ func TestHandleResourceCalls(t *testing.T) {
 	failed := read(context.Background(), failResourceURI)
 	assert.Nil(t, failed.Response)
 	assert.EqualError(t, failed.Error, errBoom)
+	// F-048: the error resource carries the URI that was read.
+	b, err := json.Marshal(failed)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"contents":[{"uri":"`+failResourceURI+`","mimeType":"text/plain","text":"boom"}]}`, string(b))
+
+	panicked := read(context.Background(), panicResourceURI)
+	assert.Nil(t, panicked.Response)
+	assert.Equal(t, panicResourceURI, panicked.Uri)
+	assert.EqualError(t, panicked.Error, "internal error: resource panicked: kaboom")
+
+	empty := read(context.Background(), emptyResourceURI)
+	assert.Nil(t, empty.Response)
+	assert.Equal(t, emptyResourceURI, empty.Uri)
+	assert.EqualError(t, empty.Error, "resource handler returned neither a response nor an error")
 
 	resp, err := srv.handleResourceCalls(context.Background(), &transport.BaseJSONRPCRequest{
 		Method: "resources/read",
@@ -1307,4 +1503,23 @@ func TestHandleList_CursorPastLastItem(t *testing.T) {
 			assert.EqualError(t, err, "failed to decode cursor: illegal base64 data at input byte 3")
 		})
 	}
+}
+
+func TestNewPromptSchema(t *testing.T) {
+	type args struct {
+		Topic string  `json:"topic" jsonschema:"required,description=What to write about"`
+		Tone  *string `json:"tone,omitempty"`
+	}
+	ps := newPromptSchema(greetPrompt, greetPromptDesc, reflect.TypeFor[args]())
+	b, err := json.Marshal(ps)
+	require.NoError(t, err)
+	// An argument without a description has no "description" key.
+	assert.JSONEq(t, `{
+		"name": "greet",
+		"description": "Greets a person.",
+		"arguments": [
+			{"name": "topic", "description": "What to write about", "required": true},
+			{"name": "tone"}
+		]
+	}`, string(b))
 }

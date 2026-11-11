@@ -975,3 +975,35 @@ func Test_Assistant_Run_ToolCallWithoutID(t *testing.T) {
 		"ai: " + runAnswer,
 	}, messageTexts(resp.Messages))
 }
+
+// Test_Assistant_Run_ToolCallWithoutFunctionCall runs a provider-native tool
+// call, which has no FunctionCall, through the loop. It used to panic while
+// deriving the missing ID and copying the call into the history (F-038).
+func Test_Assistant_Run_ToolCallWithoutFunctionCall(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	model := newRunModel(ctrl, llms.ProviderOpenAI)
+	tool := newLookupTool(ctrl)
+
+	const nativeTool = "web_search"
+	expToolHistory := []string{
+		"human: " + runUserInput,
+		"ai: ToolCall: web_search_0 (web_search), input: ",
+		"tool: response web_search_0 web_search: Tool `web_search` not found. Please check the tool name and try again with exact match. Available tools: " + runToolName,
+	}
+	gomock.InOrder(
+		model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(toolCallResponse(llms.ToolCall{
+				Type: nativeTool,
+			}), nil),
+		model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, msgs []llms.Message, _ ...llms.CallOption) (*llms.ContentResponse, error) {
+				assert.Equal(t, append([]string{"system: " + runSystemPrompt}, expToolHistory...), messageTexts(msgs))
+				return textResponse(runAnswer), nil
+			}),
+	)
+
+	resp, err := newRunAssistant(model).WithTools(tool).
+		Run(newRunCtx(), &assistants.CallInput{Input: runUserInput}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, append(expToolHistory, "ai: "+runAnswer), messageTexts(resp.Messages))
+}

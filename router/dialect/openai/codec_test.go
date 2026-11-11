@@ -575,6 +575,11 @@ func TestEncodeError(t *testing.T) {
 	assert.Equal(t, 500, status)
 	assert.NotContains(t, string(body), "raw failure text")
 	assert.Contains(t, string(body), `"param":null`)
+
+	// F-039: a nil error used to panic.
+	status, body = EncodeError(nil)
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.JSONEq(t, `{"error":{"message":"internal router error","type":"server_error","param":null,"code":"internal_error"}}`, string(body))
 }
 
 func FuzzDecodeChat(f *testing.F) {

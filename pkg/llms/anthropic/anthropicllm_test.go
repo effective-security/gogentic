@@ -2,6 +2,7 @@ package anthropic_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -404,7 +405,8 @@ func TestToolsToTools(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := anthropic.ToTools(tt.tools, tt.model)
+			result, err := anthropic.ToTools(tt.tools, tt.model)
+			require.NoError(t, err)
 			if tt.wantTools == 0 {
 				assert.Nil(t, result)
 			} else {
@@ -434,6 +436,68 @@ func TestToolsToTools(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestToTools_FunctionDefinition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing definition", func(t *testing.T) {
+		t.Parallel()
+		// F-022: a tool other than web_search without Function used to panic.
+		for _, toolType := range []string{"", llms.ToolTypeFunction, "code_execution"} {
+			result, err := anthropic.ToTools([]llms.Tool{
+				{
+					Type: llms.ToolTypeFunction,
+					Function: &llms.FunctionDefinition{
+						Name: "ok",
+					},
+				},
+				{
+					Type: toolType,
+				},
+			}, "claude-sonnet-4-5")
+			require.ErrorIs(t, err, llms.ErrMissingFunctionDefinition)
+			assert.EqualError(t, err, `anthropic: tool [1]: tool of type "`+toolType+`": tool has no function definition`)
+			assert.Nil(t, result)
+		}
+	})
+
+	t.Run("no parameters", func(t *testing.T) {
+		t.Parallel()
+		result, err := anthropic.ToTools([]llms.Tool{
+			{
+				Type: llms.ToolTypeFunction,
+				Function: &llms.FunctionDefinition{
+					Name:        "now",
+					Description: "Current time",
+				},
+			},
+		}, "claude-sonnet-4-5")
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.NotNil(t, result[0].OfTool)
+		assert.Equal(t, "now", result[0].OfTool.Name)
+		b, err := json.Marshal(result[0].OfTool.InputSchema)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"type":"object"}`, string(b))
+	})
+}
+
+func TestHandleAIMessage_ToolCallWithoutFunctionCall(t *testing.T) {
+	t.Parallel()
+
+	// F-038: a provider-native tool call has no FunctionCall.
+	_, err := anthropic.HandleAIMessage(llms.Message{
+		Role: llms.RoleAI,
+		Parts: []llms.ContentPart{
+			llms.ToolCall{
+				ID:   "srv_1",
+				Type: "web_search",
+			},
+		},
+	})
+	require.ErrorIs(t, err, llms.ErrMissingFunctionCall)
+	assert.EqualError(t, err, `anthropic: unsupported tool call in history: tool call "srv_1" of type "web_search": tool call has no function call`)
 }
 
 func TestHandleSystemMessage(t *testing.T) {
@@ -735,8 +799,8 @@ func BenchmarkToolsToTools(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		result := anthropic.ToTools(tools, "claude-sonnet-4-5")
-		if len(result) != 1 {
+		result, err := anthropic.ToTools(tools, "claude-sonnet-4-5")
+		if err != nil || len(result) != 1 {
 			b.Fatal("unexpected result length")
 		}
 	}

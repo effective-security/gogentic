@@ -199,10 +199,13 @@ func convertParts(parts []llms.ContentPart) ([]*genai.Part, error) {
 			}
 			out.InlineData = &genai.Blob{MIMEType: typ, Data: data}
 		case llms.ToolCall:
-			fc := p.FunctionCall
+			fc, err := p.RequireFunctionCall()
+			if err != nil {
+				return nil, errors.WithMessage(err, "googleai: unsupported tool call in history")
+			}
 			var argsMap map[string]any
 			if err := json.Unmarshal([]byte(fc.Arguments), &argsMap); err != nil {
-				return convertedParts, err
+				return nil, errors.WithMessage(err, "googleai: failed to unmarshal tool call arguments")
 			}
 			out.FunctionCall = &genai.FunctionCall{
 				Name: fc.Name,

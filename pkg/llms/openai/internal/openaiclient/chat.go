@@ -338,8 +338,9 @@ type FunctionDefinition struct {
 	Name string `json:"name"`
 	// Description is a description of the function.
 	Description string `json:"description,omitempty"`
-	// Parameters is a list of parameters for the function.
-	Parameters any `json:"parameters"`
+	// Parameters is the JSON Schema of the function arguments. Nil leaves
+	// it out of the request: the function takes no arguments.
+	Parameters any `json:"parameters,omitempty"`
 	// Strict is a flag to enable structured output mode.
 	Strict bool `json:"strict,omitempty"`
 }

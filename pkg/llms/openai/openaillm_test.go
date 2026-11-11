@@ -355,6 +355,20 @@ func TestBuildChatRequestBody_MessageErrors(t *testing.T) {
 			msg:     llms.Message{Role: "robot"},
 			wantErr: "role robot not supported",
 		},
+		{
+			// F-038: used to panic on the nil FunctionCall.
+			name: "tool call without function call",
+			msg: llms.Message{
+				Role: llms.RoleAI,
+				Parts: []llms.ContentPart{
+					llms.ToolCall{
+						ID:   "ws_1",
+						Type: "web_search",
+					},
+				},
+			},
+			wantErr: `unsupported tool call in history: tool call "ws_1" of type "web_search": tool call has no function call`,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -363,6 +377,34 @@ func TestBuildChatRequestBody_MessageErrors(t *testing.T) {
 			require.EqualError(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestBuildChatRequestBody_HistoryToolCall(t *testing.T) {
+	t.Parallel()
+
+	llm := newChatLLM(t, "http://example.test")
+	req, err := llm.buildChatRequestBody([]llms.Message{
+		llms.MessageFromToolCalls(llms.RoleAI, llms.ToolCall{
+			ID: "call_1",
+			// An empty Type still sends the function call.
+			FunctionCall: &llms.FunctionCall{
+				Name:      toolLookup,
+				Arguments: `{"q":"x"}`,
+			},
+		}),
+	})
+	require.NoError(t, err)
+	require.Len(t, req.Messages, 1)
+	assert.Equal(t, []openaiclient.ToolCall{
+		{
+			ID:   "call_1",
+			Type: openaiclient.ToolTypeFunction,
+			Function: openaiclient.ToolFunction{
+				Name:      toolLookup,
+				Arguments: `{"q":"x"}`,
+			},
+		},
+	}, req.Messages[0].ToolCalls)
 }
 
 func TestBuildChatRequestBody_Tools(t *testing.T) {
@@ -396,6 +438,25 @@ func TestBuildChatRequestBody_Tools(t *testing.T) {
 
 	_, err = llm.buildChatRequestBody(messages, llms.WithTools([]llms.Tool{{Type: "code_interpreter"}}))
 	require.EqualError(t, err, "failed to convert llms tool to openai tool: tool type code_interpreter not supported")
+
+	// A function without parameters leaves "parameters" out instead of
+	// sending null.
+	req, err = llm.buildChatRequestBody(messages, llms.WithTools([]llms.Tool{{
+		Type: llms.ToolTypeFunction,
+		Function: &llms.FunctionDefinition{
+			Name: "now",
+		},
+	}}))
+	require.NoError(t, err)
+	require.Len(t, req.Tools, 1)
+	b, err := json.Marshal(req.Tools[0])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"function","function":{"name":"now"}}`, string(b))
+
+	// F-022: a function tool without a definition used to panic.
+	_, err = llm.buildChatRequestBody(messages, llms.WithTools([]llms.Tool{{Type: llms.ToolTypeFunction}}))
+	require.ErrorIs(t, err, llms.ErrMissingFunctionDefinition)
+	require.EqualError(t, err, `failed to convert llms tool to openai tool: tool of type "function": tool has no function definition`)
 }
 
 func TestToolFromTool_BedrockDropsWebSearchFilters(t *testing.T) {
@@ -807,7 +868,7 @@ func TestResponsesToolFromTool_Errors(t *testing.T) {
 		{
 			name:    "function without definition",
 			tool:    llms.Tool{Type: "function"},
-			wantErr: "function tool missing definition",
+			wantErr: `tool of type "function": tool has no function definition`,
 		},
 		{
 			name: "parameters that cannot be marshaled",

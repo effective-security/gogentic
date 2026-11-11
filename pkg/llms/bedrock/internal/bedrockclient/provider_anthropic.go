@@ -156,6 +156,40 @@ const (
 	AnthropicMessageTypeToolResult = "tool_result"
 )
 
+// anthropicTools converts function tools to the Anthropic format. A function
+// without Parameters takes an empty object; a tool without a function
+// definition, such as web_search, is an error.
+func anthropicTools(tools []llms.Tool) ([]anthropicTool, error) {
+	if len(tools) == 0 {
+		return nil, nil
+	}
+	res := make([]anthropicTool, len(tools))
+	for i, tool := range tools {
+		fn, err := tool.RequireFunction()
+		if err != nil {
+			return nil, errors.WithMessagef(err, "bedrock anthropic: tool [%d]", i)
+		}
+		inputSchema := anthropicInputSchema{
+			Type: "object",
+		}
+		if params := fn.Parameters; params != nil {
+			if params.Properties != nil {
+				inputSchema.Properties = make(map[string]any, params.Properties.Len())
+				for pair := params.Properties.Oldest(); pair != nil; pair = pair.Next() {
+					inputSchema.Properties[pair.Key] = pair.Value
+				}
+			}
+			inputSchema.Required = params.Required
+		}
+		res[i] = anthropicTool{
+			Name:        fn.Name,
+			Description: fn.Description,
+			InputSchema: inputSchema,
+		}
+	}
+	return res, nil
+}
+
 func createAnthropicCompletion(ctx context.Context,
 	client *bedrockruntime.Client,
 	modelID string,
@@ -167,29 +201,9 @@ func createAnthropicCompletion(ctx context.Context,
 		return nil, err
 	}
 
-	// Convert tools to Anthropic format
-	var tools []anthropicTool
-	if len(options.Tools) > 0 {
-		tools = make([]anthropicTool, len(options.Tools))
-		for i, tool := range options.Tools {
-			var properties map[string]any
-			if tool.Function.Parameters.Properties != nil {
-				properties = make(map[string]any)
-				for pair := tool.Function.Parameters.Properties.Oldest(); pair != nil; pair = pair.Next() {
-					properties[pair.Key] = pair.Value
-				}
-			}
-
-			tools[i] = anthropicTool{
-				Name:        tool.Function.Name,
-				Description: tool.Function.Description,
-				InputSchema: anthropicInputSchema{
-					Type:       "object",
-					Properties: properties,
-					Required:   tool.Function.Parameters.Required,
-				},
-			}
-		}
+	tools, err := anthropicTools(options.Tools)
+	if err != nil {
+		return nil, err
 	}
 
 	input := anthropicTextGenerationInput{

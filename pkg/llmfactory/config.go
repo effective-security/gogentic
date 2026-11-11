@@ -29,6 +29,8 @@ type Config struct {
 	// Use `default: <model_name>` as the default model for assistants.
 	AssistantModels map[string][]string `json:"assistant_models" yaml:"assistant_models"`
 	// Orgs specifies the organizations configuration to override the global configuration.
+	// An organization listed without overrides (a null entry) uses the
+	// global AssistantModels.
 	Orgs map[string]*OrgConfig `json:"orgs_override" yaml:"orgs_override"`
 	// Skills specifies the skills configuration.
 	Skills *skills.Config `json:"skills,omitempty" yaml:"skills,omitempty"`
@@ -184,6 +186,11 @@ func LoadConfig(file string) (*Config, error) {
 		// merge Org config overrides
 		gs := yamlcfg.Static(cfg.AssistantModels)
 		for orgID, orgCfg := range cfg.Orgs {
+			if orgCfg == nil {
+				// "orgs_override: {acme: }" overrides nothing.
+				orgCfg = new(OrgConfig)
+				cfg.Orgs[orgID] = orgCfg
+			}
 			ops := []yamlcfg.YAMLOption{gs, yamlcfg.Static(orgCfg.AssistantModels)}
 
 			cprovider, err := yamlcfg.NewYAML(ops...)
@@ -197,7 +204,7 @@ func LoadConfig(file string) (*Config, error) {
 				return nil, errors.Wrapf(err, "failed to override yaml config for org %s", orgID)
 			}
 
-			cfg.Orgs[orgID].AssistantModels = res
+			orgCfg.AssistantModels = res
 		}
 	}
 	if err := cfg.Validate(); err != nil {

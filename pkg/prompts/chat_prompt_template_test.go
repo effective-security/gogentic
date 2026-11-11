@@ -97,11 +97,27 @@ func TestChatPromptTemplateErrors(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidPartialVariableType)
 	require.EqualError(t, err, errBadParam)
 
+	// F-012: Format used to panic on the nil prompt value.
+	text, err := ChatPromptTemplate{
+		PartialVariables: map[string]any{
+			"x": 1,
+		},
+	}.Format(nil)
+	require.ErrorIs(t, err, ErrInvalidPartialVariableType)
+	assert.EqualError(t, err, "unexpected type for x: invalid partial variable type")
+	assert.Empty(t, text)
+
 	msgs, err := newTestChatTemplate().FormatMessages(map[string]any{
 		varName: nameValue,
 	})
 	require.ErrorIs(t, err, ErrNeedChatMessageList)
 	assert.Nil(t, msgs)
+
+	text, err = newTestChatTemplate().Format(map[string]any{
+		varName: nameValue,
+	})
+	require.ErrorIs(t, err, ErrNeedChatMessageList)
+	assert.Empty(t, text)
 }
 
 func TestChatPromptTemplateGetInputVariables(t *testing.T) {

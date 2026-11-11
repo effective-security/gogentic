@@ -135,6 +135,9 @@ func New(cfg *Config, opts ...Option) Factory {
 	}
 
 	for orgID, orgCfg := range cfg.Orgs {
+		if orgCfg == nil {
+			continue
+		}
 		for assistantName, models := range orgCfg.AssistantModels {
 			if f.orgAssistantModels[orgID] == nil {
 				f.orgAssistantModels[orgID] = make(map[string][]string)

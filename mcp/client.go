@@ -119,9 +119,9 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments any) (*Too
 		return nil, errors.New("client not initialized")
 	}
 
-	argumentsJson, err := json.Marshal(arguments)
+	argumentsJson, err := marshalArguments(arguments)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal arguments")
+		return nil, err
 	}
 
 	params := baseCallToolRequestParams{
@@ -183,9 +183,9 @@ func (c *Client) GetPrompt(ctx context.Context, name string, arguments any) (*Pr
 		return nil, errors.New("client not initialized")
 	}
 
-	argumentsJson, err := json.Marshal(arguments)
+	argumentsJson, err := marshalArguments(arguments)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal arguments")
+		return nil, err
 	}
 
 	params := baseGetPromptRequestParamsArguments{
@@ -287,4 +287,24 @@ func (c *Client) Ping(ctx context.Context) error {
 // GetCapabilities returns the server capabilities obtained during initialization
 func (c *Client) GetCapabilities() *ServerCapabilities {
 	return c.capabilities
+}
+
+// jsonNull is the JSON encoding of a nil value.
+const jsonNull = "null"
+
+// marshalArguments encodes the arguments of a tools/call or prompts/get
+// request. Arguments that encode as null, such as nil or a nil map or
+// pointer, are left out of the request, as the protocol makes them optional.
+func marshalArguments(arguments any) (json.RawMessage, error) {
+	if arguments == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(arguments)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to marshal arguments")
+	}
+	if string(b) == jsonNull {
+		return nil, nil
+	}
+	return b, nil
 }

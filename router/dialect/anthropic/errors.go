@@ -20,13 +20,7 @@ const (
 // HTTP status the host should write. Only the sanitized router message is used;
 // diagnostic causes never reach the client.
 func EncodeError(err error) (int, []byte) {
-	re := router.AsError(err)
-	if re == nil {
-		re = &router.Error{
-			Kind:    router.KindInternal,
-			Message: "internal router error",
-		}
-	}
+	re := dialect.AsRouterError(err)
 	body, marshalErr := json.Marshal(map[string]any{
 		"type": typeError,
 		"error": map[string]any{

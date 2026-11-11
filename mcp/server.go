@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"reflect"
-	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -83,8 +81,11 @@ type resourceResponseSent struct {
 	Error    error
 }
 
-func newResourceResponseSentError(err error) *resourceResponseSent {
+// newResourceResponseSentError creates the response to a failed read of the
+// resource at uri; it is sent as a text resource at that uri.
+func newResourceResponseSentError(uri string, err error) *resourceResponseSent {
 	return &resourceResponseSent{
+		Uri:   uri,
 		Error: err,
 	}
 }
@@ -219,19 +220,21 @@ func NewServer(transport transport.Transport, options ...ServerOptions) *Server 
 	return server
 }
 
-// RegisterTool registers a new tool with the server
+// RegisterTool registers a tool whose handler is
+// func([context.Context,] T) (*ToolResponse, error). The input schema of
+// the tool is reflected from T. A handler of another signature is rejected.
 func (s *Server) RegisterTool(name string, description string, handler any) error {
 	err := validateToolHandler(handler)
 	if err != nil {
 		return err
 	}
-	inputSchema := createJsonSchemaFromHandler(handler)
+	h := newHandler(handlerKindTool, handler)
 
 	s.tools.Store(name, &tool{
 		Name:            name,
 		Description:     description,
-		Handler:         createWrappedToolHandler(handler),
-		ToolInputSchema: inputSchema,
+		Handler:         newToolCall(h),
+		ToolInputSchema: argumentsSchema(h.argType),
 	})
 
 	return s.sendToolListChangedNotification()
@@ -254,6 +257,9 @@ func (s *Server) DeregisterTool(name string) error {
 	return s.sendToolListChangedNotification()
 }
 
+// RegisterResource registers the resource at uri, whose handler is
+// func([context.Context]) (*ResourceResponse, error). A handler of another
+// signature is rejected.
 func (s *Server) RegisterResource(uri string, name string, description string, mimeType string, handler any) error {
 	err := validateResourceHandler(handler)
 	if err != nil {
@@ -264,7 +270,7 @@ func (s *Server) RegisterResource(uri string, name string, description string, m
 		Description: description,
 		Uri:         uri,
 		mimeType:    mimeType,
-		Handler:     createWrappedResourceHandler(handler),
+		Handler:     newResourceRead(uri, newHandler(handlerKindResource, handler)),
 	})
 	return s.sendResourceListChangedNotification()
 }
@@ -284,63 +290,6 @@ func (s *Server) CheckResourceRegistered(uri string) bool {
 func (s *Server) DeregisterResource(uri string) error {
 	s.resources.Delete(uri)
 	return s.sendResourceListChangedNotification()
-}
-
-func createWrappedResourceHandler(userHandler any) func(ctx context.Context) *resourceResponseSent {
-	handlerValue := reflect.ValueOf(userHandler)
-	return func(ctx context.Context) *resourceResponseSent {
-		handlerType := handlerValue.Type()
-		var args []reflect.Value
-		if handlerType.NumIn() == 1 {
-			args = []reflect.Value{reflect.ValueOf(ctx)}
-		} else {
-			args = []reflect.Value{}
-		}
-		// Call the handler with no arguments
-		output := handlerValue.Call(args)
-
-		if len(output) != 2 {
-			return newResourceResponseSentError(errors.Errorf("handler must return exactly two values, got %d", len(output)))
-		}
-
-		if !output[0].CanInterface() {
-			return newResourceResponseSentError(errors.Errorf("handler must return a struct, got %s", output[0].Type().Name()))
-		}
-		promptR := output[0].Interface()
-		if !output[1].CanInterface() {
-			return newResourceResponseSentError(errors.Errorf("handler must return an error, got %s", output[1].Type().Name()))
-		}
-		errorOut := output[1].Interface()
-		if errorOut == nil {
-			return newResourceResponseSent(promptR.(*ResourceResponse))
-		}
-		return newResourceResponseSentError(errorOut.(error))
-	}
-}
-
-// We just want to check that handler takes no arguments and returns a ResourceResponse and an error
-func validateResourceHandler(handler any) error {
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-	if handlerType.NumIn() != 0 && handlerType.NumIn() != 1 {
-		return errors.Errorf("handler must take no or one arguments, got %d", handlerType.NumIn())
-	}
-	if handlerType.NumIn() == 1 {
-		if handlerType.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
-			return errors.Errorf("when a handler has 1 argument, it must be context.Context, got %s", handlerType.In(0).Name())
-		}
-	}
-
-	if handlerType.NumOut() != 2 {
-		return errors.Errorf("handler must return exactly two values, got %d", handlerType.NumOut())
-	}
-	//if handlerType.Out(0) != reflect.TypeOf((*ResourceResponse)(nil)).Elem() {
-	//	return errors.Errorf("handler must return ResourceResponse, got %s", handlerType.Out(0).Name())
-	//}
-	//if handlerType.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-	//	return errors.Errorf("handler must return error, got %s", handlerType.Out(1).Name())
-	//}
-	return nil
 }
 
 func (s *Server) RegisterResourceTemplate(uriTemplate string, name string, description string, mimeType string) error {
@@ -363,17 +312,21 @@ func (s *Server) DeregisterResourceTemplate(uriTemplate string) error {
 	return s.sendResourceListChangedNotification()
 }
 
+// RegisterPrompt registers a prompt whose handler is
+// func([context.Context,] T) (*PromptResponse, error), where T is a struct of
+// string or *string fields, one per prompt argument. A handler of another
+// signature is rejected.
 func (s *Server) RegisterPrompt(name string, description string, handler any) error {
 	err := validatePromptHandler(handler)
 	if err != nil {
 		return err
 	}
-	promptSchema := createPromptSchemaFromHandler(handler)
+	h := newHandler(handlerKindPrompt, handler)
 	s.prompts.Store(name, &prompt{
 		Name:              name,
 		Description:       description,
-		Handler:           createWrappedPromptHandler(handler),
-		PromptInputSchema: promptSchema,
+		Handler:           newPromptCall(h),
+		PromptInputSchema: newPromptSchema(name, description, h.argType),
 	})
 
 	return s.sendPromptListChangedNotification()
@@ -394,230 +347,6 @@ func (s *Server) CheckPromptRegistered(name string) bool {
 func (s *Server) DeregisterPrompt(name string) error {
 	s.prompts.Delete(name)
 	return s.sendPromptListChangedNotification()
-}
-
-func createWrappedPromptHandler(userHandler any) func(context.Context, baseGetPromptRequestParamsArguments) *promptResponseSent {
-	handlerValue := reflect.ValueOf(userHandler)
-	handlerType := handlerValue.Type()
-	var argumentType reflect.Type
-	if handlerType.NumIn() == 2 {
-		argumentType = handlerType.In(1)
-	} else if handlerType.NumIn() == 1 {
-		argumentType = handlerType.In(0)
-	}
-	return func(ctx context.Context, arguments baseGetPromptRequestParamsArguments) *promptResponseSent {
-		// Instantiate a struct of the type of the arguments
-		if !reflect.New(argumentType).CanInterface() {
-			return newPromptResponseSentError(errors.Errorf("arguments must be a struct"))
-		}
-		unmarshaledArguments := reflect.New(argumentType).Interface()
-
-		// Unmarshal the JSON into the correct type
-		err := json.Unmarshal(arguments.Arguments, &unmarshaledArguments)
-		if err != nil {
-			return newPromptResponseSentError(errors.Wrap(err, "failed to unmarshal arguments"))
-		}
-
-		// Need to dereference the unmarshaled arguments
-		of := reflect.ValueOf(unmarshaledArguments)
-		if of.Kind() != reflect.Pointer || !of.Elem().CanInterface() {
-			return newPromptResponseSentError(errors.Errorf("arguments must be a struct"))
-		}
-		// Call the handler with the typed arguments
-		var args []reflect.Value
-		if handlerType.NumIn() == 2 {
-			args = []reflect.Value{reflect.ValueOf(ctx), of.Elem()}
-		} else {
-			args = []reflect.Value{of.Elem()}
-		}
-		output := handlerValue.Call(args)
-
-		if len(output) != 2 {
-			return newPromptResponseSentError(errors.Errorf("handler must return exactly two values, got %d", len(output)))
-		}
-
-		if !output[0].CanInterface() {
-			return newPromptResponseSentError(errors.Errorf("handler must return a struct, got %s", output[0].Type().Name()))
-		}
-		promptR := output[0].Interface()
-		if !output[1].CanInterface() {
-			return newPromptResponseSentError(errors.Errorf("handler must return an error, got %s", output[1].Type().Name()))
-		}
-		errorOut := output[1].Interface()
-		if errorOut == nil {
-			return newPromptResponseSent(promptR.(*PromptResponse))
-		}
-		return newPromptResponseSentError(errorOut.(error))
-	}
-}
-
-// Get the argument and iterate over the fields, we pull description from the jsonschema description tag
-// We pull required from the jsonschema required tag
-// Example:
-// type Content struct {
-// Title       string  `json:"title" jsonschema:"description=The title to submit,required"`
-// Description *string `json:"description" jsonschema:"description=The description to submit"`
-// }
-// Then we get the jsonschema for the struct where Title is a required field and Description is an optional field
-func createPromptSchemaFromHandler(handler any) *PromptSchema {
-	inputSchema := createJsonSchemaFromHandler(handler)
-
-	promptSchema := PromptSchema{
-		Name:        inputSchema.Title,
-		Description: &inputSchema.Description,
-		Arguments:   make([]PromptSchemaArgument, 0, inputSchema.Properties.Len()),
-	}
-
-	for pair := inputSchema.Properties.Oldest(); pair != nil; pair = pair.Next() {
-		arg := PromptSchemaArgument{
-			Name:        pair.Key,
-			Description: &pair.Value.Description,
-		}
-		descr := pair.Value.Description
-		if descr != "" {
-			arg.Description = &descr
-		}
-		required := slices.Contains(inputSchema.Required, pair.Key)
-		if required {
-			arg.Required = &required
-		}
-		promptSchema.Arguments = append(promptSchema.Arguments, arg)
-	}
-	return &promptSchema
-}
-
-// A prompt can only take a struct with fields of type string or *string as the argument
-func validatePromptHandler(handler any) error {
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-
-	var argumentType reflect.Type
-	if handlerType.NumIn() == 2 {
-		if handlerType.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
-			return errors.Errorf("when a handler has 2 arguments, the first argument must be context.Context, got %s", handlerType.In(0).Name())
-		}
-		argumentType = handlerType.In(1)
-	} else if handlerType.NumIn() == 1 {
-		argumentType = handlerType.In(0)
-	} else {
-		return errors.Errorf("handler must take one or two arguments, got %d", handlerType.NumIn())
-	}
-
-	if argumentType.Kind() != reflect.Struct {
-		return errors.Errorf("argument must be a struct")
-	}
-
-	for i := 0; i < argumentType.NumField(); i++ {
-		field := argumentType.Field(i)
-		isValid := false
-		if field.Type.Kind() == reflect.String {
-			isValid = true
-		}
-		if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.String {
-			isValid = true
-		}
-		if !isValid {
-			return errors.Errorf("all fields of the struct must be of type string or *string, found %s", field.Type.Kind())
-		}
-	}
-	return nil
-}
-
-// Creates a full JSON schema from a user provided handler by introspecting the arguments
-func createJsonSchemaFromHandler(handler any) *jsonschema.Schema {
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-	var argumentType reflect.Type
-	if handlerType.NumIn() == 2 {
-		argumentType = handlerType.In(1)
-	} else if handlerType.NumIn() == 1 {
-		argumentType = handlerType.In(0)
-	}
-	inputSchema := jsonSchemaReflector.ReflectFromType(argumentType)
-	return inputSchema
-}
-
-// This takes a user provided handler and returns a wrapped handler which can be used to actually answer requests
-// Concretely, it will deserialize the arguments and call the user provided handler and then serialize the response
-// If the handler returns an error, it will be serialized and sent back as a tool error rather than a protocol error
-func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToolRequestParams) *toolResponseSent {
-	handlerValue := reflect.ValueOf(userHandler)
-	handlerType := handlerValue.Type()
-	var argumentType reflect.Type
-	if handlerType.NumIn() == 2 {
-		argumentType = handlerType.In(1)
-	} else if handlerType.NumIn() == 1 {
-		argumentType = handlerType.In(0)
-	}
-	return func(ctx context.Context, arguments baseCallToolRequestParams) (resp *toolResponseSent) {
-		defer func() {
-			if r := recover(); r != nil {
-				var err error
-				switch recovered := r.(type) {
-				case error:
-					err = recovered
-				default:
-					err = errors.Errorf("%v", recovered)
-				}
-				resp = newToolResponseSentError(errors.Wrap(err, "internal error: tool panicked"))
-
-				logger.ContextKV(ctx, xlog.ERROR,
-					"reason", "panic",
-					"err", err.Error(),
-					"stack", string(debug.Stack()))
-			}
-		}()
-
-		// Instantiate a struct of the type of the arguments
-		rt := reflect.New(argumentType)
-		if !rt.CanInterface() {
-			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
-		}
-		unmarshaledArguments := rt.Interface()
-
-		if len(arguments.Arguments) > 0 {
-			// Unmarshal the JSON into the correct type
-			err := json.Unmarshal(arguments.Arguments, &unmarshaledArguments)
-			if err != nil {
-				return newToolResponseSentError(errors.Wrap(err, "failed to unmarshal arguments"))
-			}
-		}
-		// Need to dereference the unmarshaled arguments
-		of := reflect.ValueOf(unmarshaledArguments)
-		if of.Kind() != reflect.Pointer {
-			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
-		}
-		elem := of.Elem()
-		if !elem.CanInterface() {
-			return newToolResponseSentError(errors.Errorf("arguments must be a struct"))
-		}
-		var args []reflect.Value
-		if handlerType.NumIn() == 2 {
-			args = []reflect.Value{reflect.ValueOf(ctx), elem}
-		} else {
-			args = []reflect.Value{elem}
-		}
-
-		// Call the handler with the typed arguments
-		output := handlerValue.Call(args)
-
-		if len(output) != 2 {
-			return newToolResponseSentError(errors.Errorf("handler must return exactly two values, got %d", len(output)))
-		}
-
-		if !output[0].CanInterface() {
-			return newToolResponseSentError(errors.Errorf("handler must return a struct, got %s", output[0].Type().Name()))
-		}
-		tool := output[0].Interface()
-		if !output[1].CanInterface() {
-			return newToolResponseSentError(errors.Errorf("handler must return an error, got %s", output[1].Type().Name()))
-		}
-		errorOut := output[1].Interface()
-		if errorOut == nil {
-			return newToolResponseSent(tool.(*ToolResponse))
-		}
-		return newToolResponseSentError(errors.Wrap(errorOut.(error), "failed to handle tool call"))
-	}
 }
 
 func (s *Server) Serve() error {
@@ -718,12 +447,11 @@ func (s *Server) handleListPrompts(ctx context.Context, request *transport.BaseJ
 		return nil, err
 	}
 
+	// The schemas are complete at registration and shared by concurrent
+	// listings, so they are never modified here.
 	promptsToReturn := make([]*PromptSchema, 0, len(page))
 	for _, p := range page {
-		schema := p.PromptInputSchema
-		schema.Description = &p.Description
-		schema.Name = p.Name
-		promptsToReturn = append(promptsToReturn, schema)
+		promptsToReturn = append(promptsToReturn, p.PromptInputSchema)
 	}
 
 	return ListPromptsResponse{
@@ -875,39 +603,6 @@ func (s *Server) handleResourceCalls(ctx context.Context, req *transport.BaseJSO
 
 func (s *Server) handlePing(ctx context.Context, request *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
 	return map[string]any{}, nil
-}
-
-func validateToolHandler(handler any) error {
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-
-	// We allow the handler to take a context.Context as the first argument optionally
-	if handlerType.NumIn() != 1 && handlerType.NumIn() != 2 {
-		return errors.Errorf("handler must take exactly one or two arguments, got %d", handlerType.NumIn())
-	}
-
-	if handlerType.NumOut() != 2 {
-		return errors.Errorf("handler must return exactly two values, got %d", handlerType.NumOut())
-	}
-
-	if handlerType.NumIn() == 2 {
-		// Check that the first argument is a context.Context
-		if handlerType.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
-			return errors.Errorf("when a handler has 2 arguments, handler must take context.Context as the first argument, got %s", handlerType.In(0).Name())
-		}
-	}
-
-	// Check that the output type is *tools.ToolResponse
-	if handlerType.Out(0) != reflect.PointerTo(reflect.TypeOf(ToolResponse{})) {
-		return errors.Errorf("handler must return *tools.ToolResponse, got %s", handlerType.Out(0).Name())
-	}
-
-	// Check that the output type is error
-	if handlerType.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		return errors.Errorf("handler must return error, got %s", handlerType.Out(1).Name())
-	}
-
-	return nil
 }
 
 var (

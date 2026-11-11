@@ -3,6 +3,7 @@ package llms
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/invopop/jsonschema"
 )
@@ -197,6 +198,21 @@ type Tool struct {
 	// WebSearchOptions are the options for the web search tool,
 	// For providers and models that support Web Search grounding.
 	WebSearchOptions *WebSearchOptions `json:"-"`
+}
+
+// ErrMissingFunctionDefinition is returned by Tool.RequireFunction for a
+// tool without a Function definition.
+var ErrMissingFunctionDefinition = errors.New("tool has no function definition")
+
+// RequireFunction returns the function definition of t, for providers that
+// convert the function tools of a call to their own format. It returns an
+// error wrapping ErrMissingFunctionDefinition when Function is nil. A nil
+// Function.Parameters is valid and means the function takes no arguments.
+func (t Tool) RequireFunction() (*FunctionDefinition, error) {
+	if t.Function == nil {
+		return nil, errors.Wrapf(ErrMissingFunctionDefinition, "tool of type %q", t.Type)
+	}
+	return t.Function, nil
 }
 
 // FunctionDefinition is a definition of a function that can be called by the model.

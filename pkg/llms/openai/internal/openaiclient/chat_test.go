@@ -168,7 +168,8 @@ func TestTool_MarshalUnmarshal(t *testing.T) {
 	}
 	text, err = json.Marshal(tool2)
 	require.NoError(t, err)
-	require.Equal(t, `{"type":"function","function":{"name":"test","description":"test","parameters":null}}`, string(text))
+	// No parameters: the key is left out rather than sent as null.
+	require.Equal(t, `{"type":"function","function":{"name":"test","description":"test"}}`, string(text))
 
 	tool3 := Tool{
 		Type: ToolTypeFunction,

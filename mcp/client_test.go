@@ -303,6 +303,13 @@ func TestClientServerE2E(t *testing.T) {
 		assert.Nil(t, resp.Meta)
 	})
 
+	t.Run("call tool with nil arguments", func(t *testing.T) {
+		resp, err := cli.CallTool(ctx, echoTool, nil)
+		require.NoError(t, err)
+		require.Len(t, resp.Content, 1)
+		assert.Equal(t, "", resp.Content[0].TextContent.Text)
+	})
+
 	t.Run("call tool returning error", func(t *testing.T) {
 		// Tool errors are not protocol errors: they come back as content.
 		resp, err := cli.CallTool(ctx, failingTool, echoArgs{Message: "x"})
@@ -350,6 +357,13 @@ func TestClientServerE2E(t *testing.T) {
 		assert.Equal(t, "Hello, Dr. Who", resp.Messages[0].Content.TextContent.Text)
 		assert.Equal(t, RoleAssistant, resp.Messages[1].Role)
 		assert.Equal(t, "Hi!", resp.Messages[1].Content.TextContent.Text)
+	})
+
+	t.Run("get prompt with nil arguments", func(t *testing.T) {
+		resp, err := cli.GetPrompt(ctx, greetPrompt, nil)
+		require.NoError(t, err)
+		require.Len(t, resp.Messages, 2)
+		assert.Equal(t, "Hello, ", resp.Messages[0].Content.TextContent.Text)
 	})
 
 	t.Run("get prompt returning error", func(t *testing.T) {
@@ -415,6 +429,7 @@ func TestClientServerE2E(t *testing.T) {
 		require.Len(t, resp.Contents, 1)
 		require.NotNil(t, resp.Contents[0].TextResourceContents)
 		assert.Equal(t, errBoom, resp.Contents[0].TextResourceContents.Text)
+		assert.Equal(t, failResourceURI, resp.Contents[0].TextResourceContents.Uri)
 	})
 }
 
@@ -934,6 +949,61 @@ func TestClient_MethodErrors(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestClient_NilArgumentsAreOmitted checks that nil arguments leave the
+// optional "arguments" field out of the request instead of sending null.
+func TestClient_NilArgumentsAreOmitted(t *testing.T) {
+	ctx := context.Background()
+	tr := &scriptedTransport{
+		reply: func(req *transport.BaseJSONRPCRequest) *transport.BaseJsonRpcMessage {
+			switch req.Method {
+			case "tools/call":
+				return resultReply(req, `{"content":[]}`)
+			case "prompts/get":
+				return resultReply(req, `{"messages":[]}`)
+			}
+			return initOnlyReply(req)
+		},
+	}
+	cli := NewClient(tr)
+	_, err := cli.Initialize(ctx)
+	require.NoError(t, err)
+
+	lastParams := func(method string) string {
+		t.Helper()
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		for i := len(tr.sent) - 1; i >= 0; i-- {
+			if req := tr.sent[i].JsonRpcRequest; req != nil && req.Method == method {
+				return string(req.Params)
+			}
+		}
+		require.Failf(t, "request not sent", "method %s", method)
+		return ""
+	}
+
+	_, err = cli.CallTool(ctx, echoTool, nil)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"echo"}`, lastParams("tools/call"))
+
+	_, err = cli.GetPrompt(ctx, greetPrompt, nil)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"greet"}`, lastParams("prompts/get"))
+
+	var nilMap map[string]any
+	_, err = cli.CallTool(ctx, echoTool, nilMap)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"echo"}`, lastParams("tools/call"))
+
+	var nilArgs *greetArgs
+	_, err = cli.GetPrompt(ctx, greetPrompt, nilArgs)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"greet"}`, lastParams("prompts/get"))
+
+	_, err = cli.CallTool(ctx, echoTool, map[string]any{})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"echo","arguments":{}}`, lastParams("tools/call"))
 }
 
 func TestClient_ArgumentMarshalErrors(t *testing.T) {

@@ -267,6 +267,21 @@ func TestToolCall_ProviderNative(t *testing.T) {
 	assert.Equal(t, "web_search", webSearch.GetFunctionCallName())
 	assert.Empty(t, webSearch.GetFunctionCallArguments())
 	assert.Equal(t, len("ws-1")+len("web_search"), webSearch.ContentLength())
+	// F-038: String and MessageFromToolCalls used to dereference the nil
+	// function call.
+	assert.Equal(t, "ToolCall: ws-1 (web_search), input: ", webSearch.String())
+	msg := llms.MessageFromToolCalls(llms.RoleAI, webSearch)
+	assert.Equal(t, llms.Message{
+		Role: llms.RoleAI,
+		Parts: []llms.ContentPart{
+			webSearch,
+		},
+	}, msg)
+
+	fc, err := webSearch.RequireFunctionCall()
+	require.ErrorIs(t, err, llms.ErrMissingFunctionCall)
+	assert.EqualError(t, err, `tool call "ws-1" of type "web_search": tool call has no function call`)
+	assert.Nil(t, fc)
 
 	// A non-function type ignores a function call even when present.
 	custom := llms.ToolCall{
@@ -278,6 +293,37 @@ func TestToolCall_ProviderNative(t *testing.T) {
 	}
 	assert.Equal(t, "custom", custom.GetFunctionCallName())
 	assert.Empty(t, custom.GetFunctionCallArguments())
+
+	// RequireFunctionCall does not look at Type: a call stored without one
+	// is still sent back as a function call.
+	untyped := llms.ToolCall{
+		ID:           "call-2",
+		FunctionCall: custom.FunctionCall,
+	}
+	fc, err = untyped.RequireFunctionCall()
+	require.NoError(t, err)
+	assert.Same(t, custom.FunctionCall, fc)
+}
+
+func TestTool_RequireFunction(t *testing.T) {
+	t.Parallel()
+
+	fn := &llms.FunctionDefinition{
+		Name: "lookup",
+	}
+	got, err := llms.Tool{
+		Type:     llms.ToolTypeFunction,
+		Function: fn,
+	}.RequireFunction()
+	require.NoError(t, err)
+	assert.Same(t, fn, got)
+
+	got, err = llms.Tool{
+		Type: "web_search",
+	}.RequireFunction()
+	require.ErrorIs(t, err, llms.ErrMissingFunctionDefinition)
+	assert.EqualError(t, err, `tool of type "web_search": tool has no function definition`)
+	assert.Nil(t, got)
 }
 
 func TestContentResponse_NilAndSingle(t *testing.T) {

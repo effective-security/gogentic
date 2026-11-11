@@ -161,6 +161,30 @@ func TestCreateAnthropicCompletionRequest(t *testing.T) {
 				"tools": [{"name": "ping", "description": "Ping the service", "input_schema": {"type": "object"}}]
 			}`,
 		},
+		{
+			// F-019: a function without Parameters used to panic.
+			name: "tool without parameters",
+			messages: []Message{
+				textMessage(llms.RoleHuman, "hi"),
+			},
+			options: llms.CallOptions{
+				Tools: []llms.Tool{
+					{
+						Type: "function",
+						Function: &llms.FunctionDefinition{
+							Name:        "now",
+							Description: "Current time",
+						},
+					},
+				},
+			},
+			request: `{
+				"anthropic_version": "bedrock-2023-05-31",
+				"max_tokens": 2048,
+				"messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+				"tools": [{"name": "now", "description": "Current time", "input_schema": {"type": "object"}}]
+			}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -175,6 +199,25 @@ func TestCreateAnthropicCompletionRequest(t *testing.T) {
 			assert.JSONEq(t, tt.request, calls[0].body)
 		})
 	}
+}
+
+// F-019: a tool without a function definition used to panic.
+func TestCreateAnthropicCompletionToolWithoutFunction(t *testing.T) {
+	s := newStub(t, `{}`)
+	resp, err := s.client().CreateCompletion(context.Background(), anthropicModelID, []Message{
+		textMessage(llms.RoleHuman, "hi"),
+	}, llms.CallOptions{
+		Tools: []llms.Tool{
+			lookupTool(),
+			{
+				Type: "web_search",
+			},
+		},
+	})
+	require.ErrorIs(t, err, llms.ErrMissingFunctionDefinition)
+	assert.EqualError(t, err, `bedrock anthropic: tool [1]: tool of type "web_search": tool has no function definition`)
+	assert.Nil(t, resp)
+	assert.Empty(t, s.requests(), "no request is sent for rejected tools")
 }
 
 func TestCreateAnthropicCompletionResponse(t *testing.T) {

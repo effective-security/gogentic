@@ -115,13 +115,17 @@ func processMessages(messages []llms.Message) ([]bedrockclient.Message, error) {
 				})
 			case llms.ToolCall:
 				// Handle tool calls from AI messages
+				fc, err := part.RequireFunctionCall()
+				if err != nil {
+					return nil, errors.WithMessage(err, "bedrock: unsupported tool call in history")
+				}
 				bedrockMsgs = append(bedrockMsgs, bedrockclient.Message{
 					Role:       m.Role,
 					Content:    part.ID, // Tool call ID
 					Type:       "tool_use",
 					ToolCallID: part.ID,
-					ToolName:   part.FunctionCall.Name,
-					ToolInput:  part.FunctionCall.Arguments, // JSON arguments
+					ToolName:   fc.Name,
+					ToolInput:  fc.Arguments, // JSON arguments
 				})
 			case llms.ToolCallResponse:
 				// Handle tool call responses

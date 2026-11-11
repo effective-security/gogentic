@@ -46,6 +46,23 @@ func HTTPStatus(kind router.Kind) int {
 	return http.StatusInternalServerError
 }
 
+// internalErrorMessage is the client-safe message of an unclassified failure.
+const internalErrorMessage = "internal router error"
+
+// AsRouterError returns the router error a codec encodes for err. It is
+// router.AsError, except that a nil err, which a host should never pass,
+// gives a KindInternal error instead of nil, so an EncodeError never
+// dereferences nil.
+func AsRouterError(err error) *router.Error {
+	if re := router.AsError(err); re != nil {
+		return re
+	}
+	return &router.Error{
+		Kind:    router.KindInternal,
+		Message: internalErrorMessage,
+	}
+}
+
 // statusClientClosedRequest is the conventional nginx status for a cancelled
 // request. Nothing is written to a disconnected client; it exists for logs.
 const statusClientClosedRequest = 499

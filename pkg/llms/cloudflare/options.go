@@ -1,10 +1,13 @@
 package cloudflare
 
 import (
-	"log"
 	"net/http"
-	"net/url"
 )
+
+// DefaultServerURL is the Cloudflare API base URL that New uses when
+// WithServerURL is not given. Requests go to
+// <server URL>/<account ID>/ai/run/<model>.
+const DefaultServerURL = "https://api.cloudflare.com/client/v4/accounts"
 
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -12,7 +15,7 @@ type HTTPClient interface {
 
 type options struct {
 	cloudflareAccountID string
-	cloudflareServerURL *url.URL
+	cloudflareServerURL string
 	cloudflareToken     string
 	httpClient          HTTPClient
 	model               string
@@ -46,14 +49,12 @@ func WithAccountID(accountID string) Option {
 	}
 }
 
-// WithServerURL Set the URL of the cloudflare Workers AI service.
+// WithServerURL sets the base URL of the Cloudflare API: the part of the
+// endpoint before /<account ID>/ai/run/<model>, such as DefaultServerURL.
+// New returns an error when the URL is not absolute.
 func WithServerURL(rawURL string) Option {
 	return func(opts *options) {
-		var err error
-		opts.cloudflareServerURL, err = url.Parse(rawURL)
-		if err != nil {
-			log.Fatal(err)
-		}
+		opts.cloudflareServerURL = rawURL
 	}
 }
 

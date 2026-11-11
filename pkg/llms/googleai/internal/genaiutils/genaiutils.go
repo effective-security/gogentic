@@ -42,16 +42,17 @@ func ConvertTools(tools []llms.Tool) ([]*genai.Tool, error) {
 
 		// We have a llms.FunctionDefinition in tool.Function, and we have to
 		// convert it to genai.FunctionDeclaration
+		fn, err := tool.RequireFunction()
+		if err != nil {
+			return nil, errors.WithMessagef(err, "tool [%d]", i)
+		}
 		genaiFuncDecl := &genai.FunctionDeclaration{
-			Name:        tool.Function.Name,
-			Description: tool.Function.Description,
+			Name:        fn.Name,
+			Description: fn.Description,
 		}
 
-		if tool.Function.Parameters != nil {
-			var schema *genai.Schema
-			var err error
-
-			schema, err = ConvertJSONSchemaDefinition(tool.Function.Parameters)
+		if fn.Parameters != nil {
+			schema, err := ConvertJSONSchemaDefinition(fn.Parameters)
 			if err != nil {
 				return nil, errors.Wrapf(err, "tool [%d]", i)
 			}
