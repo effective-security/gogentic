@@ -173,7 +173,11 @@ func (o *LLM) buildChatRequestBody(messages []llms.Message, options ...llms.Call
 
 		newParts, toolCalls := ExtractToolParts(msg)
 		msg.MultiContent = newParts
-		msg.ToolCalls = toolCallsFromToolCalls(toolCalls)
+		calls, err := toolCallsFromToolCalls(toolCalls)
+		if err != nil {
+			return nil, err
+		}
+		msg.ToolCalls = calls
 
 		chatMsgs = append(chatMsgs, msg)
 	}
@@ -454,11 +458,19 @@ func (o *LLM) toolFromTool(t llms.Tool) (openaiclient.Tool, error) {
 			}
 		}
 	case string(openaiclient.ToolTypeFunction):
+		fn, err := t.RequireFunction()
+		if err != nil {
+			return openaiclient.Tool{}, err
+		}
 		tool.Function = &openaiclient.FunctionDefinition{
-			Name:        t.Function.Name,
-			Description: t.Function.Description,
-			Parameters:  t.Function.Parameters,
-			Strict:      t.Function.Strict,
+			Name:        fn.Name,
+			Description: fn.Description,
+			Strict:      fn.Strict,
+		}
+		// A nil schema in the interface would be sent as "parameters": null;
+		// leaving it out declares a function without parameters.
+		if fn.Parameters != nil {
+			tool.Function.Parameters = fn.Parameters
 		}
 	default:
 		return openaiclient.Tool{}, errors.Errorf("tool type %v not supported", t.Type)
@@ -466,25 +478,28 @@ func (o *LLM) toolFromTool(t llms.Tool) (openaiclient.Tool, error) {
 	return tool, nil
 }
 
-// toolCallsFromToolCalls converts a slice of llms.ToolCall to a slice of ToolCall.
-func toolCallsFromToolCalls(tcs []llms.ToolCall) []openaiclient.ToolCall {
+// toolCallsFromToolCalls converts the tool calls of a history message to
+// Chat Completions tool calls. A tool call without a function call cannot be
+// sent back and is an error.
+func toolCallsFromToolCalls(tcs []llms.ToolCall) ([]openaiclient.ToolCall, error) {
 	toolCalls := make([]openaiclient.ToolCall, len(tcs))
 	for i, tc := range tcs {
-		toolCalls[i] = toolCallFromToolCall(tc)
+		fc, err := tc.RequireFunctionCall()
+		if err != nil {
+			return nil, errors.WithMessage(err, "unsupported tool call in history")
+		}
+		toolCalls[i] = openaiclient.ToolCall{
+			ID: tc.ID,
+			// Chat Completions requires a type; a call stored without one
+			// is a function call.
+			Type: openaiclient.ToolType(cmp.Or(tc.Type, llms.ToolTypeFunction)),
+			Function: openaiclient.ToolFunction{
+				Name:      fc.Name,
+				Arguments: fc.Arguments,
+			},
+		}
 	}
-	return toolCalls
-}
-
-// toolCallFromToolCall converts an llms.ToolCall to a ToolCall.
-func toolCallFromToolCall(tc llms.ToolCall) openaiclient.ToolCall {
-	return openaiclient.ToolCall{
-		ID:   tc.ID,
-		Type: openaiclient.ToolType(tc.Type),
-		Function: openaiclient.ToolFunction{
-			Name:      tc.FunctionCall.Name,
-			Arguments: tc.FunctionCall.Arguments,
-		},
-	}
+	return toolCalls, nil
 }
 
 // responsesToolFromTool converts an llms.Tool to a Responses ToolUnionParam.
@@ -504,8 +519,8 @@ func (o *LLM) responsesToolFromTool(t llms.Tool) (responses.ToolUnionParam, erro
 			},
 		}, nil
 	case string(openaiclient.ToolTypeFunction):
-		if t.Function == nil {
-			return responses.ToolUnionParam{}, errors.Errorf("function tool missing definition")
+		if _, err := t.RequireFunction(); err != nil {
+			return responses.ToolUnionParam{}, err
 		}
 		// Convert jsonschema.Schema to map[string]any
 		var paramsMap map[string]any

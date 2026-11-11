@@ -75,7 +75,8 @@ assistant_models:
     - claude-opus-4-8
     - ANTHROPIC/claude-sonnet-*,high
 
-# Per-organization overrides, merged over assistant_models.
+# Per-organization overrides, merged over assistant_models. An organization
+# listed with no value ("1001":) uses assistant_models unchanged.
 orgs_override:
   "1000":
     assistant_models:
@@ -134,7 +135,7 @@ field, because it decides both the client implementation and the
 | `ANTHROPIC_BEDROCK` | `pkg/llms/anthropic` (Bedrock mode) | Uses `WithAWSConfigFactory` |
 | `BEDROCK` | `pkg/llms/bedrock` | Native Bedrock runtime API |
 | `GOOGLEAI` | `pkg/llms/googleai` | |
-| `CLOUDFLARE` | `pkg/llms/cloudflare` | `base_url` maps to the server URL |
+| `CLOUDFLARE` | `pkg/llms/cloudflare` | `base_url` maps to the server URL, which defaults to `https://api.cloudflare.com/client/v4/accounts`; an invalid one fails model creation. The account ID cannot be set from configuration yet (F-015) |
 
 An unknown `api_type` fails at model construction with
 `unsupported provider type: X`.

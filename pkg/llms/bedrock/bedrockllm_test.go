@@ -259,6 +259,17 @@ func TestGenerateContentErrors(t *testing.T) {
 	require.EqualError(t, err, unsupportedPart)
 	assert.Nil(t, resp)
 
+	// F-038: a tool call without a function call used to panic.
+	resp, err = llm.GenerateContent(context.Background(), []llms.Message{
+		llms.MessageFromToolCalls(llms.RoleAI, llms.ToolCall{
+			ID:   "ws_1",
+			Type: "web_search",
+		}),
+	})
+	require.ErrorIs(t, err, llms.ErrMissingFunctionCall)
+	require.EqualError(t, err, `bedrock: unsupported tool call in history: tool call "ws_1" of type "web_search": tool call has no function call`)
+	assert.Nil(t, resp)
+
 	resp, err = llm.GenerateContent(context.Background(), []llms.Message{
 		llms.MessageFromTextParts(llms.RoleHuman, "hello"),
 	}, llms.WithModel("mistral.mistral-7b-instruct-v0:2"))

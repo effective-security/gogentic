@@ -25,6 +25,20 @@ func TestOpaqueSealRoundTrip(t *testing.T) {
 	require.Error(t, err, "envelope without source is rejected")
 }
 
+func TestAsRouterError(t *testing.T) {
+	assert.Equal(t, &router.Error{
+		Kind:    router.KindInternal,
+		Message: "internal router error",
+	}, AsRouterError(nil))
+
+	re := &router.Error{
+		Kind:    router.KindInvalidRequest,
+		Param:   "model",
+		Message: "bad model",
+	}
+	assert.Same(t, re, AsRouterError(re))
+}
+
 func TestHTTPStatus(t *testing.T) {
 	assert.Equal(t, 400, HTTPStatus(router.KindInvalidRequest))
 	assert.Equal(t, 400, HTTPStatus(router.KindUnsupported))

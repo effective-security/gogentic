@@ -199,7 +199,7 @@ func newAnthropicPromptCacheTestParams(t *testing.T) (sdkanthropic.MessageNewPar
 	chatMessages, systemBlocks, partLocations, err := processMessagesForRequest(messages)
 	require.NoError(t, err)
 
-	tools := ToTools([]llms.Tool{
+	tools, err := ToTools([]llms.Tool{
 		{
 			Function: &llms.FunctionDefinition{
 				Name:        "lookup",
@@ -208,6 +208,7 @@ func newAnthropicPromptCacheTestParams(t *testing.T) (sdkanthropic.MessageNewPar
 			},
 		},
 	}, "claude-sonnet-4-5")
+	require.NoError(t, err)
 	require.Len(t, tools, 1)
 
 	params := sdkanthropic.MessageNewParams{

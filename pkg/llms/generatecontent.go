@@ -13,6 +13,11 @@ import (
 // ErrUnexpectedRole is returned when a message role is of an unexpected type.
 var ErrUnexpectedRole = errors.New("unexpected role")
 
+// ErrMissingFunctionCall is returned by ToolCall.RequireFunctionCall for a
+// tool call without a FunctionCall, such as a provider-native web_search
+// call, which a provider cannot send back to the model as a function call.
+var ErrMissingFunctionCall = errors.New("tool call has no function call")
+
 // Role is the type of chat message.
 type Role string
 
@@ -207,8 +212,26 @@ func (tc ToolCall) GetFunctionCallArguments() string {
 	return tc.FunctionCall.Arguments
 }
 
+// RequireFunctionCall returns the function call of tc, for providers that
+// send the tool calls of the message history back to the model. It does not
+// look at Type, so a call whose Type is empty still has its function call
+// returned. It returns an error wrapping ErrMissingFunctionCall when
+// FunctionCall is nil.
+func (tc ToolCall) RequireFunctionCall() (*FunctionCall, error) {
+	if tc.FunctionCall == nil {
+		return nil, errors.Wrapf(ErrMissingFunctionCall, "tool call %q of type %q", tc.ID, tc.Type)
+	}
+	return tc.FunctionCall, nil
+}
+
+// String describes the tool call for logs: its ID, the function name (or
+// the tool type of a provider-native call) and its arguments.
 func (tc ToolCall) String() string {
-	return fmt.Sprintf("ToolCall: %s (%s), input: %s", tc.ID, tc.FunctionCall.Name, tc.FunctionCall.Arguments)
+	name, args := tc.Type, ""
+	if tc.FunctionCall != nil {
+		name, args = tc.FunctionCall.Name, tc.FunctionCall.Arguments
+	}
+	return fmt.Sprintf("ToolCall: %s (%s), input: %s", tc.ID, name, args)
 }
 
 func (tc ToolCall) ContentType() ContentPartType {
@@ -449,14 +472,17 @@ func MessageFromToolCalls(role Role, toolCalls ...ToolCall) Message {
 		Parts: make([]ContentPart, 0, len(toolCalls)),
 	}
 	for _, toolCall := range toolCalls {
-		result.Parts = append(result.Parts, ToolCall{
+		part := ToolCall{
 			ID:   toolCall.ID,
 			Type: toolCall.Type,
-			FunctionCall: &FunctionCall{
-				Name:      toolCall.FunctionCall.Name,
-				Arguments: toolCall.FunctionCall.Arguments,
-			},
-		})
+		}
+		if fc := toolCall.FunctionCall; fc != nil {
+			part.FunctionCall = &FunctionCall{
+				Name:      fc.Name,
+				Arguments: fc.Arguments,
+			}
+		}
+		result.Parts = append(result.Parts, part)
 	}
 	return result
 }

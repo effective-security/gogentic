@@ -117,6 +117,20 @@ type ContentChoice struct {
 provider; `GetFunctionCallName` and `GetFunctionCallArguments` read the
 function only for that type.
 
+A provider-native tool call, such as `web_search`, may have no
+`FunctionCall`. `ToolCall.String` and `MessageFromToolCalls` accept one.
+Sending it back in the history is an error from OpenAI Chat Completions,
+Anthropic, Bedrock and Google AI that wraps `llms.ErrMissingFunctionCall`
+(`ToolCall.RequireFunctionCall` is the check they share); the OpenAI
+Responses API leaves it out. The assistant loop does not yet tell such calls
+apart from function calls (F-059 in `FINDINGS.md`).
+
+A function tool (`llms.Tool`) with a nil `Function` fails the call with an
+error wrapping `llms.ErrMissingFunctionDefinition` before any request is
+sent (`Tool.RequireFunction`). A nil `Function.Parameters` is valid: the
+function takes an empty object. `anthropic.ToTools` returns this error, so it
+has an `error` result.
+
 `ReasoningContent` carries the model's reasoning when the provider returns it:
 deepseek-reasoner's `reasoning_content`, or the text of Anthropic `thinking`
 blocks (streaming and non-streaming; empty when the thinking display omits

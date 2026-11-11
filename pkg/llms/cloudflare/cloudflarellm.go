@@ -3,6 +3,7 @@ package cloudflare
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/pkg/llms"
@@ -25,20 +26,31 @@ var (
 	_ llms.Embedder = (*LLM)(nil)
 )
 
-// New creates a new cloudflare LLM implementation.
+// New creates a new cloudflare LLM implementation. The server URL defaults to
+// DefaultServerURL; New returns an error when the one given with
+// WithServerURL is not an absolute URL.
 func New(opts ...Option) (*LLM, error) {
 	o := options{
-		httpClient: http.DefaultClient,
+		httpClient:          http.DefaultClient,
+		cloudflareServerURL: DefaultServerURL,
 	}
 
 	for _, opt := range opts {
 		opt(&o)
 	}
 
+	serverURL, err := url.Parse(o.cloudflareServerURL)
+	if err != nil {
+		return nil, errors.WithMessage(err, "cloudflare: invalid server URL")
+	}
+	if !serverURL.IsAbs() || serverURL.Host == "" {
+		return nil, errors.Errorf("cloudflare: invalid server URL %q: must be absolute", o.cloudflareServerURL)
+	}
+
 	client := cloudflareclient.NewClient(
 		o.httpClient,
 		o.cloudflareAccountID,
-		o.cloudflareServerURL.String(),
+		serverURL.String(),
 		o.cloudflareToken,
 		o.model,
 		o.embeddingModel,

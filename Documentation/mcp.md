@@ -80,7 +80,16 @@ func(ctx context.Context, args chatmodel.MCPInputRequest) (*mcp.PromptResponse, 
 `(*mcp.ResourceResponse, error)`.
 
 A mismatched signature is rejected by `RegisterTool` / `RegisterPrompt` /
-`RegisterResource` with a descriptive error, not at call time.
+`RegisterResource` with a descriptive error, not at call time: argument count
+and types, both result types (`*mcp.ToolResponse`, `*mcp.PromptResponse` or
+`*mcp.ResourceResponse`, then `error`), a variadic function, and a handler
+that is not a function at all, for example
+`handler must return *mcp.ResourceResponse, got string`.
+
+A request without `arguments`, or with `"arguments": null`, calls the handler
+with the zero value of `T`. A handler without `T` (a tool taking only a
+context) is listed with the input schema `{"type":"object","properties":{}}`
+and ignores the arguments it is sent.
 
 ### Registration API
 
@@ -139,7 +148,15 @@ error such as `invalid image content: missing required field "mimeType"`.
 An error returned by a tool handler becomes a **tool error result**, not a
 JSON-RPC protocol error, so the calling model can see and react to it.
 Likewise a prompt handler error comes back as a prompt response described as
-`error`, and a resource handler error as a text resource holding the message.
+`error`, and a resource handler error as a text resource holding the message,
+at the URI that was read.
+
+The same applies when the handler cannot produce a response: arguments that
+do not decode (`failed to unmarshal arguments: ...`), a handler that panics
+(`internal error: tool panicked: ...`, with the stack in the server log), and
+a handler that returns neither a response nor an error
+(`tool handler returned neither a response nor an error`). A faulty handler
+fails its own request; it does not crash the server.
 
 A request the server cannot route is a **JSON-RPC error**: an unknown tool,
 prompt or resource is reported as `unknown tool: <name>`,
@@ -219,6 +236,8 @@ if _, err := cli.Initialize(ctx); err != nil {
 
 toolsResp, err := cli.ListTools(ctx, nil) // nil cursor => first page
 res, err := cli.CallTool(ctx, "get_weather", map[string]any{"city": "Paris"})
+// nil arguments leave "arguments" out of the request
+res, err = cli.CallTool(ctx, "list_cities", nil)
 
 promptsResp, err := cli.ListPrompts(ctx, nil)
 prompt, err := cli.GetPrompt(ctx, "researcher", map[string]any{"input": "hello"})

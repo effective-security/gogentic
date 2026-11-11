@@ -505,7 +505,8 @@ func TestWebToolVersionByModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
-			tools := anthropic.ToTools(webSearch, tt.model)
+			tools, err := anthropic.ToTools(webSearch, tt.model)
+			require.NoError(t, err)
 			require.Len(t, tools, 1)
 			if tt.wantLegacy {
 				assert.NotNil(t, tools[0].OfWebFetchTool20250910)

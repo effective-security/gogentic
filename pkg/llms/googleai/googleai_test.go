@@ -331,7 +331,21 @@ func TestGenerateContent_ConversionErrors(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "unexpected end of JSON input",
+			wantErr: "googleai: failed to unmarshal tool call arguments: unexpected end of JSON input",
+		},
+		{
+			// F-038: used to panic on the nil FunctionCall.
+			name: "tool call without function call",
+			message: llms.Message{
+				Role: llms.RoleAI,
+				Parts: []llms.ContentPart{
+					llms.ToolCall{
+						ID:   "ws_1",
+						Type: "web_search",
+					},
+				},
+			},
+			wantErr: `googleai: unsupported tool call in history: tool call "ws_1" of type "web_search": tool call has no function call`,
 		},
 		{
 			name: "image without a MIME type",
@@ -369,6 +383,15 @@ func TestGenerateContent_UnsupportedTool(t *testing.T) {
 	}}
 	resp, err := f.model().GenerateContent(context.Background(), humanText("hi"), llms.WithTools(tools))
 	require.EqualError(t, err, `tool [0]: unsupported type "retrieval", want 'function'`)
+	assert.Nil(t, resp)
+	assert.Empty(t, f.requests)
+
+	// F-022: a function tool without a definition used to panic.
+	resp, err = f.model().GenerateContent(context.Background(), humanText("hi"), llms.WithTools([]llms.Tool{{
+		Type: llms.ToolTypeFunction,
+	}}))
+	require.ErrorIs(t, err, llms.ErrMissingFunctionDefinition)
+	require.EqualError(t, err, `tool [0]: tool of type "function": tool has no function definition`)
 	assert.Nil(t, resp)
 	assert.Empty(t, f.requests)
 }

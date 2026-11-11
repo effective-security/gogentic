@@ -236,7 +236,10 @@ func GenerateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
 		return nil, errors.Wrap(err, "anthropic: failed to process messages")
 	}
 
-	tools := ToTools(opts.Tools, opts.Model)
+	tools, err := ToTools(opts.Tools, opts.Model)
+	if err != nil {
+		return nil, err
+	}
 
 	// Build message parameters
 	params := anthropic.MessageNewParams{
@@ -563,9 +566,12 @@ func convertToAnthropicSchema(prop *schema.ResponseFormatJSONSchemaProperty) map
 //     newer models get WebFetchTool20260209Param.
 //
 // Returns nil if no tools are provided, which is handled gracefully by the API.
-func ToTools(tools []llms.Tool, model string) []anthropic.ToolUnionParam {
+// Returns an error wrapping llms.ErrMissingFunctionDefinition for a tool other
+// than web_search that has no function definition. A function without
+// Parameters takes an empty object.
+func ToTools(tools []llms.Tool, model string) ([]anthropic.ToolUnionParam, error) {
 	if len(tools) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	sdkTools := make([]anthropic.ToolUnionParam, len(tools))
@@ -595,32 +601,37 @@ func ToTools(tools []llms.Tool, model string) []anthropic.ToolUnionParam {
 			continue
 		}
 
-		// Convert Properties from orderedmap to regular map for Anthropic SDK
-		var properties map[string]any
-		if tool.Function.Parameters.Properties != nil {
-			properties = make(map[string]any)
-			for pair := tool.Function.Parameters.Properties.Oldest(); pair != nil; pair = pair.Next() {
-				properties[pair.Key] = pair.Value
-			}
+		fn, err := tool.RequireFunction()
+		if err != nil {
+			return nil, errors.WithMessagef(err, "anthropic: tool [%d]", i)
 		}
 
 		inputSchema := anthropic.ToolInputSchemaParam{
-			Type:       "object",
-			Properties: properties,
+			Type: "object",
 		}
-		if len(tool.Function.Parameters.Required) > 0 {
-			inputSchema.Required = tool.Function.Parameters.Required
+		if params := fn.Parameters; params != nil {
+			// Convert Properties from orderedmap to regular map for Anthropic SDK
+			if params.Properties != nil {
+				properties := make(map[string]any, params.Properties.Len())
+				for pair := params.Properties.Oldest(); pair != nil; pair = pair.Next() {
+					properties[pair.Key] = pair.Value
+				}
+				inputSchema.Properties = properties
+			}
+			if len(params.Required) > 0 {
+				inputSchema.Required = params.Required
+			}
 		}
 
 		sdkTools[i] = anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
-				Name:        tool.Function.Name,
-				Description: anthropic.String(tool.Function.Description),
+				Name:        fn.Name,
+				Description: anthropic.String(fn.Description),
 				InputSchema: inputSchema,
 			},
 		}
 	}
-	return sdkTools
+	return sdkTools, nil
 }
 
 // ProcessMessages converts generic message content to Anthropic SDK message parameters.
@@ -740,15 +751,19 @@ func HandleAIMessage(msg llms.Message) (anthropic.MessageParam, error) {
 	for _, part := range msg.Parts {
 		switch p := part.(type) {
 		case llms.ToolCall:
+			fc, err := p.RequireFunctionCall()
+			if err != nil {
+				return anthropic.MessageParam{}, errors.WithMessage(err, "anthropic: unsupported tool call in history")
+			}
 			var inputJSON json.RawMessage
-			if err := json.Unmarshal([]byte(p.FunctionCall.Arguments), &inputJSON); err != nil {
+			if err := json.Unmarshal([]byte(fc.Arguments), &inputJSON); err != nil {
 				return anthropic.MessageParam{}, errors.Wrap(err, "anthropic: failed to unmarshal tool call arguments")
 			}
 
 			contents = append(contents, anthropic.NewToolUseBlock(
 				p.ID,
 				inputJSON,
-				p.FunctionCall.Name,
+				fc.Name,
 			))
 		case llms.TextContent:
 			contents = append(contents, anthropic.NewTextBlock(p.Text))

@@ -124,7 +124,7 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 |---------|--------|------|
 | Server | `Server`, `NewServer`, `Serve`, `RegisterTool/Prompt/Resource/ResourceTemplate` | `server.go` |
 | Server options | `WithName`, `WithVersion`, `WithInstructions`, `WithPaginationLimit`, `WithProtocol` | `server.go` |
-| Handler validation & schema | `validateToolHandler`, `validatePromptHandler`, `createJsonSchemaFromHandler` | `server.go` |
+| Handler validation, call & schema | `validateToolHandler`, `validatePromptHandler`, `validateResourceHandler`, `newHandler`, `callHandler` (decodes arguments, recovers panics), `argumentsSchema`, `newPromptSchema` | `handler.go` |
 | Client | `Client`, `NewClient`, `NewClientWithInfo`, `Initialize`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`, `ListResources`, `ReadResource`, `Ping` | `client.go` |
 | Content | `Content`, `NewTextContent`, `NewImageContent`, `NewTextResourceContent`, `NewBlobResourceContent`, `Annotations` | `content_api.go` |
 | Responses | `ToolResponse`, `PromptResponse`, `ResourceResponse` | `tool_api.go`, `prompt_api.go`, `resource_api.go` |
@@ -144,10 +144,11 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 | Single prompt helper | `GenerateFromSinglePrompt` | `llms.go` |
 | Messages | `Message`, `Messages`, `Role`, `MessageSource`, `MessageFromTextParts`, `MessageFromToolCalls`, `MessageFromToolResponse` | `generatecontent.go` |
 | Content parts | `ContentPart`, `TextContent`, `ImageURLContent`, `BinaryContent`, `ToolCall`, `ToolTypeFunction`, `ToolCallResponse` | `generatecontent.go` |
+| Tool calls in history | `ToolCall.RequireFunctionCall`, `ErrMissingFunctionCall` (provider-native calls have no `FunctionCall`) | `generatecontent.go` |
 | Responses | `ContentResponse`, `ContentChoice` | `generatecontent.go` |
 | Usage | `Usage`, `UsageStats` | `generatecontent.go` |
 | Call options | `CallOptions`, `CallOption`, `WithXxx` | `options.go` |
-| Tool definitions | `Tool`, `FunctionDefinition`, `ToolChoice`, `WebSearchOptions` | `options.go` |
+| Tool definitions | `Tool`, `FunctionDefinition`, `ToolChoice`, `WebSearchOptions`, `Tool.RequireFunction`, `ErrMissingFunctionDefinition` | `options.go` |
 | Prompt caching | `PromptCachePolicy`, `PromptCacheBreakpoint`, `PromptCacheRequestPolicy`, `PromptCacheTTL`, `PromptCacheRetention` | `options.go` |
 | Batch API | `Batcher`, `BatchRequest`, `BatchResult`, `BatchHandle`, `BatchStatus`, `ErrBatchNotReady` | `batch.go` |
 | Prompt value | `PromptValue` | `prompts.go` |
@@ -198,7 +199,7 @@ that needs no model name.
 | Concept | Symbol | File |
 |---------|--------|------|
 | Reflection | `New` (type-cached), `JSONSchema`, `buildSchema` | `schema.go` |
-| Function parameters | `Schema.Parameters`, `ToFunctionSchema`, `resolveRefs` | `schema.go` |
+| Function parameters | `Schema.Parameters`, `ToFunctionSchema`, `refResolver` | `schema.go` |
 | Ad-hoc schemas | `FromAny`, `MustFromAny` | `schema.go` |
 | Response formats | `NewResponseFormat`, `ResponseFormat`, `ResponseFormatJSONSchema`, `toOpenAISchema` | `response_format.go` |
 
@@ -266,7 +267,7 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | `pkg/llms/{openai,anthropic,googleai}/models_test.go` | Model listing against lists recorded from each API (`testdata/models_*.json`): pages, lifecycle stages, errors. `TestIntegrationListModels*` call the live APIs and are skipped under `make test` |
 | `pkg/llms/anthropic/efforts_recorded_test.go` | The Anthropic effort table agrees with the capabilities in the recorded model list |
 | `skills/loader_test.go` | Discovery from folders and tar archives |
-| `mcp/server_test.go` | Registration, notifications, handler validation |
+| `mcp/server_test.go` | Registration, notifications, handler validation, handler panics and missing arguments, concurrent `prompts/list` (run with `-race`) |
 | `mcp/client_test.go` | `Client` end to end against a real `Server` over the local transport, and every client error path through a scripted transport |
 | `router/validate_test.go`, `router/dialect/{openai,anthropic}/decode_test.go` | Every request-validation and codec rejection branch, with the exact error kind and parameter |
 | `pkg/llms/bedrock/internal/bedrockclient/*_test.go` | `InvokeModel` request and response shapes per model family over a fake HTTP client, including hand-built streaming event frames |
@@ -282,7 +283,7 @@ secrets. Provider integration tests are guarded by env vars or `t.Skip`.
 | Routing and policy | `router.New`, `Router.Generate`, `Selector`, `SelectorFunc`, `Admission`, `ConcurrencyLimit`, `Config`, `Target`, `Features`, `Request`, `Result`, `Decision`, `SelectionInput`, `Candidate`, `Observation`, `Connector` | `router/router.go`, `router/admission.go` |
 | Request/result validation | `validateRequest`, `supports`, `normalizeResponse` (unexported) | `router/validate.go` |
 | Typed errors | `Error`, `Kind`, `Kind*` constants, `NewError`, `Invalid`, `Unsupported`, `AsError` | `router/errors.go` |
-| Codec helpers | `DecodeOptions`, `EncodeOptions`, `Inspect`, `ParseObject`, `Object`, `SealOpaque`, `OpenOpaque`, `HTTPStatus`, `MetadataUser` | `router/dialect/dialect.go`, `router/dialect/json.go` |
+| Codec helpers | `DecodeOptions`, `EncodeOptions`, `Inspect`, `ParseObject`, `Object`, `SealOpaque`, `OpenOpaque`, `HTTPStatus`, `AsRouterError`, `MetadataUser` | `router/dialect/dialect.go`, `router/dialect/json.go` |
 | OpenAI codecs | `DecodeChat`, `EncodeChat`, `DecodeResponses`, `EncodeResponses`, `EncodeError` | `router/dialect/openai/` |
 | Anthropic codec | `DecodeMessages`, `EncodeMessages`, `EncodeError` | `router/dialect/anthropic/` |
 | Exact factory lookup | `ExactResolver`, `ResolveExact`, `ErrModelNotFound`, `GetModelExact` | `pkg/llmfactory/exact.go` |

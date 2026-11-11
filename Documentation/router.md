@@ -29,6 +29,10 @@ if err != nil {
 body, err := openaidialect.EncodeChat(res, dialect.EncodeOptions{})
 ```
 
+`EncodeError` never fails: an error that is not a `*router.Error` is encoded
+as `internal_error` with a generic message, and so is a nil error
+(`dialect.AsRouterError`).
+
 `dialect.HTTPStatus(kind)` gives the default status per error kind; hosts may map
 kinds differently. `router.AsError(err).Cause` retains diagnostics for logs.
 

@@ -140,7 +140,7 @@ func (j *implementation) UnmarshalJSON(b []byte) error {
 type baseCallToolRequestParams struct {
 	// Arguments corresponds to the JSON schema field "arguments".
 	// It is stored as a []byte to enable efficient marshaling and unmarshaling into custom types later on in the protocol
-	Arguments json.RawMessage `json:"arguments" yaml:"arguments" mapstructure:"arguments"`
+	Arguments json.RawMessage `json:"arguments,omitempty" yaml:"arguments,omitempty" mapstructure:"arguments,omitempty"`
 
 	// Name corresponds to the JSON schema field "name".
 	Name string `json:"name" yaml:"name" mapstructure:"name"`

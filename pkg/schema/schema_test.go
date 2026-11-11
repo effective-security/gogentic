@@ -454,10 +454,9 @@ type OrchestratorResult struct {
 }
 
 const (
-	refPrefix   = "#/$defs/"
-	defRoot     = "Root"
-	defChild    = "Child"
-	errNotFound = "not found"
+	refPrefix = "#/$defs/"
+	defRoot   = "Root"
+	defChild  = "Child"
 
 	errUnmarshalArray = "json: cannot unmarshal array into Go value of type struct { *jsonschema.SchemaAlt }"
 )
@@ -506,7 +505,9 @@ func TestToFunctionSchemaResolvesDefinitions(t *testing.T) {
 	assert.Same(t, childDef, list.Items)
 }
 
-func TestToFunctionSchemaPanicsOnUnknownRef(t *testing.T) {
+// TestToFunctionSchemaKeepsUnknownRef checks that a $ref without a
+// definition is kept; it used to panic with "not found" (F-047).
+func TestToFunctionSchemaKeepsUnknownRef(t *testing.T) {
 	t.Parallel()
 
 	newRaw := func(prop *jsonschema.Schema) *jsonschema.Schema {
@@ -518,19 +519,120 @@ func TestToFunctionSchemaPanicsOnUnknownRef(t *testing.T) {
 		}
 	}
 
-	assert.PanicsWithValue(t, errNotFound, func() {
-		schema.ToFunctionSchema(nil, newRaw(&jsonschema.Schema{
-			Ref: refPrefix + "Missing",
-		}))
+	missing := &jsonschema.Schema{
+		Ref: refPrefix + "Missing",
+	}
+	res := schema.ToFunctionSchema(nil, newRaw(missing))
+	p, ok := res.Properties.Get("p")
+	require.True(t, ok)
+	assert.Same(t, missing, p)
+
+	external := &jsonschema.Schema{
+		Ref: "https://example.com/schema.json",
+	}
+	res = schema.ToFunctionSchema(nil, newRaw(&jsonschema.Schema{
+		Type:  "array",
+		Items: external,
+	}))
+	p, ok = res.Properties.Get("p")
+	require.True(t, ok)
+	assert.Equal(t, "array", p.Type)
+	assert.Same(t, external, p.Items)
+}
+
+// TestToFunctionSchemaResolvesNestedRefs checks that $refs inside a
+// referenced definition are resolved too (F-047), that a recursive reference
+// is kept, and that the input schema is not modified.
+func TestToFunctionSchemaResolvesNestedRefs(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defAddress = "Address"
+		defCity    = "City"
+		defNode    = "Node"
+	)
+	ref := func(name string) *jsonschema.Schema {
+		return &jsonschema.Schema{
+			Ref: refPrefix + name,
+		}
+	}
+
+	cityProps := jsonschema.NewProperties()
+	cityProps.Set("name", &jsonschema.Schema{
+		Type: "string",
 	})
-	assert.PanicsWithValue(t, errNotFound, func() {
-		schema.ToFunctionSchema(nil, newRaw(&jsonschema.Schema{
-			Type: "array",
-			Items: &jsonschema.Schema{
-				Ref: refPrefix + "Missing",
+	cityDef := &jsonschema.Schema{
+		Type:        "object",
+		Description: "city",
+		Properties:  cityProps,
+	}
+
+	addressProps := jsonschema.NewProperties()
+	addressProps.Set("city", ref(defCity))
+	addressProps.Set("previous", &jsonschema.Schema{
+		Type:  "array",
+		Items: ref(defCity),
+	})
+	addressDef := &jsonschema.Schema{
+		Type:       "object",
+		Properties: addressProps,
+	}
+
+	nodeProps := jsonschema.NewProperties()
+	nodeProps.Set("next", ref(defNode))
+	nodeDef := &jsonschema.Schema{
+		Type:       "object",
+		Properties: nodeProps,
+	}
+
+	rootProps := jsonschema.NewProperties()
+	rootProps.Set("address", ref(defAddress))
+	rootProps.Set("node", ref(defNode))
+	rootDef := &jsonschema.Schema{
+		Type:       "object",
+		Properties: rootProps,
+	}
+
+	raw := &jsonschema.Schema{
+		Ref: refPrefix + defRoot,
+		Definitions: jsonschema.Definitions{
+			defRoot:    rootDef,
+			defAddress: addressDef,
+			defCity:    cityDef,
+			defNode:    nodeDef,
+		},
+	}
+	before, err := json.Marshal(raw)
+	require.NoError(t, err)
+
+	res := schema.ToFunctionSchema(nil, raw)
+	got, err := json.Marshal(res)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"type": "object",
+		"properties": {
+			"address": {
+				"type": "object",
+				"properties": {
+					"city": {"type": "object", "description": "city", "properties": {"name": {"type": "string"}}},
+					"previous": {
+						"type": "array",
+						"items": {"type": "object", "description": "city", "properties": {"name": {"type": "string"}}}
+					}
+				}
 			},
-		}))
-	})
+			"node": {
+				"type": "object",
+				"properties": {
+					"next": {"$ref": "#/$defs/Node"}
+				}
+			}
+		}
+	}`, string(got))
+
+	after, err := json.Marshal(raw)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(before), string(after), "the input schema must not be modified")
 }
 
 func TestSchemaNameFromRef(t *testing.T) {
@@ -542,6 +644,17 @@ func TestSchemaNameFromRef(t *testing.T) {
 		},
 	}
 	assert.Equal(t, "MyStruct", s.NameFromRef())
+
+	// F-046: these used to panic with index out of range.
+	built, err := schema.New(reflect.TypeOf(OrchestratorResult{}))
+	require.NoError(t, err)
+	assert.Empty(t, built.NameFromRef(), "schemas built by New are not references")
+	assert.Empty(t, (&schema.Schema{
+		RawSchema: &jsonschema.Schema{
+			Ref: "https://example.com/schema.json",
+		},
+	}).NameFromRef())
+	assert.Empty(t, (&schema.Schema{}).NameFromRef())
 }
 
 func TestSchemaMustFromAny(t *testing.T) {

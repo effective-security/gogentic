@@ -726,10 +726,11 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			executedCount++
 			lock.Unlock()
 
+			toolCall.Type = values.StringsCoalesce(toolCall.Type, llms.ToolTypeFunction)
+			toolName := toolCall.GetFunctionCallName()
 			if toolCall.ID == "" {
-				toolCall.ID = fmt.Sprintf("%s_%d", toolCall.FunctionCall.Name, i)
+				toolCall.ID = fmt.Sprintf("%s_%d", toolName, i)
 			}
-			toolCall.Type = values.StringsCoalesce(toolCall.Type, "function")
 
 			choiceToolCalls = append(choiceToolCalls, toolCall)
 
@@ -737,7 +738,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 				"assistant", a.name,
 				"status", "tool_call_found",
 				"tool_call_id", toolCall.ID,
-				"tool_call_name", toolCall.GetFunctionCallName(),
+				"tool_call_name", toolName,
 			)
 		}
 
@@ -893,13 +894,14 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 				"assistant", a.name,
 				"status", "tool_call_missing_response",
 				"tool_call_id", toolCall.ID,
-				"tool_name", toolCall.FunctionCall.Name,
+				"tool_name", toolCall.GetFunctionCallName(),
 			)
 		}
 	}
 
 	// Process results in the same order as the original tool calls
 	for _, result := range results {
+		toolName := result.toolCall.GetFunctionCallName()
 		var content string
 		if result.err != nil {
 			// Return a structured JSON error so the LLM can reason about the
@@ -910,7 +912,7 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 			logger.ContextKV(ctx, xlog.WARNING,
 				"assistant", a.name,
 				"status", "tool_call_failed",
-				"tool", result.toolCall.FunctionCall.Name,
+				"tool", toolName,
 				"err", result.err.Error(),
 			)
 		} else {
@@ -918,7 +920,6 @@ func (a *Assistant[O]) executeToolCalls(ctx context.Context, orgID string, cfg *
 		}
 
 		// Create tool call response using the ID from the original tool call
-		toolName := result.toolCall.GetFunctionCallName()
 		toolCallResponse := llms.MessageFromToolResponse(llms.RoleTool, llms.ToolCallResponse{
 			ToolCallID: result.toolCall.ID, // Use the ID from the original tool call
 			Name:       toolName,

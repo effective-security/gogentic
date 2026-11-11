@@ -68,77 +68,101 @@ func buildSchema(t reflect.Type) (*Schema, error) {
 	return s, nil
 }
 
+// defsRefPrefix is the prefix of a $ref to a local definition.
+const defsRefPrefix = "#/$defs/"
+
 // ToFunctionSchema converts a reflected Schema into a simplified, top-level
-// object schema by resolving local $ref entries and exposing first-level
-// properties directly. This structure is more suitable for function/tool
-// parameter documentation.
+// object schema that exposes the first-level properties directly. This
+// structure is more suitable for function/tool parameter documentation.
+//
+// A $ref to a local definition ("#/$defs/<name>") in a property or array
+// items, at any depth, is replaced by a copy of that definition. A $ref that
+// names no definition, or one already being inlined above it (a recursive
+// type), is kept as is. tSchema and its definitions are not modified. tType
+// is unused.
 func ToFunctionSchema(tType reflect.Type, tSchema *jsonschema.Schema) *jsonschema.Schema {
 	// find top level properties
-	redID := strings.TrimPrefix(tSchema.Ref, "#/$defs/")
+	rootID := strings.TrimPrefix(tSchema.Ref, defsRefPrefix)
 
-	var defs = make(map[string]*jsonschema.Schema)
+	defs := make(map[string]*jsonschema.Schema, len(tSchema.Definitions))
 	root := tSchema
-
 	for name, def := range tSchema.Definitions {
-		if name == redID {
+		if name == rootID {
 			root = def
 		} else {
 			defs[name] = def
 		}
 	}
 
-	res := &jsonschema.Schema{
+	r := refResolver{
+		defs:     defs,
+		inlining: make(map[string]bool),
+	}
+	return &jsonschema.Schema{
 		Type:       root.Type,
-		Properties: root.Properties,
+		Properties: r.properties(root.Properties),
 		Required:   root.Required,
 	}
+}
 
-	resolveRefs(res.Properties, defs)
+// refResolver inlines local $ref definitions into copies of the schemas it
+// walks.
+type refResolver struct {
+	defs map[string]*jsonschema.Schema
+	// inlining holds the definitions being inlined on the current path, so
+	// that a recursive reference is kept instead of expanded forever.
+	inlining map[string]bool
+}
 
+// schema returns s with the $refs in its properties and items resolved. s is
+// returned unchanged when there is nothing to resolve.
+func (r *refResolver) schema(s *jsonschema.Schema) *jsonschema.Schema {
+	if s == nil {
+		return nil
+	}
+	if s.Ref != "" {
+		name := strings.TrimPrefix(s.Ref, defsRefPrefix)
+		def, ok := r.defs[name]
+		if !ok || r.inlining[name] {
+			return s
+		}
+		r.inlining[name] = true
+		defer delete(r.inlining, name)
+		return r.schema(def)
+	}
+	if s.Properties == nil && s.Items == nil {
+		return s
+	}
+	c := *s
+	c.Properties = r.properties(s.Properties)
+	c.Items = r.schema(s.Items)
+	return &c
+}
+
+// properties returns a copy of props with every property schema resolved.
+func (r *refResolver) properties(props *orderedmap.OrderedMap[string, *jsonschema.Schema]) *orderedmap.OrderedMap[string, *jsonschema.Schema] {
+	if props == nil {
+		return nil
+	}
+	res := jsonschema.NewProperties()
+	for pair := props.Oldest(); pair != nil; pair = pair.Next() {
+		res.Set(pair.Key, r.schema(pair.Value))
+	}
 	return res
 }
 
-func resolveRefs(props *orderedmap.OrderedMap[string, *jsonschema.Schema], defs map[string]*jsonschema.Schema) {
-	for pair := props.Oldest(); pair != nil; pair = pair.Next() {
-		child := pair.Value
-		if child.Ref != "" {
-			name := strings.TrimPrefix(pair.Value.Ref, "#/$defs/")
-			if def, ok := defs[name]; ok {
-				pair.Value = def
-			} else {
-				// TODO: this is a hack to make it work
-				panic("not found")
-				// 	pair.Value = &jsonschema.Schema{
-				// 		Type:        "object",
-				// 		Description: child.Description,
-				// 		Properties:  child.Properties,
-				// 		Required:    child.Required,
-				// 	}
-			}
-		}
-		if child.Properties != nil {
-			resolveRefs(child.Properties, defs)
-		}
-		if child.Items != nil && child.Items.Ref != "" {
-			name := strings.TrimPrefix(child.Items.Ref, "#/$defs/")
-			if def, ok := defs[name]; ok {
-				child.Items = def
-			} else {
-				// TODO: this is a hack to make it work
-				panic("not found")
-				// 	child.Items = &jsonschema.Schema{
-				// 		Type:        "object",
-				// 		Description: child.Description,
-				// 		Properties:  child.Properties,
-				// 		Required:    child.Required,
-				// 	}
-			}
-		}
-	}
-}
-
+// NameFromRef returns the definition name of a RawSchema that is a local
+// reference ("#/$defs/MyStruct" gives "MyStruct"), or "" when it is not one.
+// Schemas built by New are never references, so it returns "" for them.
 func (s *Schema) NameFromRef() string {
-	return strings.Split(s.RawSchema.Ref, "/")[2] // ex: '#/$defs/MyStruct'
+	if s.RawSchema == nil {
+		return ""
+	}
+	name, ok := strings.CutPrefix(s.RawSchema.Ref, defsRefPrefix)
+	if !ok {
+		return ""
+	}
+	return name
 }
 
 // JSONSchema returns the jsonschema model for a type using invopop/jsonschema.
