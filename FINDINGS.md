@@ -9,106 +9,30 @@ choice. Source symbols are stable references; line numbers are omitted.
 
 ## Index
 
-| ID  | Package / location | Title | Type | Severity | Status |
-| --- | ------------------ | ----- | ---- | -------- | ------ |
-| [F-011](#f-011) | `assistants` · `Assistant.Run` | Retry after unparsable output loses the question, overwrites the input, keeps tools | Bug | Medium | Open |
-| [F-014](#f-014) | `pkg/llmfactory` · `newOpenAIBedrock`, `newAnthropicBedrock` | Factory HTTP client is ignored for the Bedrock-hosted OpenAI and Anthropic clients | Bug | Medium | Open |
-| [F-016](#f-016) | `pkg/llms/googleai` · `convertCandidates` | Tool calls accumulate across candidates | Bug | Medium | Open |
-| [F-017](#f-017) | `pkg/llms/googleai` · `convertParts`; `pkg/llmutils` · `DownloadImageData` | Image URL parts are sent with MIME type `png` instead of `image/png` | Bug | Medium | Open |
-| [F-018](#f-018) | `pkg/llms/bedrock` · `LLM.Infer` | Transport failures report status 0 instead of 502 | Bug | Medium | Open |
-| [F-020](#f-020) | `pkg/llms/bedrock/internal/bedrockclient` · `parseStreamingCompletionResponse` | Streaming drops tool calls and total token usage | Bug | Medium | Open |
-| [F-021](#f-021) | `pkg/llms/anthropic` · `GenerateStreamingContent` | Streamed tool call without input has empty arguments that fail on the next turn | Bug | Medium | Open |
-| [F-022](#f-022) | `pkg/llms/anthropic` · `ToTools` | `web_search` tools are sent as web fetch tools | Bug | Medium | Needs Decision |
-| [F-027](#f-027) | `router/dialect` · `OpenOpaque` | Accepts a JSON `null` provider state | Bug | Medium | Open |
-| [F-032](#f-032) | `mcp` · `ToolResponse` | Client cannot see the server's `isError` flag | Bug | Medium | Open |
-| [F-034](#f-034) | `mcp/transport/{localtransport,httptransport}` · client `Send` | Notifications and requests in a response are dispatched as errors | Bug | Medium | Open |
-| [F-035](#f-035) | `mcp/internal/protocol` · `Protocol.handleClose`; stdio and SSE `Close` | Callbacks and channel sends run while holding a lock | Race | Medium | Open |
-| [F-036](#f-036) | `skills` · `loader.loadFolder` | `Strict` mode does not apply to agent folders | Bug | Medium | Open |
-| [F-037](#f-037) | `skills` · `AgentConfig.Paths` | Per-agent paths are never searched | Bug | Medium | Open |
-| [F-040](#f-040) | `router/dialect/openai` · `decodeReasoningDetail`, `decodeReasoningItem` | Forged reasoning error names `reasoning`, not the field path | Bug | Low | Open |
-| [F-041](#f-041) | `pkg/llms/anthropic` · `convertToAnthropicSchema` | Drops `$ref` and `examples`; always emits `type` | Bug | Low | Open |
-| [F-042](#f-042) | `pkg/llms/anthropic` · `LLM.GetProviderType` | Bedrock-hosted models report `ProviderAnthropic` | Bug | Low | Needs Decision |
-| [F-043](#f-043) | `pkg/llms/openai` · `toResponsesText` | Schema serialization errors are ignored; schema silently dropped | Bug | Low | Open |
-| [F-044](#f-044) | `pkg/llms/openai` · `newClient` | Azure model checks are skipped when an API version is set | Bug | Low | Open |
-| [F-045](#f-045) | `pkg/llms/openai/internal/openaiclient` · `Client.createEmbedding` | Client embedding model overrides the request's model | Bug | Low | Open |
-| [F-049](#f-049) | `mcp` · `EmbeddedResource.UnmarshalJSON` | Error text ends in `<nil>` | Bug | Low | Open |
-| [F-050](#f-050) | `pkg/llms/googleai` · `New` | Returns a non-nil client with a nil inner client on error | Bug | Low | Open |
-| [F-051](#f-051) | `store` · `inMemory.GetChatInfo` | Unknown tenant and unknown chat behave differently, and differently from Redis | Bug | Low | Needs Decision |
-| [F-053](#f-053) | `pkg/llms/anthropic` · `TestNew`, `TestNewWithEnvironmentVariable` | Parallel tests mutate process environment | Test | Low | Open |
-| [F-054](#f-054) | `pkg/prompts` · `interpolateJinja2` | Jinja2 templates can `{% include %}` any local file | Security | Medium | Needs Decision |
-| [F-055](#f-055) | `pkg/llms/anthropic` · `GenerateMessagesContent`, `HandleAIMessage` | Thinking blocks are not kept in the message history | Bug | Medium | Needs Decision |
-| [F-056](#f-056) | `mcp` · `Server.Serve`; `httptransport.HTTPTransport.Start` | `Serve` blocks with the HTTP transport; documented start sequence is wrong | Bug | Medium | Needs Decision |
-| [F-057](#f-057) | `mcp/transport/httptransport` · `HTTPTransport.Send`, `handleRequest` | `Send` ignores cancellation; `errorHandler` read without the lock | Race | Low | Open |
-| [F-058](#f-058) | `pkg/schema` · `JSONSchema`, `New`; `mcp` · `argumentsSchema` | A recursive type overflows the stack | Crash | Medium | Open |
-| [F-059](#f-059) | `assistants` · `executeToolCalls` | Provider-native tool calls are run as missing tools, and the next turn fails | Bug | Low | Needs Decision |
+| ID              | Package / location                                                       | Title                                                                          | Type     | Severity | Status         |
+| --------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | -------- | -------- | -------------- |
+| [F-022](#f-022) | `pkg/llms/anthropic` · `ToTools`                                         | `web_search` tools are sent as web fetch tools                                 | Bug      | Medium   | Needs Decision |
+| [F-040](#f-040) | `router/dialect/openai` · `decodeReasoningDetail`, `decodeReasoningItem` | Forged reasoning error names `reasoning`, not the field path                   | Bug      | Low      | Open           |
+| [F-041](#f-041) | `pkg/llms/anthropic` · `convertToAnthropicSchema`                        | Drops `$ref` and `examples`; always emits `type`                               | Bug      | Low      | Open           |
+| [F-042](#f-042) | `pkg/llms/anthropic` · `LLM.GetProviderType`                             | Bedrock-hosted models report `ProviderAnthropic`                               | Bug      | Low      | Needs Decision |
+| [F-043](#f-043) | `pkg/llms/openai` · `toResponsesText`                                    | Schema serialization errors are ignored; schema silently dropped               | Bug      | Low      | Open           |
+| [F-044](#f-044) | `pkg/llms/openai` · `newClient`                                          | Azure model checks are skipped when an API version is set                      | Bug      | Low      | Open           |
+| [F-045](#f-045) | `pkg/llms/openai/internal/openaiclient` · `Client.createEmbedding`       | Client embedding model overrides the request's model                           | Bug      | Low      | Open           |
+| [F-049](#f-049) | `mcp` · `EmbeddedResource.UnmarshalJSON`                                 | Error text ends in `<nil>`                                                     | Bug      | Low      | Open           |
+| [F-050](#f-050) | `pkg/llms/googleai` · `New`                                              | Returns a non-nil client with a nil inner client on error                      | Bug      | Low      | Open           |
+| [F-051](#f-051) | `store` · `inMemory.GetChatInfo`                                         | Unknown tenant and unknown chat behave differently, and differently from Redis | Bug      | Low      | Needs Decision |
+| [F-053](#f-053) | `pkg/llms/anthropic` · `TestNew`, `TestNewWithEnvironmentVariable`       | Parallel tests mutate process environment                                      | Test     | Low      | Open           |
+| [F-054](#f-054) | `pkg/prompts` · `interpolateJinja2`                                      | Jinja2 templates can `{% include %}` any local file                            | Security | Medium   | Needs Decision |
+| [F-055](#f-055) | `pkg/llms/anthropic` · `GenerateMessagesContent`, `HandleAIMessage`      | Thinking blocks are not kept in the message history                            | Bug      | Medium   | Needs Decision |
+| [F-056](#f-056) | `mcp` · `Server.Serve`; `httptransport.HTTPTransport.Start`              | `Serve` blocks with the HTTP transport; documented start sequence is wrong     | Bug      | Medium   | Needs Decision |
+| [F-057](#f-057) | `mcp/transport/httptransport` · `HTTPTransport.Send`, `handleRequest`    | `Send` ignores cancellation; `errorHandler` read without the lock              | Race     | Low      | Open           |
+| [F-059](#f-059) | `assistants` · `executeToolCalls`                                        | Provider-native tool calls are run as missing tools, and the next turn fails   | Bug      | Low      | Needs Decision |
+| [F-060](#f-060) | `pkg/llms/bedrock/internal/bedrockclient` · `anthropicChoices`           | Usage is counted twice when a message has text and tool calls                  | Bug      | Medium   | Open           |
+| [F-061](#f-061) | `pkg/schema` · `JSONSchema`                                              | Writes the global `jsonschema.Version` on every call                           | Race     | Low      | Open           |
+| [F-062](#f-062) | `pkg/schema` · `New`; `mcp` · `RegisterTool`                             | Exported chan, func or complex fields panic in the reflector                   | Crash    | Low      | Open           |
+| [F-063](#f-063) | `mcp/transport/...` · server `HandleMessage`, `Close`                    | Server transports misread unknown messages; some `Close` methods race          | Race     | Low      | Open           |
 
 ## Details
-
-### F-011
-
-**Output-parse retry in `Assistant.Run`.** On `chatmodel.ErrFailedUnmarshalOutput`
-the retry sets `input.Input = "Return the response in JSON format as requested."`
-and `cfg.Tools = nil`, then calls `run` again.
-
-- Without a message store, the history is rebuilt from scratch, so the model
-  receives only the system prompt and the retry text; the original question is lost.
-- `input` is the caller's `*CallInput`; after `Run` its `Input` holds the retry text.
-- `cfg.Tools = nil` does not remove the assistant's function tools, which
-  `run` adds again. Provider-native tools are dropped only through a map
-  shared by `c := *cfg`, so behavior differs by tool kind.
-- Covered with a store by `Test_Assistant_Run_RetryOnUnparsableOutput`.
-
-### F-014
-
-**Factory HTTP client ignored for Bedrock-hosted OpenAI and Anthropic.**
-`newOpenAIBedrock` and `newAnthropicBedrock` copy the factory's `WithHTTPClient`
-only into `aws.Config.HTTPClient`, which neither client uses for requests, so
-proxies, timeouts and instrumentation are bypassed.
-
-- `OPENAI_BEDROCK`: reproduced against a local server; 0 calls on the
-  factory client, 1 on the default client.
-- `ANTHROPIC_BEDROCK`: by reading; the SDK's `bedrock.WithConfig` ignores
-  `cfg.HTTPClient`.
-- Native `BEDROCK` uses the factory client.
-
-### F-016
-
-**Gemini tool calls accumulate across candidates.** `convertCandidates`
-declares `toolCalls` outside the candidate loop, so each choice also carries
-the tool calls of every earlier candidate.
-
-- Repro: two candidates with one `FunctionCall` each; `Choices[1].ToolCalls`
-  has 2 entries.
-
-### F-017
-
-**Wrong MIME type for image URLs sent to Gemini.** `convertParts` uses the
-type from `llmutils.DownloadImageData`, which returns only the subtype, so
-`inlineData.mimeType` is `"png"` instead of `"image/png"`.
-
-### F-018
-
-**Bedrock `Infer` reports status 0 for transport failures.** The SDK wraps
-send failures in `*smithyhttp.ResponseError` whose placeholder response has
-`StatusCode` 0; `errors.As` succeeds and replaces the intended 502.
-
-- Repro: `BaseEndpoint: "https://127.0.0.1:1"`, call `Infer`;
-  `InferenceError.Status == 0`.
-
-### F-020
-
-**Bedrock Anthropic streaming drops tool calls and total usage.**
-`parseStreamingCompletionResponse` ignores `tool_use` content blocks and
-`input_json_delta` events, so tool calls are lost when streaming, and it never
-sets `Usage.TotalTokens` (the non-streaming path does).
-
-### F-021
-
-**Streamed Anthropic tool call without input.** When a streamed `tool_use`
-block receives no `input_json_delta`, `GenerateStreamingContent` leaves
-`Arguments == ""`; the non-streaming path gives `"{}"`. Sending that tool
-call back in the history fails in `HandleAIMessage` with
-"failed to unmarshal tool call arguments".
 
 ### F-022
 
@@ -116,48 +40,6 @@ call back in the history fails in `HandleAIMessage` with
 `Type == "web_search"` becomes `WebFetchTool20250910` or
 `WebFetchTool20260209`, not a web search tool. Decide whether fetch was
 intended.
-
-### F-027
-
-**`OpenOpaque` accepts a `null` state.** The length and `json.Valid` checks
-pass for `{"s":"a","d":null}`, so a client can forge a reasoning block whose
-provider state is `null`; history validation accepts it and it is forwarded
-to the named target.
-
-### F-032
-
-**Client cannot see tool errors.** `ToolResponse` has no `IsError` field, so
-`Client.CallTool` drops the server's `isError` flag.
-
-### F-034
-
-**Client transports misread notifications and requests.**
-`LocalMcpClientTransport.Send` and `HTTPClientTransport.Send` decode any JSON
-object as `BaseJSONRPCError`, so a notification or request in a response
-body is dispatched as an error message with ID 0.
-
-### F-035
-
-**Lock-held callbacks.** `Protocol.handleClose` holds `p.mu` while sending
-into response channels (blocking if a response is already buffered) and
-while calling `OnClose`. `StdioServerTransport.Close` and
-`SSEServerTransport.Close` call their close handler while holding their own
-mutex. A handler that calls back into the transport deadlocks.
-
-### F-036
-
-**`Strict` mode ignores agent folders.** `loader.loadFolder` errors for
-`.<agent>/` folders are logged and skipped, so `NewLoader` returns no error
-even though `Config.Strict` is documented to return one.
-
-- Repro: `Strict: true` with `dir/.a/bad/SKILL.md` that has no description;
-  `err == nil`.
-
-### F-037
-
-**`AgentConfig.Paths` is never read.** Only `Config.Paths` is searched, so
-documented per-agent extra paths have no effect. `testdata/skills.yaml` sets
-`agents.agent-foo.paths`, which is ignored.
 
 ### F-040
 
@@ -176,6 +58,8 @@ as `"reasoning"`; the Anthropic codec reports the field path, for example
 `anthropic.NewBedrock` report `ProviderAnthropic`, not
 `ProviderAnthropicBedrock`, so capability checks use the Anthropic table.
 Changing it affects callers that match on the provider type.
+
+DECISION: fix
 
 ### F-043
 
@@ -281,21 +165,6 @@ to the caller) and fix the examples to match.
 transport does), and `handleRequest` reads `errorHandler` without holding
 `t.mu` while `SetErrorHandler` writes it under the lock.
 
-### F-058
-
-**Recursive types overflow the stack.** `JSONSchema` reflects with
-`DoNotReference`, so the reflector inlines every struct and never stops on a
-type that contains itself. `schema.New` on
-`type Node struct { Children []Node }` ends in `fatal error: stack overflow`,
-which `recover` cannot catch. The MCP server's reflector has the same
-setting, so registering a tool with such an argument type crashes too.
-Every typed tool and assistant input goes through `New`.
-
-- Fix options: reflect with references and inline them with
-  `ToFunctionSchema`, which keeps a recursive `$ref` (the output then needs
-  `$defs`); or detect the cycle in the Go type before reflecting and return an
-  error from `New`.
-
 ### F-059
 
 **Provider-native tool calls go through the tool loop.**
@@ -313,3 +182,41 @@ OpenAI Responses API leaves the call out but still sends its
 - Decide how native calls are kept in the history (skipped, or carried as a
   provider-specific part; see [F-055](#f-055)) before a provider returns them.
 
+### F-060
+
+**Bedrock Anthropic usage is doubled.** `anthropicChoices` (streaming and
+non-streaming `InvokeModel`) returns a text choice and a tool-call choice for
+one message, and each carries the whole message usage.
+`ContentResponse.Usage`, which the assistant uses for token metrics and
+`Response.Usage`, sums the choices, so a turn with text and tool calls counts
+its tokens twice. The native `pkg/llms/anthropic` provider returns one merged
+choice. By reading; found while fixing F-020.
+
+### F-061
+
+**`JSONSchema` writes a package global.** It sets `jsonschema.Version` on
+every call, while every invopop reflector reads it, including the MCP
+server's. `New` serializes its own calls with a mutex, but a direct
+`JSONSchema` call, or `New` running while the MCP server reflects a tool,
+races under `-race`. Setting the version once, at package init, would remove
+the write. Reported while fixing F-058.
+
+### F-062
+
+**Reflector panics on unsupported kinds.** invopop calls
+`panic("unsupported type ...")` for an exported chan, func or complex field,
+and panics on a nil `JSONSchemaAlias()` result. `schema.New` and
+`Server.RegisterTool` do not recover, so such an arguments type panics instead
+of returning an error. Reported while fixing F-058.
+
+### F-063
+
+**Remaining MCP transport gaps.** The server transports (stdio
+`deserializeMessage`, `localtransport.Transport.HandleMessage`,
+`HTTPTransport.handleMessage`) still treat an unrecognised JSON object such as
+`{}` as an error response with ID 0; `transport.ParseMessage` classifies it
+as invalid. `sse.SSETransport.HandleMessage` reads its handlers without the
+lock, and the `Close` methods of `LocalMcpClientTransport`,
+`HTTPClientTransport`, `localtransport.Transport` and `HTTPTransport` read the
+close handler without the lock and run it on every call. By reading; found
+while fixing F-034 and F-035.

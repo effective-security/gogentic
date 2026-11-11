@@ -117,6 +117,12 @@ type ContentChoice struct {
 provider; `GetFunctionCallName` and `GetFunctionCallArguments` read the
 function only for that type.
 
+Anthropic models on native `BEDROCK` (`InvokeModel`) return the text and the
+tool calls of one message as two choices, each carrying the whole message
+usage, whether or not the call streams. When streaming, tool calls are
+assembled from `input_json_delta` events, a call that receives no input gets
+`"{}"` as its arguments, and only text deltas reach `WithStreamingFunc`.
+
 A provider-native tool call, such as `web_search`, may have no
 `FunctionCall`. `ToolCall.String` and `MessageFromToolCalls` accept one.
 Sending it back in the history is an error from OpenAI Chat Completions,

@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/effective-security/gogentic/mcp/internal/protocol"
 	"github.com/effective-security/gogentic/mcp/transport"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -523,7 +524,8 @@ func TestNewPromptSchema(t *testing.T) {
 		Topic string  `json:"topic" jsonschema:"required,description=What to write about"`
 		Tone  *string `json:"tone,omitempty"`
 	}
-	ps := newPromptSchema(greetPrompt, greetPromptDesc, reflect.TypeFor[args]())
+	ps, err := newPromptSchema(greetPrompt, greetPromptDesc, reflect.TypeFor[args]())
+	require.NoError(t, err)
 	b, err := json.Marshal(ps)
 	require.NoError(t, err)
 	// An argument without a description has no "description" key.
@@ -535,4 +537,82 @@ func TestNewPromptSchema(t *testing.T) {
 			{"name": "tone"}
 		]
 	}`, string(b))
+}
+
+// recursiveArgs contains itself; the reflector, which inlines every type,
+// overflowed the stack on it (F-058).
+type recursiveArgs struct {
+	Name     string          `json:"name"`
+	Children []recursiveArgs `json:"children"`
+}
+
+// recursiveString is a prompt argument reflected as recursiveArgs.
+type recursiveString string
+
+func (recursiveString) JSONSchemaAlias() any { return recursiveArgs{} }
+
+// recursivePromptArgs passes the prompt arguments checks, but is reflected
+// as a recursive type.
+type recursivePromptArgs struct {
+	Topic recursiveString `json:"topic"`
+}
+
+// siblingArgs uses one type twice without containing itself.
+type siblingArgs struct {
+	First  echoArgs `json:"first"`
+	Second echoArgs `json:"second"`
+}
+
+func TestRegisterTool_RecursiveArguments(t *testing.T) {
+	const wantCause = "unsupported handler arguments: type mcp.recursiveArgs refers to itself through " +
+		"mcp.recursiveArgs -> []mcp.recursiveArgs -> mcp.recursiveArgs: recursive type is not supported"
+	tcs := []struct {
+		name    string
+		handler any
+	}{
+		{
+			name:    "value",
+			handler: func(recursiveArgs) (*ToolResponse, error) { return nil, nil },
+		},
+		{
+			name:    "pointer with context",
+			handler: func(context.Context, *recursiveArgs) (*ToolResponse, error) { return nil, nil },
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, tr := newServedServer(t)
+			err := srv.RegisterTool(echoTool, echoToolDesc, tc.handler)
+			require.ErrorIs(t, err, schema.ErrRecursiveType)
+			assert.EqualError(t, err, `failed to register tool "echo": `+wantCause)
+			assert.False(t, srv.CheckToolRegistered(echoTool))
+			assert.Empty(t, tr.GetMessages(), "a rejected tool must not trigger a notification")
+		})
+	}
+
+	t.Run("repeated sibling type", func(t *testing.T) {
+		srv, _ := newServedServer(t)
+		require.NoError(t, srv.RegisterTool(echoTool, echoToolDesc, func(siblingArgs) (*ToolResponse, error) { return nil, nil }))
+		registered, ok := srv.tools.Load(echoTool)
+		require.True(t, ok)
+		props := registered.ToolInputSchema.Properties
+		require.NotNil(t, props)
+		for _, key := range []string{"first", "second"} {
+			prop, ok := props.Get(key)
+			require.True(t, ok, key)
+			_, ok = prop.Properties.Get("message")
+			assert.True(t, ok, key)
+		}
+	})
+}
+
+func TestRegisterPrompt_RecursiveArguments(t *testing.T) {
+	srv, tr := newServedServer(t)
+	err := srv.RegisterPrompt(greetPrompt, greetPromptDesc, func(recursivePromptArgs) (*PromptResponse, error) { return nil, nil })
+	require.ErrorIs(t, err, schema.ErrRecursiveType)
+	assert.EqualError(t, err, `failed to register prompt "greet": unsupported handler arguments: `+
+		"type mcp.recursiveArgs refers to itself through mcp.recursiveArgs -> []mcp.recursiveArgs -> mcp.recursiveArgs: "+
+		"recursive type is not supported")
+	assert.False(t, srv.CheckPromptRegistered(greetPrompt))
+	assert.Empty(t, tr.GetMessages(), "a rejected prompt must not trigger a notification")
 }

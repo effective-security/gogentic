@@ -476,8 +476,11 @@ func Test_Assistant_Run_RetryOnUnparsableOutput(t *testing.T) {
 	}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, runAnswer, out.Content)
-	// The parsed content, not the raw JSON, is recorded.
+	// The run's messages include the failed attempt, and the parsed
+	// content, not the raw JSON, is recorded.
 	assert.Equal(t, []string{
+		"human: " + runUserInput,
+		"ai: " + runUnparsable,
 		"human: " + runRetryInput,
 		"ai: " + runAnswer,
 	}, messageTexts(resp.Messages))
@@ -487,6 +490,85 @@ func Test_Assistant_Run_RetryOnUnparsableOutput(t *testing.T) {
 		"human: " + runRetryInput,
 		"ai: " + runAnswer,
 	}, messageTexts(memStore.Messages(ctx)))
+}
+
+// F-011: without a store the retry still sends the question and the
+// unparsable answer, sends the same function and native tools as the first
+// attempt, does not run the input parser on the retry prompt, and leaves the
+// caller's input unchanged.
+func Test_Assistant_Run_RetryWithoutStore(t *testing.T) {
+	const (
+		parsedPrefix = "parsed: "
+		extraInput   = "extra context"
+		webSearch    = "web_search"
+	)
+	ctrl := gomock.NewController(t)
+	model := newRunModel(ctrl, llms.ProviderOpenAI)
+	a := newRunAssistant(model, assistants.WithTools(llms.Tool{Type: webSearch})).
+		WithTools(newLookupTool(ctrl))
+	a.WithInputParser(func(in string) (string, error) {
+		return parsedPrefix + in, nil
+	})
+
+	sentTools := func(opts []llms.CallOption) []string {
+		var callOpts llms.CallOptions
+		for _, opt := range opts {
+			opt(&callOpts)
+		}
+		var names []string
+		for _, tool := range callOpts.Tools {
+			name := tool.Type
+			if tool.Function != nil {
+				name += ":" + tool.Function.Name
+			}
+			names = append(names, name)
+		}
+		return names
+	}
+	wantTools := []string{
+		webSearch,
+		llms.ToolTypeFunction + ":" + runToolName,
+	}
+
+	gomock.InOrder(
+		model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ []llms.Message, opts ...llms.CallOption) (*llms.ContentResponse, error) {
+				assert.Equal(t, wantTools, sentTools(opts))
+				return textResponse(runUnparsable), nil
+			}),
+		model.EXPECT().GenerateContent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, msgs []llms.Message, opts ...llms.CallOption) (*llms.ContentResponse, error) {
+				assert.Equal(t, []string{
+					"system: " + runSystemPrompt,
+					"human: " + parsedPrefix + runUserInput,
+					"human: " + extraInput,
+					"ai: " + runUnparsable,
+					"human: " + runRetryInput,
+				}, messageTexts(msgs))
+				assert.Equal(t, wantTools, sentTools(opts), "the retry sends the same tools")
+				return textResponse(runAnswerJSON), nil
+			}),
+	)
+
+	input := &assistants.CallInput{
+		Input: runUserInput,
+		Messages: []llms.Message{
+			llms.MessageFromTextParts(llms.RoleHuman, extraInput),
+		},
+	}
+	var out chatmodel.OutputResult
+	resp, err := a.Run(newRunCtx(), input, &out)
+	require.NoError(t, err)
+	assert.Equal(t, runAnswer, out.Content)
+	assert.Equal(t, []string{
+		"human: " + parsedPrefix + runUserInput,
+		"human: " + extraInput,
+		"ai: " + runUnparsable,
+		"human: " + runRetryInput,
+		"ai: " + runAnswer,
+	}, messageTexts(resp.Messages))
+	assert.Equal(t, runUserInput, input.Input, "the caller's input is not modified")
+	assert.Equal(t, []string{"human: " + extraInput}, messageTexts(input.Messages))
 }
 
 func Test_Assistant_Run_UnparsableOutputAfterRetry(t *testing.T) {

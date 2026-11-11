@@ -658,6 +658,57 @@ func TestLoad_StrictErrors(t *testing.T) {
 			": failed to parse frontmatter: "+skillPath+": yaml: line 1: did not find expected ',' or ']'")
 	})
 
+	// F-036: Strict applies to skills inside .<agent> folders.
+	t.Run("invalid_skill_in_agent_folder", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		skillPath := writeSkillFile(t, filepath.Join(dir, ".a"), "bad", "---\nname: bad\n---\nbody")
+
+		_, err := skills.NewLoader(&skills.Config{
+			Strict: true,
+			Paths:  []string{dir},
+		}, "")
+		require.EqualError(t, err, "failed to load directory: failed to load skills of agent a: failed to parse skill file: "+skillPath+
+			": invalid frontmatter: description is required: "+skillPath)
+	})
+
+	// Strict applies to skills read from a tar archive.
+	t.Run("invalid_skill_in_tar", func(t *testing.T) {
+		t.Parallel()
+		tarPath := filepath.Join(t.TempDir(), "skills.tar")
+		const badPath = ".a/bad/" + skillFile
+		writeTar(t, tarPath, []tarEntry{
+			{
+				name: badPath,
+				body: "---\nname: bad\n---\nbody",
+			},
+		})
+
+		_, err := skills.NewLoader(&skills.Config{
+			Strict: true,
+			Paths:  []string{tarPath},
+		}, "")
+		require.EqualError(t, err, "failed to load tar file: failed to parse skill file: "+badPath+
+			": invalid frontmatter: description is required: "+badPath)
+	})
+
+	t.Run("invalid_skill_in_agent_path", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		skillPath := writeSkillFile(t, dir, "bad", "---\nname: bad\n---\nbody")
+
+		_, err := skills.NewLoader(&skills.Config{
+			Strict: true,
+			Agents: map[string]*skills.AgentConfig{
+				agentOn: {
+					Paths: []string{dir},
+				},
+			},
+		}, "")
+		require.EqualError(t, err, "failed to load skills of agent "+agentOn+": failed to load directory: failed to parse skill file: "+skillPath+
+			": invalid frontmatter: description is required: "+skillPath)
+	})
+
 	t.Run("path_is_file", func(t *testing.T) {
 		t.Parallel()
 		file := filepath.Join(t.TempDir(), "file")
@@ -668,6 +719,59 @@ func TestLoad_StrictErrors(t *testing.T) {
 		}, "")
 		require.ErrorIs(t, err, syscall.ENOTDIR)
 	})
+}
+
+// F-037: AgentConfig.Paths are searched, after Config.Paths, and their
+// skills belong to the agent.
+func TestLoad_AgentPaths(t *testing.T) {
+	t.Parallel()
+	shared := t.TempDir()
+	writeSkillFile(t, shared, "common", validSkill)
+	writeSkillFile(t, filepath.Join(shared, "."+agentOn), "override", "---\ndescription: Shared version.\n---\nbody")
+
+	agentDir := t.TempDir()
+	writeSkillFile(t, agentDir, "override", "---\ndescription: Agent version.\n---\nbody")
+	writeSkillFile(t, agentDir, "own", validSkill)
+	writeSkillFile(t, agentDir, "declared", "---\ndescription: Declared.\nagents: other\n---\nbody")
+	writeSkillFile(t, filepath.Join(agentDir, ".nested"), "nested-skill", validSkill)
+
+	agentTar := filepath.Join(t.TempDir(), "agent.tar")
+	writeTar(t, agentTar, []tarEntry{
+		{
+			name: "from-tar/" + skillFile,
+			body: validSkill,
+		},
+	})
+
+	offDir := t.TempDir()
+	writeSkillFile(t, offDir, "off-skill", validSkill)
+
+	loader, err := skills.NewLoader(&skills.Config{
+		EnableDefaultSkills: true,
+		Paths:               []string{shared},
+		Agents: map[string]*skills.AgentConfig{
+			agentOn: {
+				Paths: []string{agentDir, agentTar},
+			},
+			agentOff: {
+				Disabled: true,
+				Paths:    []string{offDir},
+			},
+		},
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{agentOn, defaultClient, "nested", "other"}, loader.Agents())
+
+	list := loader.Skills(agentOn)
+	assert.Equal(t, []string{"common", "from-tar", "override", "own"}, list.Names())
+	assert.Equal(t, "Agent version.", list[2].Description, "agent paths override shared paths")
+	assert.Equal(t, "/."+agentOn+"/own", list[3].Location)
+	assert.Equal(t, "/from-tar", list[1].Location)
+
+	assert.Equal(t, []string{"common"}, loader.Skills("").Names())
+	assert.Equal(t, []string{"common", "declared"}, loader.Skills("other").Names())
+	assert.Equal(t, []string{"common", "nested-skill"}, loader.Skills("nested").Names())
+	assert.Nil(t, loader.Skills(agentOff))
 }
 
 func TestLoad_UnreadableAgentFolderIsSkipped(t *testing.T) {

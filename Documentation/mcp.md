@@ -58,7 +58,7 @@ empty. A non-positive `n` disables pagination.
 The server reflects your handler to derive the JSON Schema, so the signature is
 part of the contract.
 
-**Tools** — an optional `context.Context` first, then at most one arguments
+**Tools** — an optional `context.Context` first, then at most one argument
 value `T`. Returns `(*mcp.ToolResponse, error)`.
 
 ```go
@@ -87,7 +87,9 @@ and types, both result types (`*mcp.ToolResponse`, `*mcp.PromptResponse` or
 `*mcp.ResourceResponse`, then `error`), a variadic function, a nil function
 (including a typed nil, such as an unset handler field), and a handler that is
 not a function at all, for example
-`handler must return *mcp.ResourceResponse, got string`.
+`handler must return *mcp.ResourceResponse, got string`. A `T` that contains
+itself, such as `struct{ Children []T }`, is rejected too, with an error
+wrapping `schema.ErrRecursiveType`, as the schema reflector inlines every type.
 
 A request without `arguments`, or with `"arguments": null`, calls the handler
 with the zero value of `T`. A tool without `T` is listed with the input schema
@@ -149,7 +151,10 @@ error such as `invalid image content: missing required field "mimeType"`.
 ### Errors
 
 An error returned by a tool handler becomes a **tool error result**, not a
-JSON-RPC protocol error, so the calling model can see and react to it.
+JSON-RPC protocol error, so the calling model can see and react to it: the
+error text is the content and `isError` is set. `Client.CallTool` returns it
+with `ToolResponse.IsError` true and a nil error. A handler can report a tool
+error with its own content by setting `IsError` on the response it returns.
 Likewise a prompt handler error comes back as a prompt response described as
 `error`, and a resource handler error as a text resource holding the message,
 at the URI that was read.
@@ -220,7 +225,7 @@ if err := myTool.RegisterMCP(srv); err != nil {
 ```
 
 `assistants.AssistantTool` also implements it, so a sub-agent can be published
-as an MCP *tool* rather than a prompt.
+as an MCP _tool_ rather than a prompt.
 
 ## Client
 
@@ -273,14 +278,23 @@ type Transport interface {
 }
 ```
 
-| Package | Constructor | Use for |
-|---------|-------------|---------|
-| `mcp/transport/stdio` | `stdio.NewStdioServerTransport()` / `NewStdioServerTransportWithIO(in, out)` | A server launched as a subprocess by an MCP host. `WithIO` is what tests use |
-| `mcp/transport/httptransport` | `httptransport.NewHTTPTransport("/mcp").WithAddr(":8080")` | Stateless HTTP server transport; `Start` calls `ListenAndServe`. Also implements `http.Handler`, so it can be mounted on your own mux |
-| `mcp/transport/httptransport` | `httptransport.NewHTTPClientTransport("/mcp")` | HTTP client transport; `WithBaseURL`, `WithHeader`, `WithClient` |
-| `mcp/transport/sse` | `sse.NewSSEServerTransport(endpoint, w)` | Server-push over Server-Sent Events on an existing `http.ResponseWriter`; `HandlePostMessage(r)` feeds client messages back in |
-| `mcp/transport/localtransport` | `localtransport.New()` | In-process server transport. `HandleMessage(ctx, body)` injects a raw JSON-RPC message and returns the reply — ideal for tests and embedding |
-| `mcp/transport/localtransport` | `localtransport.NewLocalClientTransport(handler)` | In-process client transport that calls a `Handler` (`HandleMCP(ctx, *McpProxyRequest)`), for proxying MCP over your own RPC |
+| Package                        | Constructor                                                                  | Use for                                                                                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp/transport/stdio`          | `stdio.NewStdioServerTransport()` / `NewStdioServerTransportWithIO(in, out)` | A server launched as a subprocess by an MCP host. `WithIO` is what tests use                                                                 |
+| `mcp/transport/httptransport`  | `httptransport.NewHTTPTransport("/mcp").WithAddr(":8080")`                   | Stateless HTTP server transport; `Start` calls `ListenAndServe`. Also implements `http.Handler`, so it can be mounted on your own mux        |
+| `mcp/transport/httptransport`  | `httptransport.NewHTTPClientTransport("/mcp")`                               | HTTP client transport; `WithBaseURL`, `WithHeader`, `WithClient`                                                                             |
+| `mcp/transport/sse`            | `sse.NewSSEServerTransport(endpoint, w)`                                     | Server-push over Server-Sent Events on an existing `http.ResponseWriter`; `HandlePostMessage(r)` feeds client messages back in               |
+| `mcp/transport/localtransport` | `localtransport.New()`                                                       | In-process server transport. `HandleMessage(ctx, body)` injects a raw JSON-RPC message and returns the reply — ideal for tests and embedding |
+| `mcp/transport/localtransport` | `localtransport.NewLocalClientTransport(handler)`                            | In-process client transport that calls a `Handler` (`HandleMCP(ctx, *McpProxyRequest)`), for proxying MCP over your own RPC                  |
+
+The client transports classify a reply body with `transport.ParseMessage`:
+`method` with `id` is a request, `method` alone a notification, `error` an
+error response and `result` a response. Anything else fails `Send` with
+`received invalid response: ...` instead of reaching the client as an error.
+
+The stdio and SSE server transports run the close handler once per started
+connection, after releasing their lock, so the handler may call back into the
+transport; closing a transport that was never started does nothing.
 
 ### In-process end to end
 

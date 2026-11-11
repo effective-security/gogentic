@@ -91,6 +91,28 @@ The reflector is configured for LLM use (`pkg/schema/schema.go`): draft-07
 hashes the full package path into the struct name so identically-named structs
 in different packages cannot collide.
 
+Because there are no references, a type that contains itself, such as
+`type Node struct { Children []Node }`, cannot be described. `New` and
+`JSONSchema` reject it before reflecting, with an error wrapping
+`schema.ErrRecursiveType` that names the type and the path back to it:
+
+```go
+_, err := schema.New(reflect.TypeOf(Node{}))
+errors.Is(err, schema.ErrRecursiveType) // true
+// type pkg.Node refers to itself through pkg.Node -> []pkg.Node -> pkg.Node: recursive type is not supported
+```
+
+`schema.CheckRecursion` runs the same check on its own. It follows the type
+the way the reflector does: through pointers, slice and array elements, map
+values (not keys) and the struct fields that are described, with embedded
+structs merged into the parent. It skips unexported fields and fields tagged
+`json:"-"` or `jsonschema:"-"`, and stops at interfaces, protobuf enums and
+types whose value receiver has a `JSONSchema()` method. `json.Marshaler` does
+not stop it, as the reflector ignores it. A type reused without containing
+itself, such as `struct{ A, B Inner }`, is accepted. To pass a recursive
+structure, break the cycle with an interface field (`any`) or a type that
+supplies its own schema through `JSONSchema()`.
+
 Response formats:
 
 ```go
@@ -188,11 +210,12 @@ assistants that should not be constrained.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `chatmodel.ErrFailedUnmarshalOutput` | Output did not decode into `O` | Already retried once with tools off and a JSON nudge. Simplify the type, or switch to `ModeJSONSchema` if you were using strict |
+| `chatmodel.ErrFailedUnmarshalOutput` | Output did not decode into `O` | Already retried once with a JSON nudge after the unparsable answer. Simplify the type, or switch to `ModeJSONSchema` if you were using strict |
 | Provider rejects the request with a schema error | Strict mode with optional fields, or an unsupported construct | Use `ModeJSONSchema`, or mark all fields required |
 | Prompt contains `# OUTPUT SCHEMA` unexpectedly | Provider lacks `CapabilityJSONSchema` | Expected — the schema has to go somewhere. Pick a provider with the capability if you need it out of the prompt |
 | Model returns the schema instead of an instance | Weak model, long schema | The JSON encoder's instructions already warn against this; shorten the type or add a few-shot example |
 | `chatmodel.ErrFailedUnmarshalInput` from a tool | The model's arguments JSON did not match the tool schema | Expected and recoverable; the model is told to fix it. Check the tool's `jsonschema` tags are unambiguous |
+| `schema.ErrRecursiveType` from `schema.New`, a tool or an assistant constructor | The input or output type contains itself | Break the cycle (see [`pkg/schema`](#pkgschema)); providers do not reliably resolve `$ref` |
 | Fields silently missing | `json` tag mismatch between prompt schema and struct | The instructions say "use the exact field names"; ensure `json` tags are present on every field |
 
 Keep output types small. Every field is prompt tokens on every call, and deep

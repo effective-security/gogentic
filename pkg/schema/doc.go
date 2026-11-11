@@ -29,4 +29,15 @@
 //
 // You can also construct a schema from an arbitrary map using FromAny/MustFromAny
 // when you want explicit control over the resulting structure.
+//
+// # Recursive types
+//
+// Schemas are generated without references, so a type that contains itself,
+// such as type Node struct { Children []Node }, has no schema. New and
+// JSONSchema return an error wrapping ErrRecursiveType for it; CheckRecursion
+// runs the same check before reflecting with another reflector:
+//
+//	if _, err := New(reflect.TypeOf(Node{})); errors.Is(err, ErrRecursiveType) {
+//		// break the cycle, for example with an `any` field
+//	}
 package schema

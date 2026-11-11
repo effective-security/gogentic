@@ -30,20 +30,36 @@ func Test_DownloadImageData(t *testing.T) {
 
 	typ, data, err := llmutils.DownloadImageData(server.URL)
 	require.NoError(t, err)
-	assert.Equal(t, "png", typ)
+	assert.Equal(t, "image/png", typ)
 	assert.Equal(t, []byte(testImageBytes), data)
 }
 
-func Test_DownloadImageData_InvalidMimeType(t *testing.T) {
+func Test_DownloadImageData_StripsMediaTypeParameters(t *testing.T) {
 	server := newImageServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(headerContentType, "binary")
+		w.Header().Set(headerContentType, "Image/JPEG; charset=binary")
 		_, _ = w.Write([]byte(testImageBytes))
 	})
 
 	typ, data, err := llmutils.DownloadImageData(server.URL)
-	assert.EqualError(t, err, "invalid mime type binary")
-	assert.Empty(t, typ)
-	assert.Nil(t, data)
+	require.NoError(t, err)
+	assert.Equal(t, "image/jpeg", typ)
+	assert.Equal(t, []byte(testImageBytes), data)
+}
+
+func Test_DownloadImageData_InvalidMimeType(t *testing.T) {
+	for _, contentType := range []string{"binary", "image/png; =bad"} {
+		t.Run(contentType, func(t *testing.T) {
+			server := newImageServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set(headerContentType, contentType)
+				_, _ = w.Write([]byte(testImageBytes))
+			})
+
+			typ, data, err := llmutils.DownloadImageData(server.URL)
+			assert.EqualError(t, err, "invalid mime type "+contentType)
+			assert.Empty(t, typ)
+			assert.Nil(t, data)
+		})
+	}
 }
 
 func Test_DownloadImageData_FetchError(t *testing.T) {

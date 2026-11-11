@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
@@ -157,6 +158,20 @@ const (
 	AnthropicMessageTypeToolResult = "tool_result"
 )
 
+// Anthropic events and deltas streamed by InvokeModelWithResponseStream.
+const (
+	anthropicEventMessageStart      = "message_start"
+	anthropicEventContentBlockStart = "content_block_start"
+	anthropicEventContentBlockDelta = "content_block_delta"
+	anthropicEventMessageDelta      = "message_delta"
+	anthropicDeltaText              = "text_delta"
+	anthropicDeltaInputJSON         = "input_json_delta"
+	// anthropicEmptyToolInput is the arguments of a streamed tool call that
+	// received no input deltas: the empty input object, as the non-streaming
+	// path encodes it.
+	anthropicEmptyToolInput = "{}"
+)
+
 // anthropicTools converts function tools to the Anthropic format. A function
 // without Parameters takes an empty object; a tool without a function
 // definition, such as web_search, is an error.
@@ -253,7 +268,6 @@ func createAnthropicCompletion(ctx context.Context,
 	}
 
 	// Process content blocks - handle both text and tool use
-	var choices []*llms.ContentChoice
 	var textContent string
 	var toolCalls []llms.ToolCall
 
@@ -277,55 +291,54 @@ func createAnthropicCompletion(ctx context.Context,
 		}
 	}
 
-	// Create appropriate choices based on content type
-	if textContent != "" {
+	return &llms.ContentResponse{
+		Choices: anthropicChoices(textContent, toolCalls, output.StopReason, output.Usage.InputTokens, output.Usage.OutputTokens),
+	}, nil
+}
+
+// anthropicChoices builds the choices of one Anthropic message, the same way
+// for streaming and non-streaming calls: a text choice when there is text and
+// a tool-call choice when there are tool calls, each carrying the whole
+// message usage, or a single empty choice when the model produced neither.
+func anthropicChoices(text string, toolCalls []llms.ToolCall, stopReason string, inputTokens, outputTokens int) []*llms.ContentChoice {
+	usage := llms.Usage{
+		InputTokens:  uint64(inputTokens),
+		OutputTokens: uint64(outputTokens),
+		TotalTokens:  uint64(inputTokens + outputTokens),
+	}
+	var choices []*llms.ContentChoice
+	if text != "" {
 		choices = append(choices, &llms.ContentChoice{
-			Content:    textContent,
-			StopReason: output.StopReason,
-			Usage: llms.Usage{
-				InputTokens:  uint64(output.Usage.InputTokens),
-				OutputTokens: uint64(output.Usage.OutputTokens),
-				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
-			},
+			Content:    text,
+			StopReason: stopReason,
+			Usage:      usage,
 		})
 	}
-
 	if len(toolCalls) > 0 {
 		choices = append(choices, &llms.ContentChoice{
 			ToolCalls:  toolCalls,
-			StopReason: output.StopReason,
-			Usage: llms.Usage{
-				InputTokens:  uint64(output.Usage.InputTokens),
-				OutputTokens: uint64(output.Usage.OutputTokens),
-				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
-			},
+			StopReason: stopReason,
+			Usage:      usage,
 		})
 	}
-
-	// If we have neither text nor tools, create a single choice with the first content
-	if len(choices) == 0 && len(output.Content) > 0 {
+	if len(choices) == 0 {
 		choices = append(choices, &llms.ContentChoice{
-			Content:    output.Content[0].Text,
-			StopReason: output.StopReason,
-			Usage: llms.Usage{
-				InputTokens:  uint64(output.Usage.InputTokens),
-				OutputTokens: uint64(output.Usage.OutputTokens),
-				TotalTokens:  uint64(output.Usage.InputTokens + output.Usage.OutputTokens),
-			},
+			StopReason: stopReason,
+			Usage:      usage,
 		})
 	}
-
-	return &llms.ContentResponse{
-		Choices: choices,
-	}, nil
+	return choices
 }
 
 type streamingCompletionResponseChunk struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
-	Delta struct {
+	// ContentBlock is the block a content_block_start event opens.
+	ContentBlock anthropicTextGenerationOutputContent `json:"content_block"`
+	Delta        struct {
 		Type         string `json:"type"`
 		Text         string `json:"text"`
+		PartialJSON  string `json:"partial_json"`
 		StopReason   string `json:"stop_reason"`
 		StopSequence any    `json:"stop_sequence"`
 	} `json:"delta"`
@@ -353,10 +366,15 @@ type streamingCompletionResponseChunk struct {
 	} `json:"message"`
 }
 
+// parseStreamingCompletionResponse invokes the model with a response stream,
+// forwards text deltas to options.StreamingFunc as they arrive, and returns
+// the whole message in the same choices createAnthropicCompletion builds
+// without streaming: text, tool calls assembled from input_json_delta
+// events, stop reason and usage.
 func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntime.Client, modelInput *bedrockruntime.InvokeModelWithResponseStreamInput, options llms.CallOptions) (*llms.ContentResponse, error) {
 	output, err := client.InvokeModelWithResponseStream(ctx, modelInput)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "bedrock anthropic: invoke model with response stream")
 	}
 	stream := output.GetStream()
 	if stream == nil {
@@ -366,40 +384,114 @@ func parseStreamingCompletionResponse(ctx context.Context, client *bedrockruntim
 		_ = stream.Close()
 	}()
 
-	contentchoices := []*llms.ContentChoice{{GenerationInfo: map[string]any{}}}
+	msg := newAnthropicStream()
 	for e := range stream.Events() {
 		if err = stream.Err(); err != nil {
-			return nil, err
+			return nil, errors.WithMessage(err, "bedrock anthropic: response stream")
 		}
 
-		if v, ok := e.(*types.ResponseStreamMemberChunk); ok {
-			var resp streamingCompletionResponseChunk
-			err := json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(&resp)
-			if err != nil {
-				return nil, err
-			}
-
-			switch resp.Type {
-			case "message_start":
-				contentchoices[0].Usage.InputTokens = uint64(resp.Message.Usage.InputTokens)
-			case "content_block_delta":
-				if err = options.StreamingFunc(ctx, []byte(resp.Delta.Text)); err != nil {
-					return nil, err
-				}
-				contentchoices[0].Content += resp.Delta.Text
-			case "message_delta":
-				contentchoices[0].StopReason = resp.Delta.StopReason
-				contentchoices[0].Usage.OutputTokens = uint64(resp.Usage.OutputTokens)
-			}
+		v, ok := e.(*types.ResponseStreamMemberChunk)
+		if !ok {
+			continue
+		}
+		var chunk streamingCompletionResponseChunk
+		if err = json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(&chunk); err != nil {
+			return nil, errors.WithMessage(err, "bedrock anthropic: decode stream chunk")
+		}
+		if err = msg.add(ctx, &chunk, options.StreamingFunc); err != nil {
+			return nil, err
 		}
 	}
 	if err = stream.Err(); err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "bedrock anthropic: response stream")
 	}
 
 	return &llms.ContentResponse{
-		Choices: contentchoices,
+		Choices: msg.choices(),
 	}, nil
+}
+
+// anthropicStreamToolCall accumulates one streamed tool_use content block.
+type anthropicStreamToolCall struct {
+	id    string
+	name  string
+	input strings.Builder
+}
+
+// anthropicStream accumulates one Anthropic message streamed by Bedrock.
+type anthropicStream struct {
+	text         strings.Builder
+	toolCalls    []*anthropicStreamToolCall
+	toolsByIndex map[int]*anthropicStreamToolCall
+	stopReason   string
+	inputTokens  int
+	outputTokens int
+}
+
+// newAnthropicStream returns an empty message accumulator.
+func newAnthropicStream() *anthropicStream {
+	return &anthropicStream{
+		toolsByIndex: make(map[int]*anthropicStreamToolCall),
+	}
+}
+
+// add folds one stream event into the message. Only text deltas reach
+// streamingFunc; input_json_delta events extend the tool call opened at the
+// same content block index.
+func (s *anthropicStream) add(ctx context.Context, chunk *streamingCompletionResponseChunk, streamingFunc func(context.Context, []byte) error) error {
+	switch chunk.Type {
+	case anthropicEventMessageStart:
+		s.inputTokens = chunk.Message.Usage.InputTokens
+	case anthropicEventContentBlockStart:
+		block := chunk.ContentBlock
+		if block.Type != AnthropicMessageTypeToolUse {
+			return nil
+		}
+		call := &anthropicStreamToolCall{
+			id:   block.ID,
+			name: block.Name,
+		}
+		s.toolCalls = append(s.toolCalls, call)
+		s.toolsByIndex[chunk.Index] = call
+	case anthropicEventContentBlockDelta:
+		switch chunk.Delta.Type {
+		case anthropicDeltaText:
+			text := chunk.Delta.Text
+			if err := streamingFunc(ctx, []byte(text)); err != nil {
+				return errors.WithMessage(err, "bedrock anthropic: streaming function")
+			}
+			s.text.WriteString(text)
+		case anthropicDeltaInputJSON:
+			if call, ok := s.toolsByIndex[chunk.Index]; ok {
+				call.input.WriteString(chunk.Delta.PartialJSON)
+			}
+		}
+	case anthropicEventMessageDelta:
+		s.stopReason = chunk.Delta.StopReason
+		s.outputTokens = chunk.Usage.OutputTokens
+	}
+	return nil
+}
+
+// choices returns the message in the non-streaming shape. A tool call that
+// received no input deltas gets the empty input object as its arguments.
+func (s *anthropicStream) choices() []*llms.ContentChoice {
+	toolCalls := make([]llms.ToolCall, 0, len(s.toolCalls))
+	for _, call := range s.toolCalls {
+		arguments := call.input.String()
+		if arguments == "" {
+			arguments = anthropicEmptyToolInput
+		}
+		toolCalls = append(toolCalls, llms.ToolCall{
+			ID:   call.id,
+			Type: llms.ToolTypeFunction,
+			FunctionCall: &llms.FunctionCall{
+				Name:      call.name,
+				Arguments: arguments,
+			},
+		})
+	}
+	return anthropicChoices(s.text.String(), toolCalls, s.stopReason, s.inputTokens, s.outputTokens)
 }
 
 // process the input messages to anthropic supported input

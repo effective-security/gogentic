@@ -93,7 +93,8 @@ has no enclosing skill directory.
 
 ```yaml
 skills:
-  # Fail loading instead of logging when a SKILL.md is invalid.
+  # Fail loading instead of logging when a SKILL.md is invalid, including
+  # one inside a .<agent> folder, a tar archive or an agent's paths.
   strict: false
   # Include skills that are not scoped to any agent.
   enable_default_skills: true
@@ -103,11 +104,13 @@ skills:
   paths:
     - ./skills
     - /opt/myapp/skills.tar.gz
-  # Per-agent overrides.
+  # Per-agent overrides. An agent's paths (directories or archives) are
+  # searched after `paths`, so they win on name collision, and a skill found
+  # directly in one belongs to that agent.
   agents:
     orchestrator:
       paths:
-        - ~/.agents/skills/.orchestrator
+        - /opt/myapp/orchestrator-skills
     remediations:
       disabled: true
 ```
@@ -123,7 +126,9 @@ name):
 <cwd>/.agents/.<clientName>/skills/
 ```
 
-Explicit `paths` are always highest priority.
+Explicit `paths` come after the standard paths, and each agent's `paths`
+come last, overriding a skill of the same name for that agent. Paths of a
+`disabled` agent are not searched.
 
 `enable_default_skills` matters more than it looks: when false, a skill that is
 neither inside a `.<agent>` directory nor declares `agents:` in its

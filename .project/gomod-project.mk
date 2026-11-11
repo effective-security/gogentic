@@ -72,7 +72,7 @@ GOPACKAGES_FOR_TEST = $(shell go list ./... | grep -v /tests/)
 export PROJ_DIR=$(PROJ_ROOT)
 export PROJ_BIN=$(PROJ_ROOT)/bin
 export GOBIN=$(PROJ_ROOT)/bin
-export PATH := ${PATH}:${PROJ_BIN}
+export PATH := ${PROJ_BIN}:${PATH}
 
 # List of all .go files in the project, exluding vendor and tools
 PROJ_GOFILES = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.gopath/*" -not -path "./.tools/*")

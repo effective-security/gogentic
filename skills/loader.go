@@ -81,7 +81,11 @@ type Config struct {
 type AgentConfig struct {
 	// Disabled specifies to skip the agent to load skills.
 	Disabled bool `json:"disabled,omitempty" yaml:"disabled,omitempty"`
-	// Paths specifies additional paths to search for skills for the agent.
+	// Paths specifies additional directories or tar archives to search for
+	// skills for the agent. They are searched after Config.Paths, and a
+	// skill found directly in one (./<skill>/SKILL.md) belongs to this agent
+	// unless its frontmatter names other agents. ./.<agent>/ folders inside
+	// still assign their skills to the agent they name.
 	// Later directories override earlier ones when two skills share the same name.
 	Paths []string `json:"paths,omitempty" yaml:"paths,omitempty"`
 }
@@ -155,26 +159,47 @@ func (l *loader) Agents() []string {
 
 // Load scans all configured directories for SKILL.md files and parses them.
 // It is idempotent: repeated calls replace the previous results.
-// Individual file errors are logged as warnings and do not abort the scan.
+// Individual file errors are logged as warnings and do not abort the scan,
+// unless Config.Strict is set.
 func (l *loader) load() error {
 	for _, dir := range l.searchDirs {
-		if strings.HasSuffix(dir, ".tar") || strings.HasSuffix(dir, ".tar.gz") {
-			err := l.loadTar(dir)
-			if err != nil {
-				return errors.Wrap(err, "failed to load tar file")
-			}
+		if err := l.loadPath("", dir); err != nil {
+			return err
+		}
+	}
+
+	// Per-agent paths are searched last, so they override the shared ones.
+	for _, agent := range maps.OrderedKeys(l.cfg.Agents) {
+		ac := l.cfg.Agents[agent]
+		if ac == nil || ac.Disabled {
 			continue
 		}
-		err := l.loadFolder("", dir)
-		if err != nil {
-			return errors.Wrap(err, "failed to load directory")
+		for _, dir := range ac.Paths {
+			if err := l.loadPath(agent, filepath.Clean(dir)); err != nil {
+				return errors.WithMessagef(err, "failed to load skills of agent %s", agent)
+			}
 		}
 	}
 
 	return nil
 }
 
-func (l *loader) loadTar(file string) error {
+// loadPath loads a tar archive or a directory of skills. Skills that are not
+// in a .<agent> folder belong to agent, or to the default agent when it is "".
+func (l *loader) loadPath(agent, dir string) error {
+	if strings.HasSuffix(dir, ".tar") || strings.HasSuffix(dir, ".tar.gz") {
+		if err := l.loadTar(agent, dir); err != nil {
+			return errors.Wrap(err, "failed to load tar file")
+		}
+		return nil
+	}
+	if err := l.loadFolder(agent, dir); err != nil {
+		return errors.Wrap(err, "failed to load directory")
+	}
+	return nil
+}
+
+func (l *loader) loadTar(parentAgent, file string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return errors.Wrap(err, "failed to open skills tar file")
@@ -253,9 +278,9 @@ func (l *loader) loadTar(file string) error {
 		}
 
 		// Mirror loadFolder semantics:
-		//   <skill>/SKILL.md           -> default agent
+		//   <skill>/SKILL.md           -> parentAgent (default agent when empty)
 		//   <agent>/<skill>/SKILL.md   -> agent is the folder enclosing the skill
-		var agent string
+		agent := parentAgent
 		parts := strings.Split(skillDir, "/")
 		if len(parts) >= 2 {
 			agent = strings.TrimPrefix(parts[len(parts)-2], ".")
@@ -268,6 +293,9 @@ func (l *loader) loadTar(file string) error {
 				"path", skillPath,
 				"err", err.Error(),
 			)
+			if l.cfg.Strict {
+				return errors.WithMessagef(err, "failed to parse skill file: %s", skillPath)
+			}
 			continue
 		}
 
@@ -371,10 +399,13 @@ func (l *loader) loadFolder(parentAgent, dir string) error {
 			err = l.loadFolder(agent, entryPath)
 			if err != nil {
 				logger.KV(xlog.WARNING,
-					"reason", "stat_entry",
+					"reason", "load_agent_folder",
 					"path", entryPath,
 					"err", err.Error(),
 				)
+				if l.cfg.Strict {
+					return errors.WithMessagef(err, "failed to load skills of agent %s", agent)
+				}
 			}
 			continue
 		}

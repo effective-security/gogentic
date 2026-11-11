@@ -32,7 +32,9 @@ type Schema struct {
 
 // New creates a new Schema from the given Go type. The result contains both the
 // raw reflected jsonschema and a flattened Parameters schema suitable for use
-// as tool/function parameters.
+// as tool/function parameters. Successful results are cached by type. A
+// recursive type is rejected, on every call, with an error wrapping
+// ErrRecursiveType; see CheckRecursion.
 func New(t reflect.Type) (*Schema, error) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
@@ -57,7 +59,10 @@ func (s *Schema) String() string {
 }
 
 func buildSchema(t reflect.Type) (*Schema, error) {
-	schema := JSONSchema(t)
+	schema, err := JSONSchema(t)
+	if err != nil {
+		return nil, err
+	}
 
 	funcDef := ToFunctionSchema(t, schema)
 	s := &Schema{
@@ -168,7 +173,15 @@ func (s *Schema) NameFromRef() string {
 // JSONSchema returns the jsonschema model for a type using invopop/jsonschema.
 // The reflector is configured to produce expanded structs and stable names to
 // avoid collisions across packages with identically-named structs.
-func JSONSchema(t reflect.Type) *jsonschema.Schema {
+//
+// The reflector inlines every type instead of referencing definitions, so a
+// recursive type is rejected before reflection with an error wrapping
+// ErrRecursiveType; see CheckRecursion.
+func JSONSchema(t reflect.Type) (*jsonschema.Schema, error) {
+	if err := CheckRecursion(t); err != nil {
+		return nil, err
+	}
+
 	// VS Code does not support the jsonschema version 2020-12
 	jsonschema.Version = "http://json-schema.org/draft-07/schema#"
 
@@ -195,7 +208,7 @@ func JSONSchema(t reflect.Type) *jsonschema.Schema {
 		return name
 	}
 
-	return r.ReflectFromType(t)
+	return r.ReflectFromType(t), nil
 }
 
 // MustFromAny creates a jsonschema.Schema from an arbitrary value.

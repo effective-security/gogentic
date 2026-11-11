@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -451,10 +452,72 @@ func TestInferTransportError(t *testing.T) {
 	_, err = m.Infer(context.Background(), textRequest("hi"))
 	var ie *llms.InferenceError
 	require.ErrorAs(t, err, &ie)
+	// F-018: the SDK's placeholder response has status 0; no response is a bad gateway.
+	assert.Equal(t, http.StatusBadGateway, ie.Status)
 	assert.Empty(t, ie.Param)
 	assert.ErrorIs(t, err, transportErr)
 	assert.Contains(t, err.Error(), "bedrock converse inference: operation error Bedrock Runtime: Converse")
 	assert.Equal(t, 1, attempts, "converse is never retried")
+}
+
+func TestConverseStatus(t *testing.T) {
+	cause := errors.New(transportFailure)
+	responseError := func(resp *smithyhttp.Response) error {
+		return &awshttp.ResponseError{
+			ResponseError: &smithyhttp.ResponseError{
+				Response: resp,
+				Err:      cause,
+			},
+		}
+	}
+	withStatus := func(status int) *smithyhttp.Response {
+		return &smithyhttp.Response{
+			Response: &http.Response{
+				StatusCode: status,
+			},
+		}
+	}
+	tests := []struct {
+		name     string
+		err      error
+		expected int
+	}{
+		{
+			name:     "error without response",
+			err:      cause,
+			expected: http.StatusBadGateway,
+		},
+		{
+			name:     "nil response",
+			err:      responseError(nil),
+			expected: http.StatusBadGateway,
+		},
+		{
+			name:     "nil http response",
+			err:      responseError(&smithyhttp.Response{}),
+			expected: http.StatusBadGateway,
+		},
+		{
+			name:     "placeholder response of a send failure",
+			err:      responseError(withStatus(0)),
+			expected: http.StatusBadGateway,
+		},
+		{
+			name:     "service status",
+			err:      responseError(withStatus(http.StatusServiceUnavailable)),
+			expected: http.StatusServiceUnavailable,
+		},
+		{
+			name:     "wrapped service status",
+			err:      errors.WithMessage(responseError(withStatus(http.StatusTooManyRequests)), "operation error"),
+			expected: http.StatusTooManyRequests,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, converseStatus(tt.err))
+		})
+	}
 }
 
 func TestConverseInputErrors(t *testing.T) {

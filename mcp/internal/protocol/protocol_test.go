@@ -561,6 +561,93 @@ func TestProtocol_CloseFailsPendingWork(t *testing.T) {
 	assert.Equal(t, "method not found: block", msgs[2].JsonRpcError.Error.Message)
 }
 
+// closeAsync closes p on another goroutine, so that a Close that deadlocks
+// fails the test on a timeout instead of hanging it.
+func closeAsync(p *Protocol) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		done <- p.Close()
+	}()
+	return done
+}
+
+// F-035: OnClose runs after the protocol lock is released, so it may call
+// back into the protocol.
+func TestProtocol_OnCloseMayCallBackIntoProtocol(t *testing.T) {
+	p, tr := connected(t)
+	reentered := make(chan struct{}, 1)
+	p.OnClose = func() {
+		p.SetRequestHandler(testMethod, func(context.Context, *transport.BaseJSONRPCRequest, RequestHandlerExtra) (transport.JsonRpcBody, error) {
+			return map[string]any{}, nil
+		})
+		p.RemoveNotificationHandler(methodCancelled)
+		reentered <- struct{}{}
+	}
+
+	require.NoError(t, recv(t, closeAsync(p)))
+	recv(t, reentered)
+	assert.True(t, tr.IsClosed())
+
+	// The handler registered by OnClose outlives the close.
+	simulateRequest(tr, 1, testMethod)
+	msgs := waitForMessages(t, tr, 1)
+	require.Equal(t, transport.BaseMessageTypeJSONRPCResponseType, msgs[0].Type)
+	assert.Equal(t, transport.RequestId(1), msgs[0].JsonRpcResponse.Id)
+	assert.JSONEq(t, `{}`, string(msgs[0].JsonRpcResponse.Result))
+}
+
+// F-035: closing does not block on a pending request whose response is
+// already buffered; that request keeps its response.
+func TestProtocol_CloseWithBufferedResponse(t *testing.T) {
+	p, _ := connected(t)
+	const id transport.RequestId = 7
+	buffered := &responseEnvelope{
+		response: json.RawMessage(`{"ok":true}`),
+	}
+	ch := make(chan *responseEnvelope, 1)
+	ch <- buffered
+	p.mu.Lock()
+	p.responseHandlers[id] = ch
+	p.mu.Unlock()
+
+	require.NoError(t, recv(t, closeAsync(p)))
+	assert.Same(t, buffered, recv(t, ch))
+	select {
+	case env, ok := <-ch:
+		assert.Failf(t, "unexpected envelope", "envelope %v, open %v", env, ok)
+	default:
+	}
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	assert.Empty(t, p.responseHandlers)
+}
+
+// F-035: a response that arrives for a request whose channel is already full
+// is dropped instead of blocking the transport's reader.
+func TestProtocol_DuplicateResponseDoesNotBlock(t *testing.T) {
+	p, tr := connected(t)
+	const id transport.RequestId = 9
+	ch := make(chan *responseEnvelope, 1)
+	p.mu.Lock()
+	p.responseHandlers[id] = ch
+	p.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, result := range []string{`{"n":1}`, `{"n":2}`} {
+			tr.SimulateMessage(transport.NewBaseMessageResponse(&transport.BaseJSONRPCResponse{
+				Jsonrpc: "2.0",
+				Id:      id,
+				Result:  json.RawMessage(result),
+			}))
+		}
+	}()
+	recv(t, done)
+	assert.Equal(t, json.RawMessage(`{"n":1}`), recv(t, ch).response)
+}
+
 func TestProtocol_CloseWithoutTransport(t *testing.T) {
 	p := NewProtocol(nil)
 	assert.NoError(t, p.Close())

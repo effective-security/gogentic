@@ -108,6 +108,9 @@ func reasoningBudget(r *llms.InferenceReasoning) (int, error) {
 }
 
 // Infer performs one Converse invocation while keeping legacy InvokeModel behavior intact.
+// A failed call returns an *llms.InferenceError whose Status is the HTTP status
+// Bedrock answered with, or 502 when no response arrived (for example a
+// connection failure).
 func (l *LLM) Infer(ctx context.Context, r llms.InferenceRequest) (*llms.InferenceResponse, error) {
 	if err := l.ValidateInference(r); err != nil {
 		return nil, err
@@ -128,17 +131,27 @@ func (l *LLM) Infer(ctx context.Context, r llms.InferenceRequest) (*llms.Inferen
 		})
 	})
 	if err != nil {
-		status := http.StatusBadGateway
-		var apiErr *smithyhttp.ResponseError
-		if errors.As(err, &apiErr) {
-			status = apiErr.HTTPStatusCode()
-		}
-		return nil, llms.InferenceFailure(err, status, opConverse)
+		return nil, llms.InferenceFailure(err, converseStatus(err), opConverse)
 	}
 	if response == nil {
 		return nil, llms.InferenceFailure(errors.New("empty response"), http.StatusBadGateway, opDecode)
 	}
 	return converseOutput(response, raw)
+}
+
+// converseStatus returns the HTTP status Bedrock answered a failed Converse
+// call with, or 502 (bad gateway) when no response arrived. The SDK wraps send
+// failures, including cancellation, in a smithyhttp.ResponseError whose
+// placeholder response has status 0, so a zero status is not a real answer.
+func converseStatus(err error) int {
+	var respErr *smithyhttp.ResponseError
+	if errors.As(err, &respErr) &&
+		respErr.Response != nil &&
+		respErr.Response.Response != nil &&
+		respErr.Response.StatusCode > 0 {
+		return respErr.Response.StatusCode
+	}
+	return http.StatusBadGateway
 }
 
 // converseBodyKey carries the raw Converse response for this call.

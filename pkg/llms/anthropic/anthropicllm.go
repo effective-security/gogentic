@@ -42,6 +42,10 @@ const (
 	// for them.
 	DefaultMaxTokens = 8 * 1024
 
+	// emptyToolArguments is the JSON of a tool call that takes no input, as
+	// the non-streaming API returns it.
+	emptyToolArguments = "{}"
+
 	// DefaultBaseURL is the endpoint of the Anthropic API.
 	DefaultBaseURL = "https://api.anthropic.com"
 )
@@ -459,6 +463,12 @@ func GenerateStreamingContent(ctx context.Context, o *LLM, params anthropic.Mess
 			}
 		case anthropic.ContentBlockStopEvent:
 			if currentToolCall != nil {
+				// A tool_use block without input deltas has no input; send
+				// the same "{}" as the non-streaming path so the call can be
+				// replayed in the history.
+				if currentToolCall.FunctionCall.Arguments == "" {
+					currentToolCall.FunctionCall.Arguments = emptyToolArguments
+				}
 				toolCalls = append(toolCalls, *currentToolCall)
 				currentToolCall = nil
 			}
@@ -749,8 +759,14 @@ func HandleAIMessage(msg llms.Message) (anthropic.MessageParam, error) {
 			if err != nil {
 				return anthropic.MessageParam{}, errors.WithMessage(err, "anthropic: unsupported tool call in history")
 			}
+			arguments := fc.Arguments
+			if arguments == "" {
+				// Histories stored before streamed calls without input got
+				// "{}" carry an empty string.
+				arguments = emptyToolArguments
+			}
 			var inputJSON json.RawMessage
-			if err := json.Unmarshal([]byte(fc.Arguments), &inputJSON); err != nil {
+			if err := json.Unmarshal([]byte(arguments), &inputJSON); err != nil {
 				return anthropic.MessageParam{}, errors.Wrap(err, "anthropic: failed to unmarshal tool call arguments")
 			}
 

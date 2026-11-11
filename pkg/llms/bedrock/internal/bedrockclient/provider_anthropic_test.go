@@ -2,6 +2,7 @@ package bedrockclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -19,6 +20,9 @@ const (
 	anthropicToolName  = "lookup"
 	anthropicToolID    = "toolu_1"
 	anthropicToolInput = `{"city":"Paris"}`
+	noInputToolName    = "now"
+	noInputToolID      = "toolu_2"
+	emptyToolInput     = "{}"
 	throttledMessage   = "slow down"
 	streamWaitTimeout  = 5 * time.Second
 )
@@ -280,7 +284,7 @@ func TestCreateAnthropicCompletionResponse(t *testing.T) {
 			},
 		},
 		{
-			name:     "empty text falls back to the first block",
+			name:     "no text and no tool calls yield one empty choice",
 			response: `{"content":[{"type":"text","text":""}],"stop_reason":"stop_sequence","stop_sequence":"STOP","usage":{"input_tokens":10,"output_tokens":5}}`,
 			expected: []*llms.ContentChoice{
 				{
@@ -471,8 +475,8 @@ func TestCreateAnthropicCompletionStreaming(t *testing.T) {
 			Usage: llms.Usage{
 				InputTokens:  12,
 				OutputTokens: 7,
+				TotalTokens:  19,
 			},
-			GenerationInfo: map[string]any{},
 		},
 	}, res.Choices)
 
@@ -485,6 +489,82 @@ func TestCreateAnthropicCompletionStreaming(t *testing.T) {
 		"max_tokens": 32,
 		"messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
 	}`, calls[0].body)
+}
+
+// F-020: a streamed message carries the same choices as the non-streaming one,
+// tool calls and total usage included.
+func TestCreateAnthropicCompletionStreamingToolCalls(t *testing.T) {
+	msgs := []Message{
+		textMessage(llms.RoleHuman, "weather in Paris?"),
+	}
+	usage := llms.Usage{
+		InputTokens:  12,
+		OutputTokens: 9,
+		TotalTokens:  21,
+	}
+	expected := []*llms.ContentChoice{
+		{
+			Content:    "Checking",
+			StopReason: AnthropicCompletionReasonToolUse,
+			Usage:      usage,
+		},
+		{
+			ToolCalls: []llms.ToolCall{
+				{
+					ID:   anthropicToolID,
+					Type: llms.ToolTypeFunction,
+					FunctionCall: &llms.FunctionCall{
+						Name:      anthropicToolName,
+						Arguments: anthropicToolInput,
+					},
+				},
+				{
+					ID:   noInputToolID,
+					Type: llms.ToolTypeFunction,
+					FunctionCall: &llms.FunctionCall{
+						Name:      noInputToolName,
+						Arguments: emptyToolInput,
+					},
+				},
+			},
+			StopReason: AnthropicCompletionReasonToolUse,
+			Usage:      usage,
+		},
+	}
+
+	s := newStub(t, eventStream(
+		chunkEvent(t, `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"usage":{"input_tokens":12,"output_tokens":1}}}`),
+		chunkEvent(t, `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`),
+		chunkEvent(t, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Checking"}}`),
+		chunkEvent(t, `{"type":"content_block_stop","index":0}`),
+		chunkEvent(t, `{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}`),
+		chunkEvent(t, `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}`),
+		chunkEvent(t, `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}`),
+		// A delta for a block that never started is dropped.
+		chunkEvent(t, `{"type":"content_block_delta","index":9,"delta":{"type":"input_json_delta","partial_json":"{\"x\":1}"}}`),
+		chunkEvent(t, `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}`),
+		chunkEvent(t, `{"type":"content_block_stop","index":1}`),
+		// A tool without parameters receives no input deltas.
+		chunkEvent(t, `{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_2","name":"now","input":{}}}`),
+		chunkEvent(t, `{"type":"content_block_stop","index":2}`),
+		chunkEvent(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":9}}`),
+		chunkEvent(t, `{"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCount":12,"outputTokenCount":9}}`),
+	))
+	s.contentType = contentTypeEvents
+
+	var chunks []string
+	streamed, err := s.client().CreateCompletion(context.Background(), anthropicModelID, msgs, llms.CallOptions{
+		StreamingFunc: recordChunks(&chunks),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Checking"}, chunks, "only text deltas reach the streaming func")
+	assert.Equal(t, expected, streamed.Choices)
+
+	// The same message answered without streaming.
+	s = newStub(t, `{"content":[{"type":"text","text":"Checking"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{"city":"Paris"}},{"type":"tool_use","id":"toolu_2","name":"now","input":{}}],"stop_reason":"tool_use","usage":{"input_tokens":12,"output_tokens":9}}`)
+	whole, err := s.client().CreateCompletion(context.Background(), anthropicModelID, msgs, llms.CallOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, expected, whole.Choices)
 }
 
 func TestCreateAnthropicCompletionStreamingErrors(t *testing.T) {
@@ -516,7 +596,9 @@ func TestCreateAnthropicCompletionStreamingErrors(t *testing.T) {
 		res, err := s.client().CreateCompletion(context.Background(), anthropicModelID, msgs, llms.CallOptions{
 			StreamingFunc: recordChunks(&chunks),
 		})
-		require.EqualError(t, err, "invalid character 'n' looking for beginning of object key string")
+		require.EqualError(t, err, "bedrock anthropic: decode stream chunk: invalid character 'n' looking for beginning of object key string")
+		var syntaxErr *json.SyntaxError
+		assert.ErrorAs(t, err, &syntaxErr)
 		assert.Nil(t, res)
 		assert.Empty(t, chunks)
 	})

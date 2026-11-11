@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
+	"github.com/effective-security/gogentic/pkg/schema"
 	"github.com/effective-security/xlog"
 	"github.com/invopop/jsonschema"
 )
@@ -225,15 +226,20 @@ func newResourceRead(h *handler) func(context.Context) *resourceResponseSent {
 
 // argumentsSchema returns the JSON Schema of a handler's arguments type,
 // derived by reflection; jsonschema tags supply descriptions and required
-// fields. A handler without arguments takes an empty object.
-func argumentsSchema(argType reflect.Type) *jsonschema.Schema {
+// fields. A handler without arguments takes an empty object. A recursive
+// arguments type is rejected with an error wrapping schema.ErrRecursiveType,
+// as the reflector, which inlines every type, would overflow the stack.
+func argumentsSchema(argType reflect.Type) (*jsonschema.Schema, error) {
 	if argType == nil {
 		return &jsonschema.Schema{
 			Type:       jsonTypeObject,
 			Properties: jsonschema.NewProperties(),
-		}
+		}, nil
 	}
-	return jsonSchemaReflector.ReflectFromType(argType)
+	if err := schema.CheckRecursion(argType); err != nil {
+		return nil, errors.WithMessage(err, "unsupported handler arguments")
+	}
+	return jsonSchemaReflector.ReflectFromType(argType), nil
 }
 
 // newPromptSchema describes a prompt for prompts/list: its name, description
@@ -247,8 +253,12 @@ func argumentsSchema(argType reflect.Type) *jsonschema.Schema {
 //	}
 //
 // gives a required "title" argument and an optional "description" argument.
-func newPromptSchema(name, description string, argType reflect.Type) *PromptSchema {
-	inputSchema := argumentsSchema(argType)
+// It returns the error of argumentsSchema.
+func newPromptSchema(name, description string, argType reflect.Type) (*PromptSchema, error) {
+	inputSchema, err := argumentsSchema(argType)
+	if err != nil {
+		return nil, err
+	}
 
 	promptSchema := &PromptSchema{
 		Name:        name,
@@ -269,5 +279,5 @@ func newPromptSchema(name, description string, argType reflect.Type) *PromptSche
 		}
 		promptSchema.Arguments = append(promptSchema.Arguments, arg)
 	}
-	return promptSchema
+	return promptSchema, nil
 }

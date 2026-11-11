@@ -100,7 +100,7 @@ Run(ctx, input, &output)
 │    │  ────────────────────────────────────────────────────────────┘   │
 │    │                                                                  │
 │    │  OutputParser.Parse(choices[0].Content)  (only if output != nil) │
-│    │  on ErrFailedUnmarshalOutput → retry once, tools disabled ───────┘
+│    │  on ErrFailedUnmarshalOutput → retry once, same tools ───────────┘
 │    │
 ├─ 6. append run messages to the store (unless SkipMessageHistory)
 └─ 7. callback.OnAssistantEnd → *Response{Choices, Messages, Model, Usage}
@@ -119,8 +119,11 @@ Key consequences of this design:
 - **A tool failure is not a run failure.** The error is returned to the model
   as a JSON `{"error": ...}` tool response so it can recover. See
   [Tools → Error contract](tools.md#error-contract).
-- **Structured-output failures get one free retry** with tools disabled and a
-  nudge to answer in JSON.
+- **Structured-output failures get one free retry.** The retry sends the
+  failed attempt (question, tool exchanges and unparsable answer) and a nudge
+  to answer in JSON, with the same tools, whether or not a store is
+  configured. The caller's `CallInput` is not modified, and the response's
+  `Messages` include the failed attempt.
 
 ## Where state lives
 

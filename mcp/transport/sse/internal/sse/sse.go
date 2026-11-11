@@ -205,18 +205,20 @@ func (t *SSETransport) Send(msg *transport.BaseJsonRpcMessage) error {
 	return t.writeEvent("message", string(data))
 }
 
-// Close closes the SSE connection
+// Close closes the SSE connection. The close handler runs once, after the
+// transport lock is released, so it may call back into the transport.
 func (t *SSETransport) Close() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	if !t.isConnected {
+		t.mu.Unlock()
 		return nil
 	}
-
 	t.isConnected = false
-	if t.closeHandler != nil {
-		t.closeHandler()
+	handler := t.closeHandler
+	t.mu.Unlock()
+
+	if handler != nil {
+		handler()
 	}
 	return nil
 }
