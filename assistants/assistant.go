@@ -331,6 +331,23 @@ func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*Response, e
 	return a.Run(ctx, input, &output)
 }
 
+// retryOutputPrompt is the user turn of the retry that follows an answer that
+// could not be parsed into the output type.
+const retryOutputPrompt = "Return the response in JSON format as requested."
+
+// outputRetry carries an attempt whose answer could not be parsed into the
+// retry that follows it.
+type outputRetry struct {
+	// history is everything the failed attempt sent and received: the system
+	// prompt, the stored history, the question, every tool exchange and the
+	// unparsable answer, whatever the store or SkipToolHistory keep. The
+	// retry continues it.
+	history llms.Messages
+	// messages are the failed attempt's Response.Messages, which lead the
+	// retry's Response.Messages.
+	messages llms.Messages
+}
+
 // Run executes the assistant: it assembles the system prompt, resolves a model
 // when none is configured, then repeatedly calls the LLM and executes the tools
 // it requests until no tool is called. When optionalOutputType is non-nil the
@@ -339,8 +356,11 @@ func (a *Assistant[O]) Call(ctx context.Context, input *CallInput) (*Response, e
 //
 // ctx must carry a chatmodel.ChatContext, otherwise
 // chatmodel.ErrInvalidChatContext is returned. A response that fails to parse
-// into O is retried once with tools disabled before the error is returned.
-// Exceeding MaxToolCalls, MaxMessages or the content-size limit fails the run.
+// into O is retried once, with the same tools: the retry continues the failed
+// attempt's conversation (question, tool exchanges and unparsable answer) with
+// a request for JSON, and its Response.Messages include the failed attempt's
+// messages. input is not modified. Exceeding MaxToolCalls, MaxMessages or the content-size limit
+// fails the run.
 func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutputType *O) (*Response, error) {
 	// create a per call config
 	cfg := a.GetCallConfig(input.Options...)
@@ -379,21 +399,24 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		callback.OnAssistantStart(ctx, a, input.Input)
 	}
 
+	var retry *outputRetry
 	for range 2 {
-		resp, messageHistory, err = a.run(ctx, chatCtx, cfg, input, optionalOutputType)
+		resp, messageHistory, err = a.run(ctx, chatCtx, cfg, input, retry, optionalOutputType)
 		if err != nil {
 			metricskey.StatsAssistantCallsFailed.IncrCounter(1, a.name, cfg.ModelName, orgID)
 			if callback != nil {
 				callback.OnAssistantError(ctx, a, input.Input, err, messageHistory)
 			}
 			// Sometimes the LLM returns Text vs JSON
-			if errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
+			// run returns its Response with a parse error; without one there
+			// is no answer to retry.
+			if retry == nil && resp != nil && errors.Is(err, chatmodel.ErrFailedUnmarshalOutput) {
 				metricskey.StatsAssistantCallsRetried.IncrCounter(1, a.name, cfg.ModelName, orgID)
 
-				input.Input = "Return the response in JSON format as requested."
-				// remove the tools
-				cfg.Tools = nil
-
+				retry = &outputRetry{
+					history:  messageHistory,
+					messages: resp.Messages,
+				}
 				continue
 			}
 			return nil, err
@@ -405,6 +428,12 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 		return nil, err
 	}
 
+	if retry != nil {
+		messages := make([]llms.Message, 0, len(retry.messages)+len(resp.Messages))
+		messages = append(messages, retry.messages...)
+		resp.Messages = append(messages, resp.Messages...)
+	}
+
 	metricskey.StatsAssistantCallsSucceeded.IncrCounter(1, a.name, cfg.ModelName, orgID)
 	if callback != nil {
 		callback.OnAssistantEnd(ctx, a, input.Input, resp, messageHistory)
@@ -414,7 +443,9 @@ func (a *Assistant[O]) Run(ctx context.Context, input *CallInput, optionalOutput
 
 // run executes the main logic of the Assistant, generating a response based on the input and prompt inputs.
 // it returns Response with the Run messages and the message history with all messages that are created from the run.
-func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, cfg *Config, input *CallInput, optionalOutputType *O) (resp *Response, messageHistory llms.Messages, err error) {
+// A non-nil retry makes this the retry of an attempt whose answer did not parse:
+// it continues the failed attempt's history with a user turn asking for JSON.
+func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, cfg *Config, input *CallInput, retry *outputRetry, optionalOutputType *O) (resp *Response, messageHistory llms.Messages, err error) {
 	chatID := chatCtx.GetChatID()
 	if chatID == "" {
 		return nil, nil, errors.New("invalid chat ID")
@@ -435,11 +466,6 @@ func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, c
 		return list
 	}
 
-	systemPrompt, err := a.GetSystemPrompt(ctx, input.Input, input.PromptInputs)
-	if err != nil {
-		return nil, nil, errors.WithMessage(err, "failed to format system prompt")
-	}
-
 	// `messageHistory` contains ALL the messages including:
 	//   1. the system prompt
 	//   2. the previous messages from the store
@@ -451,33 +477,47 @@ func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, c
 	resp = &Response{
 		Model: cfg.ModelName,
 	}
-	messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleSystem, systemPrompt))
-
-	if cfg.Store != nil {
-		prevMessages := cfg.Store.Messages(ctx)
-		messageHistory = appendWithSource(messageHistory, prevMessages...)
-		logger.ContextKV(ctx, xlog.DEBUG,
-			"assistant", a.name,
-			"chat_id", chatID,
-			"message_history", len(prevMessages))
-	}
-
-	for _, example := range cfg.Examples {
-		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, llmutils.AddComment("assistant", "example", "question", example.Prompt)))
-		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, llmutils.AddComment("assistant", "example", "answer", example.Completion)))
-	}
 
 	parsedInput := input.Input
+	if retry != nil {
+		// The failed attempt's history already holds items 1-5, the tool
+		// exchanges and the unparsable answer. The retry only asks for
+		// JSON, so the input parser does not apply.
+		messageHistory = make(llms.Messages, 0, len(retry.history)+1)
+		messageHistory = append(messageHistory, retry.history...)
+		parsedInput = retryOutputPrompt
+	} else {
+		var systemPrompt string
+		systemPrompt, err = a.GetSystemPrompt(ctx, input.Input, input.PromptInputs)
+		if err != nil {
+			return nil, nil, errors.WithMessage(err, "failed to format system prompt")
+		}
+		messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleSystem, systemPrompt))
 
-	var userMessage llms.Message
-	if parsedInput != "" {
-		if a.inputParser != nil {
+		if cfg.Store != nil {
+			prevMessages := cfg.Store.Messages(ctx)
+			messageHistory = appendWithSource(messageHistory, prevMessages...)
+			logger.ContextKV(ctx, xlog.DEBUG,
+				"assistant", a.name,
+				"chat_id", chatID,
+				"message_history", len(prevMessages))
+		}
+
+		for _, example := range cfg.Examples {
+			messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleHuman, llmutils.AddComment("assistant", "example", "question", example.Prompt)))
+			messageHistory = appendWithSource(messageHistory, llms.MessageFromTextParts(llms.RoleAI, llmutils.AddComment("assistant", "example", "answer", example.Completion)))
+		}
+
+		if parsedInput != "" && a.inputParser != nil {
 			parsedInput, err = a.inputParser(parsedInput)
 			if err != nil {
 				return nil, messageHistory, errors.WithMessage(err, "failed to parse input")
 			}
 		}
+	}
 
+	var userMessage llms.Message
+	if parsedInput != "" {
 		role := llms.RoleHuman
 		if cfg.IsGeneric {
 			role = llms.RoleGeneric
@@ -488,7 +528,7 @@ func (a *Assistant[O]) run(ctx context.Context, chatCtx chatmodel.ChatContext, c
 		messageHistory = appendWithSource(messageHistory, userMessage)
 	}
 
-	if len(input.Messages) > 0 {
+	if retry == nil && len(input.Messages) > 0 {
 		resp.Messages = appendWithSource(resp.Messages, input.Messages...)
 		messageHistory = appendWithSource(messageHistory, input.Messages...)
 	}

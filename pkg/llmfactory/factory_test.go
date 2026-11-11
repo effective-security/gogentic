@@ -1432,6 +1432,8 @@ const (
 	responsesReply = `{"id":"resp","status":"completed","output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}]}`
 	// chatReply answers an OpenAI Chat Completions request.
 	chatReply = `{"choices":[{"message":{"content":"hello"},"finish_reason":"stop"}]}`
+	// anthropicReply is a Messages API reply with the text "hello".
+	anthropicReply = `{"id":"msg","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
 	// converseReply answers a Bedrock Converse request.
 	converseReply = `{"output":{"message":{"role":"assistant","content":[{"text":"hello"}]}},"stopReason":"end_turn","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}`
 )
@@ -1622,6 +1624,56 @@ func Test_CreateLLM_AWSConfigFactory(t *testing.T) {
 				assert.Nil(t, model)
 			})
 		}
+	}
+}
+
+// F-014: the Bedrock-hosted OpenAI and Anthropic clients send their requests
+// through the factory HTTP client.
+func Test_CreateLLM_BedrockHostedUseFactoryClient(t *testing.T) {
+	tests := []struct {
+		apiType llms.ProviderType
+		reply   string
+		wantURL string
+	}{
+		{
+			apiType: llms.ProviderOpenAIBedrock,
+			reply:   responsesReply,
+			wantURL: "https://bedrock-mantle." + awsRegion + ".api.aws/openai/v1/responses",
+		},
+		{
+			apiType: llms.ProviderAnthropicBedrock,
+			reply:   anthropicReply,
+			wantURL: "https://bedrock-runtime." + awsRegion + ".amazonaws.com/model/" + fixtureModel + "/invoke",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.apiType), func(t *testing.T) {
+			client := &recordingClient{
+				t:     t,
+				reply: tt.reply,
+			}
+			cfg := &llmfactory.ProviderConfig{
+				Name:            "P",
+				Token:           fixtureToken,
+				AvailableModels: []string{fixtureModel},
+				OpenAI: llmfactory.OpenAIConfig{
+					APIType: string(tt.apiType),
+				},
+			}
+			opts := llmfactory.NewOptions(
+				llmfactory.WithAWSConfigFactory(func() (*aws.Config, error) {
+					return awsConfig(), nil
+				}),
+				llmfactory.WithHTTPClient(client),
+			)
+			model, err := llmfactory.CreateLLM(cfg, []string{fixtureModel}, opts)
+			require.NoError(t, err)
+			generateHello(t, model)
+
+			sent := client.sent()
+			require.Len(t, sent, 1)
+			assert.Equal(t, tt.wantURL, sent[0].url)
+		})
 	}
 }
 

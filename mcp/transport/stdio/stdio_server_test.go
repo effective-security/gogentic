@@ -177,3 +177,70 @@ func TestStdioServerTransport(t *testing.T) {
 		assert.False(t, started, "transport should be stopped after context cancellation")
 	})
 }
+
+// closeAsync closes tr on another goroutine, so that a Close that deadlocks
+// fails the test on a timeout instead of hanging it.
+func closeAsync(tr *StdioServerTransport) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		done <- tr.Close()
+	}()
+	return done
+}
+
+// F-035: the close handler runs after the transport lock is released, and only
+// once however often Close is called.
+func TestStdioServerTransport_CloseHandler(t *testing.T) {
+	t.Run("handler may call back into the transport", func(t *testing.T) {
+		tr, _, out := newPipeTransport(t)
+		sendErr := make(chan error, 1)
+		tr.SetCloseHandler(func() {
+			tr.SetErrorHandler(nil)
+			sendErr <- tr.Send(context.Background(), transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+				Jsonrpc: "2.0",
+				Method:  "notifications/closing",
+			}))
+		})
+		require.NoError(t, tr.Start(context.Background()))
+
+		require.NoError(t, recv(t, closeAsync(tr)))
+		require.NoError(t, recv(t, sendErr))
+		assert.Equal(t, `{"jsonrpc":"2.0","method":"notifications/closing"}`+"\n", out.String())
+	})
+
+	t.Run("concurrent and repeated close run the handler once", func(t *testing.T) {
+		const closers = 8
+		tr, _, _ := newPipeTransport(t)
+		var mu sync.Mutex
+		calls := 0
+		tr.SetCloseHandler(func() {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+		})
+		require.NoError(t, tr.Start(context.Background()))
+
+		results := make([]<-chan error, 0, closers)
+		for range closers {
+			results = append(results, closeAsync(tr))
+		}
+		for _, res := range results {
+			require.NoError(t, recv(t, res))
+		}
+		require.NoError(t, tr.Close())
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Equal(t, 1, calls)
+	})
+
+	t.Run("close before start does not run the handler", func(t *testing.T) {
+		tr, _, _ := newPipeTransport(t)
+		called := false
+		tr.SetCloseHandler(func() {
+			called = true
+		})
+		require.NoError(t, tr.Close())
+		assert.False(t, called)
+	})
+}

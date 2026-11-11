@@ -195,30 +195,50 @@ func (p *Protocol) Connect(tr transport.Transport) error {
 	return tr.Start(context.Background())
 }
 
+// handleClose fails pending work and drops all handlers when the transport
+// closes. State is snapshotted and cleared under p.mu; cancellations, channel
+// sends and OnClose run after the lock is released, so OnClose may call back
+// into the protocol.
 func (p *Protocol) handleClose() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Cancel all pending requests
+	cancellers := make([]context.CancelFunc, 0, len(p.requestCancellers))
 	for _, cancel := range p.requestCancellers {
-		cancel()
+		cancellers = append(cancellers, cancel)
 	}
-
-	// Close all response channels with error
-	for id, ch := range p.responseHandlers {
-		ch <- &responseEnvelope{err: errors.Errorf("connection closed")}
-		close(ch)
-		delete(p.responseHandlers, id)
-	}
-
-	if p.OnClose != nil {
-		p.OnClose()
-	}
-	// Clear all handlers
+	pending := p.responseHandlers
+	onClose := p.OnClose
 	p.requestHandlers = make(map[string]func(context.Context, *transport.BaseJSONRPCRequest, RequestHandlerExtra) (transport.JsonRpcBody, error))
 	p.notificationHandlers = make(map[string]func(notification *transport.BaseJSONRPCNotification) error)
 	p.responseHandlers = make(map[transport.RequestId]chan *responseEnvelope)
 	p.progressHandlers = make(map[transport.RequestId]ProgressCallback)
+	p.mu.Unlock()
+
+	// Cancel the requests being handled.
+	for _, cancel := range cancellers {
+		cancel()
+	}
+
+	// Fail the requests waiting for a response. A request whose response is
+	// already buffered keeps it.
+	for _, ch := range pending {
+		deliver(ch, &responseEnvelope{
+			err: errors.New("connection closed"),
+		})
+	}
+
+	if onClose != nil {
+		onClose()
+	}
+}
+
+// deliver hands env to the request waiting on ch without blocking. Each
+// channel has room for one envelope, so when it is full the request already
+// has its outcome and env is dropped.
+func deliver(ch chan *responseEnvelope, env *responseEnvelope) {
+	select {
+	case ch <- env:
+	default:
+	}
 }
 
 func (p *Protocol) handleError(err error) {
@@ -378,10 +398,11 @@ func (p *Protocol) handleResponse(response *transport.BaseJSONRPCResponse, errRe
 	p.mu.RUnlock()
 
 	if ch != nil {
-		ch <- &responseEnvelope{
+		// A duplicate response must not block the transport's reader.
+		deliver(ch, &responseEnvelope{
 			response: result,
 			err:      err,
-		}
+		})
 	}
 }
 

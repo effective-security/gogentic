@@ -82,7 +82,7 @@ type opaqueEnvelope struct {
 // SealOpaque packs a reasoning block's source target and provider state into
 // one URL-safe string that clients replay verbatim.
 func SealOpaque(source string, state json.RawMessage) (string, error) {
-	if source == "" || len(state) == 0 {
+	if source == "" || IsNull(state) {
 		return "", errors.New("dialect: opaque state requires a source and a payload")
 	}
 	b, err := json.Marshal(opaqueEnvelope{
@@ -96,7 +96,7 @@ func SealOpaque(source string, state json.RawMessage) (string, error) {
 }
 
 // OpenOpaque restores the source target and provider state from a sealed string.
-// Malformed input is a client error.
+// Malformed input, including a missing or JSON null state, is a client error.
 func OpenOpaque(sealed string) (string, json.RawMessage, error) {
 	if len(sealed) > MaxOpaqueBytes {
 		return "", nil, router.Invalid("reasoning", "reasoning state too large")
@@ -106,7 +106,7 @@ func OpenOpaque(sealed string) (string, json.RawMessage, error) {
 		return "", nil, router.Invalid("reasoning", "reasoning state is not a router-issued value")
 	}
 	var env opaqueEnvelope
-	if err := json.Unmarshal(b, &env); err != nil || env.Source == "" || len(env.State) == 0 || !json.Valid(env.State) {
+	if err := json.Unmarshal(b, &env); err != nil || env.Source == "" || IsNull(env.State) || !json.Valid(env.State) {
 		return "", nil, router.Invalid("reasoning", "reasoning state is not a router-issued value")
 	}
 	return env.Source, env.State, nil

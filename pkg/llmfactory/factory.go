@@ -319,6 +319,11 @@ func newOpenAIBedrock(cfg *ProviderConfig, preferredModels []string, options *Op
 	if cfg.OpenAI.Project != "" {
 		opts = append(opts, openai.WithProject(cfg.OpenAI.Project))
 	}
+	if options != nil && options.HTTPClient != nil {
+		// The client sends its requests with this client, not with the AWS
+		// configuration's.
+		opts = append(opts, openai.WithHTTPClient(options.HTTPClient))
+	}
 	if options != nil && options.AwsConfigFactory != nil {
 		cfg, err := options.AwsConfigFactory()
 		if err != nil {
@@ -413,6 +418,11 @@ func newAnthropicBedrock(cfg *ProviderConfig, preferredModels []string, options 
 	}
 	opts = append(opts, anthropic.WithModel(model))
 	opts = append(opts, anthropicEffort(options)...)
+	if options != nil && options.HTTPClient != nil {
+		// The SDK's Bedrock signing middleware ignores the AWS
+		// configuration's HTTP client, so pass the factory client directly.
+		opts = append(opts, anthropic.WithHTTPClient(options.HTTPClient))
+	}
 	if options != nil && options.AwsConfigFactory != nil {
 		cfg, err := options.AwsConfigFactory()
 		if err != nil {

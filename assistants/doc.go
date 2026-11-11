@@ -58,7 +58,8 @@
 // [DefaultMaxContentSize] and [DefaultMaxRetries], overridable per assistant
 // or per call. Exceeding a limit fails the run with an error naming the
 // assistant rather than truncating silently. A response that fails to parse
-// into the output type is retried once with tools disabled.
+// into the output type is retried once: the unparsable answer stays in the
+// history, followed by a request for JSON, and the same tools are offered.
 //
 // See Documentation/assistants.md for the full option reference and the
 // anatomy of a run, and Documentation/orchestration.md for multi-agent

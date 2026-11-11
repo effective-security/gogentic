@@ -10,6 +10,14 @@ type ToolResponse struct {
 	Content []*Content `json:"content" yaml:"content" mapstructure:"content"`
 	// NEW in MCP v2025-06-18
 	StructuredContent any `json:"structuredContent,omitempty" yaml:"structuredContent,omitempty" mapstructure:"structuredContent,omitempty"`
+
+	// IsError reports that the tool call ended in a tool error, so that a
+	// caller can tell an error result from a successful one; the content then
+	// describes the error. Client.CallTool sets it from the server's isError
+	// flag. The server sends the flag when the handler returns an error, and
+	// a handler may set it on its own result to report an error with custom
+	// content.
+	IsError bool `json:"isError,omitempty" yaml:"isError,omitempty" mapstructure:"isError,omitempty"`
 }
 
 func NewToolResponse(content ...*Content) *ToolResponse {

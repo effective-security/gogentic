@@ -266,6 +266,14 @@ func TestOpenOpaqueRejections(t *testing.T) {
 			name:   "non-string source",
 			sealed: seal([]byte(`{"s":1,"d":{}}`)),
 		},
+		{
+			name:   "null state",
+			sealed: seal([]byte(`{"s":"a","d":null}`)),
+		},
+		{
+			name:   "spaced null state",
+			sealed: seal([]byte(`{"s":"a","d": null }`)),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -286,7 +294,11 @@ func TestSealOpaqueRejections(t *testing.T) {
 	_, err := SealOpaque("a", nil)
 	require.EqualError(t, err, "dialect: opaque state requires a source and a payload")
 
-	sealed, err := SealOpaque("a", json.RawMessage(`{`))
+	sealed, err := SealOpaque("a", json.RawMessage("null"))
+	require.EqualError(t, err, "dialect: opaque state requires a source and a payload")
+	assert.Empty(t, sealed)
+
+	sealed, err = SealOpaque("a", json.RawMessage(`{`))
 	require.Error(t, err)
 	assert.Empty(t, sealed)
 	assert.Contains(t, err.Error(), "dialect: seal opaque state")

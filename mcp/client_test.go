@@ -30,6 +30,9 @@ const (
 	echoToolDesc    = "Echoes the message back."
 	failingTool     = "failing"
 	failingToolDesc = "Always fails."
+	flaggedTool     = "flagged"
+	flaggedToolDesc = "Returns a result flagged as a tool error."
+	flaggedToolText = "city not found"
 
 	greetPrompt     = "greet"
 	greetPromptDesc = "Greets a person."
@@ -197,11 +200,12 @@ func (mountedHTTPTransport) Start(context.Context) error {
 }
 
 // newE2EHTTPClient serves the e2e server over httptransport behind an
-// httptest server and returns a client connected to it over HTTP.
-func newE2EHTTPClient(t *testing.T, opts ...ServerOptions) *Client {
+// httptest server and returns the server and a client connected to it over
+// HTTP.
+func newE2EHTTPClient(t *testing.T, opts ...ServerOptions) (*Server, *Client) {
 	t.Helper()
 	srvTransport := httptransport.NewHTTPTransport(e2eHTTPEndpoint)
-	newE2EServerOn(t, mountedHTTPTransport{
+	srv := newE2EServerOn(t, mountedHTTPTransport{
 		HTTPTransport: srvTransport,
 	}, opts...)
 
@@ -209,7 +213,7 @@ func newE2EHTTPClient(t *testing.T, opts ...ServerOptions) *Client {
 	t.Cleanup(ts.Close)
 
 	cliTransport := httptransport.NewHTTPClientTransport(e2eHTTPEndpoint).WithBaseURL(ts.URL)
-	return NewClientWithInfo(cliTransport, ClientInfo{
+	return srv, NewClientWithInfo(cliTransport, ClientInfo{
 		Name:    e2eClientName,
 		Version: e2eClientVersion,
 	})
@@ -315,6 +319,7 @@ func TestClientServerE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resp.Content, 1)
 		assert.Equal(t, "failed to handle tool call: boom", resp.Content[0].TextContent.Text)
+		assert.True(t, resp.IsError)
 	})
 
 	t.Run("list prompts", func(t *testing.T) {
@@ -496,7 +501,8 @@ func TestClientServerE2E_RPCErrors(t *testing.T) {
 		{
 			name: "http transport",
 			newClient: func(t *testing.T) *Client {
-				return newE2EHTTPClient(t)
+				_, cli := newE2EHTTPClient(t)
+				return cli
 			},
 		},
 	}
@@ -552,6 +558,78 @@ func TestClientServerE2E_RPCErrors(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, resp.Content, 1)
 			assert.Equal(t, "still here", resp.Content[0].TextContent.Text)
+		})
+	}
+}
+
+// F-032: the client sees the server's isError flag, both for a handler that
+// returns an error and for a result the handler flags as an error itself.
+func TestClientServerE2E_ToolIsError(t *testing.T) {
+	clients := []struct {
+		name      string
+		newClient func(t *testing.T) (*Server, *Client)
+	}{
+		{
+			name: "local transport",
+			newClient: func(t *testing.T) (*Server, *Client) {
+				srv, srvTransport := newE2EServer(t)
+				return srv, newE2EClient(t, srvTransport)
+			},
+		},
+		{
+			name: "http transport",
+			newClient: func(t *testing.T) (*Server, *Client) {
+				return newE2EHTTPClient(t)
+			},
+		},
+	}
+	calls := []struct {
+		name        string
+		tool        string
+		wantText    string
+		wantIsError bool
+	}{
+		{
+			name:        "handler error",
+			tool:        failingTool,
+			wantText:    "failed to handle tool call: boom",
+			wantIsError: true,
+		},
+		{
+			name:        "result flagged as error",
+			tool:        flaggedTool,
+			wantText:    flaggedToolText,
+			wantIsError: true,
+		},
+		{
+			name:        "successful result",
+			tool:        echoTool,
+			wantText:    "x",
+			wantIsError: false,
+		},
+	}
+	for _, cc := range clients {
+		t.Run(cc.name, func(t *testing.T) {
+			srv, cli := cc.newClient(t)
+			require.NoError(t, srv.RegisterTool(flaggedTool, flaggedToolDesc,
+				func(args echoArgs) (*ToolResponse, error) {
+					resp := NewToolResponse(NewTextContent(flaggedToolText))
+					resp.IsError = true
+					return resp, nil
+				}))
+			_, err := cli.Initialize(context.Background())
+			require.NoError(t, err)
+
+			for _, call := range calls {
+				t.Run(call.name, func(t *testing.T) {
+					resp, err := cli.CallTool(context.Background(), call.tool, echoArgs{Message: "x"})
+					require.NoError(t, err)
+					require.Len(t, resp.Content, 1)
+					require.NotNil(t, resp.Content[0].TextContent)
+					assert.Equal(t, call.wantText, resp.Content[0].TextContent.Text)
+					assert.Equal(t, call.wantIsError, resp.IsError)
+				})
+			}
 		})
 	}
 }

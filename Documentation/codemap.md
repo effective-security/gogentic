@@ -124,11 +124,11 @@ Read [architecture.md](architecture.md) for *why* the layering looks like this.
 |---------|--------|------|
 | Server | `Server`, `NewServer`, `Serve`, `RegisterTool/Prompt/Resource/ResourceTemplate` | `server.go` |
 | Server options | `WithName`, `WithVersion`, `WithInstructions`, `WithPaginationLimit`, `WithProtocol` | `server.go` |
-| Handler signature, call & schema | `parseHandler` (reads the signature once, at registration), `parsePromptHandler`, `parseResourceHandler`, `callHandler` (decodes arguments, recovers panics and logs them), `argumentsSchema`, `newPromptSchema` | `handler.go` |
+| Handler signature, call & schema | `parseHandler` (reads the signature once, at registration), `parsePromptHandler`, `parseResourceHandler`, `callHandler` (decodes arguments, recovers panics and logs them), `argumentsSchema` (rejects a recursive `T` with `schema.ErrRecursiveType`), `newPromptSchema` | `handler.go` |
 | Client | `Client`, `NewClient`, `NewClientWithInfo`, `Initialize`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`, `ListResources`, `ReadResource`, `Ping` | `client.go` |
 | Content | `Content`, `NewTextContent`, `NewImageContent`, `NewTextResourceContent`, `NewBlobResourceContent`, `Annotations` | `content_api.go` |
-| Responses | `ToolResponse`, `PromptResponse`, `ResourceResponse` | `tool_api.go`, `prompt_api.go`, `resource_api.go` |
-| Transport contract | `Transport`, JSON-RPC frames | `transport/transport.go`, `transport/types.go` |
+| Responses | `ToolResponse` (`IsError` marks a tool error result), `PromptResponse`, `ResourceResponse` | `tool_api.go`, `prompt_api.go`, `resource_api.go` |
+| Transport contract | `Transport`, JSON-RPC frames, `ParseMessage` (classifies a received message as request, notification, response or error) | `transport/transport.go`, `transport/types.go`, `transport/message.go` |
 | Transports | `stdio`, `httptransport` (server + client + `http.Handler`), `sse`, `localtransport` | `transport/*/` |
 
 ### `pkg/llms` — provider abstraction
@@ -199,6 +199,7 @@ that needs no model name.
 | Concept | Symbol | File |
 |---------|--------|------|
 | Reflection | `New` (type-cached), `JSONSchema`, `buildSchema` | `schema.go` |
+| Recursive types | `CheckRecursion` (walks a type as the reflector does, before reflecting), `ErrRecursiveType` | `recursion.go` |
 | Function parameters | `Schema.Parameters`, `ToFunctionSchema`, `refResolver`, `ObjectFields` (properties and required names for provider SDKs) | `schema.go` |
 | Ad-hoc schemas | `FromAny`, `MustFromAny` | `schema.go` |
 | Response formats | `NewResponseFormat`, `ResponseFormat`, `ResponseFormatJSONSchema`, `toOpenAISchema` | `response_format.go` |
@@ -234,7 +235,10 @@ directives in `assistants/assistants.go`, `tools/tools.go` and
 4. **`Config` is copied per call.** `Config.Apply` must keep copying, or
    per-call options would leak across calls.
 5. **`schema.New` results are cached by `reflect.Type`.** Returned `*Schema`
-   values must be treated as immutable.
+   values must be treated as immutable. Both reflectors (`pkg/schema` and the
+   MCP server) inline every type, so a type is checked with
+   `schema.CheckRecursion` before it is reflected; a recursive type would
+   otherwise overflow the stack, which `recover` cannot catch.
 6. **`Message.WithSource` does not overwrite an existing source.** Sub-agent
    attribution survives as messages flow upward.
 7. **Store `Add` must be atomic across the variadic set.** A partial write can
@@ -268,8 +272,9 @@ Tests sit beside their code as `*_test.go`. Notable ones:
 | `pkg/llms/{openai,anthropic,googleai}/models_test.go` | Model listing against lists recorded from each API (`testdata/models_*.json`): pages, lifecycle stages, errors. `TestIntegrationListModels*` call the live APIs and are skipped under `make test` |
 | `pkg/llms/anthropic/efforts_recorded_test.go` | The Anthropic effort table agrees with the capabilities in the recorded model list |
 | `skills/loader_test.go` | Discovery from folders and tar archives |
+| `pkg/schema/recursion_test.go` | Recursive types rejected by `CheckRecursion`, `JSONSchema` and `New` (slice, pointer, map value, mutual, embedded, alias), and types the reflector does not recurse into accepted and reflected |
 | `mcp/server_test.go` | Server options, `Serve`, registration and list-changed notifications, initialize and ping, response marshaling |
-| `mcp/handler_test.go` | Handler signatures accepted and rejected at registration, and tool, prompt and resource calls: errors, panics, missing arguments, handlers without arguments |
+| `mcp/handler_test.go` | Handler signatures accepted and rejected at registration (including recursive arguments types), and tool, prompt and resource calls: errors, panics, missing arguments, handlers without arguments |
 | `mcp/server_list_test.go` | The list methods and their pagination, and concurrent `prompts/list` (run with `-race`) |
 | `mcp/client_test.go` | `Client` end to end against a real `Server` over the local transport and over HTTP |
 | `mcp/client_scripted_test.go` | Every client error path through a scripted transport: initialization, request failures, argument encoding |

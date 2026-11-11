@@ -127,10 +127,10 @@ func hasFunctionTools(tools []*genai.Tool) bool {
 // convertCandidates converts a sequence of genai.Candidate to a response.
 func convertCandidates(candidates []*genai.Candidate, usage *genai.GenerateContentResponseUsageMetadata) (*llms.ContentResponse, error) {
 	var contentResponse llms.ContentResponse
-	var toolCalls []llms.ToolCall
 
 	for _, candidate := range candidates {
 		buf := strings.Builder{}
+		var toolCalls []llms.ToolCall
 
 		if candidate.Content != nil {
 			for _, part := range candidate.Content.Parts {
@@ -143,7 +143,7 @@ func convertCandidates(candidates []*genai.Candidate, usage *genai.GenerateConte
 				case part.FunctionCall != nil:
 					b, err := json.Marshal(part.FunctionCall.Args)
 					if err != nil {
-						return nil, err
+						return nil, errors.Wrapf(err, "googleai: failed to marshal arguments of tool call %s", part.FunctionCall.Name)
 					}
 					toolCall := llms.ToolCall{
 						Type: llms.ToolTypeFunction,

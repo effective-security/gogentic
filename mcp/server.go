@@ -48,20 +48,21 @@ type CallToolResult struct {
 	StructuredContent any `json:"structuredContent,omitempty" yaml:"structuredContent,omitempty" mapstructure:"structuredContent,omitempty"`
 }
 
-// Custom JSON marshaling for ToolResponse
+// MarshalJSON encodes the tools/call result. A handler error is sent as text
+// content with isError set; a response the handler flagged with IsError is
+// sent with isError set as well.
 func (c toolResponseSent) MarshalJSON() ([]byte, error) {
 	if c.Error != nil {
-		errorText := c.Error.Error()
-		c.Response = NewToolResponse(NewTextContent(errorText))
+		c.Response = NewToolResponse(NewTextContent(c.Error.Error()))
+		c.Response.IsError = true
 	}
-	isError := c.Error != nil
 	r := CallToolResult{
 		Content:           c.Response.Content,
 		StructuredContent: c.Response.StructuredContent,
 		Meta:              c.Response.Meta,
 	}
-	if isError {
-		r.IsError = &isError
+	if c.Response.IsError {
+		r.IsError = &c.Response.IsError
 	}
 	return json.Marshal(r)
 }
@@ -223,18 +224,23 @@ func NewServer(transport transport.Transport, options ...ServerOptions) *Server 
 // RegisterTool registers a tool whose handler is
 // func([context.Context,] [T]) (*ToolResponse, error). The input schema of
 // the tool is reflected from T; a handler without T takes an empty object. A
-// handler of another signature, or a nil one, is rejected.
+// handler of another signature, or a nil one, is rejected, and so is a
+// recursive T, with an error wrapping schema.ErrRecursiveType.
 func (s *Server) RegisterTool(name string, description string, handler any) error {
 	h, err := parseHandler(handlerKindTool, name, handler, toolResponseType)
 	if err != nil {
 		return err
+	}
+	inputSchema, err := argumentsSchema(h.argType)
+	if err != nil {
+		return errors.Wrapf(err, "failed to register tool %q", name)
 	}
 
 	s.tools.Store(name, &tool{
 		Name:            name,
 		Description:     description,
 		Handler:         newToolCall(h),
-		ToolInputSchema: argumentsSchema(h.argType),
+		ToolInputSchema: inputSchema,
 	})
 
 	return s.sendToolListChangedNotification()
@@ -316,17 +322,22 @@ func (s *Server) DeregisterResourceTemplate(uriTemplate string) error {
 // func([context.Context,] [T]) (*PromptResponse, error), where T is a struct
 // of string or *string fields, one per prompt argument; a handler without T
 // takes no arguments. A handler of another signature, or a nil one, is
-// rejected.
+// rejected, and so is a T reflected as a recursive type (through a
+// JSONSchemaAlias method), with an error wrapping schema.ErrRecursiveType.
 func (s *Server) RegisterPrompt(name string, description string, handler any) error {
 	h, err := parsePromptHandler(name, handler)
 	if err != nil {
 		return err
 	}
+	promptSchema, err := newPromptSchema(name, description, h.argType)
+	if err != nil {
+		return errors.Wrapf(err, "failed to register prompt %q", name)
+	}
 	s.prompts.Store(name, &prompt{
 		Name:              name,
 		Description:       description,
 		Handler:           newPromptCall(h),
-		PromptInputSchema: newPromptSchema(name, description, h.argType),
+		PromptInputSchema: promptSchema,
 	})
 
 	return s.sendPromptListChangedNotification()

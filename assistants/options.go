@@ -3,6 +3,7 @@ package assistants
 import (
 	"context"
 	"maps"
+	"slices"
 
 	"github.com/effective-security/gogentic/chatmodel"
 	"github.com/effective-security/gogentic/encoding"
@@ -138,6 +139,8 @@ func NewConfig(opts ...Option) *Config {
 func (c *Config) Apply(opts ...Option) *Config {
 	cfg := *c
 	cfg.toolsByName = maps.Clone(c.toolsByName)
+	// Clip so that tools added to the copy never write into c's array.
+	cfg.Tools = slices.Clip(c.Tools)
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -388,14 +391,14 @@ func WithToolChoice(choice any) Option {
 // as zero. Tools the provider does not support, such as web search, are
 // dropped.
 func (cfg *Config) GetCallOptions(options ...Option) []llms.CallOption {
-	c := *cfg
-	for _, opt := range options {
-		opt(&c)
-	}
+	// Apply copies the config and its tool index, so tools added here do
+	// not leak into cfg and a later call with the same options adds them
+	// again.
+	c := cfg.Apply(options...)
 
 	if c.Model != nil && c.OnModelOptions != nil {
 		for _, opt := range c.OnModelOptions(c.Model) {
-			opt(&c)
+			opt(c)
 		}
 	}
 

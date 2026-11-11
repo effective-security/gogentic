@@ -78,62 +78,24 @@ func (t *LocalMcpClientTransport) Send(ctx context.Context, message *transport.B
 		return errors.Errorf("server returned error: %d", resp.Status)
 	}
 
-	if len(resp.Body) > 0 {
-		// Try to unmarshal as a response first
-		var response transport.BaseJSONRPCResponse
-		if err := json.Unmarshal(resp.Body, &response); err == nil {
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageResponse(&response))
-			}
-			return nil
-		}
-
-		// Try as an error
-		var errorResponse transport.BaseJSONRPCError
-		if err := json.Unmarshal(resp.Body, &errorResponse); err == nil {
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageError(&errorResponse))
-			}
-			return nil
-		}
-
-		// Try as a notification
-		var notification transport.BaseJSONRPCNotification
-		if err := json.Unmarshal(resp.Body, &notification); err == nil {
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageNotification(&notification))
-			}
-			return nil
-		}
-
-		// Try as a request
-		var request transport.BaseJSONRPCRequest
-		if err := json.Unmarshal(resp.Body, &request); err == nil {
-			t.mu.RLock()
-			handler := t.messageHandler
-			t.mu.RUnlock()
-
-			if handler != nil {
-				handler(ctx, transport.NewBaseMessageRequest(&request))
-			}
-			return nil
-		}
-
-		return errors.Errorf("received invalid response")
+	if len(resp.Body) == 0 {
+		return nil
 	}
 
+	// Dispatch the reply as its real type: a result, an error, or a
+	// notification or request the server sent back.
+	msg, err := transport.ParseMessage(resp.Body)
+	if err != nil {
+		return errors.WithMessage(err, "received invalid response")
+	}
+
+	t.mu.RLock()
+	handler := t.messageHandler
+	t.mu.RUnlock()
+
+	if handler != nil {
+		handler(ctx, msg)
+	}
 	return nil
 }
 

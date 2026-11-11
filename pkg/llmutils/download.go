@@ -2,15 +2,19 @@ package llmutils
 
 import (
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 )
 
-// downloadImageData downloads the content from the given URL and returns the
-// image type and data. The image type is the second part of the response's
-// MIME (e.g. "png" from "image/png").
+const headerContentType = "Content-Type"
+
+// DownloadImageData downloads the content from the given URL and returns its
+// MIME type and data, for providers that need an image inlined in the request.
+// The MIME type is the response's Content-Type media type without parameters
+// (e.g. "image/png" from "image/png; charset=binary").
 func DownloadImageData(url string) (string, []byte, error) {
 	resp, err := http.Get(url) //nolint
 	if err != nil {
@@ -25,12 +29,12 @@ func DownloadImageData(url string) (string, []byte, error) {
 		return "", nil, errors.Wrap(err, "failed to read image bytes")
 	}
 
-	mimeType := resp.Header.Get("Content-Type")
+	contentType := resp.Header.Get(headerContentType)
 
-	parts := strings.Split(mimeType, "/")
-	if len(parts) != 2 {
-		return "", nil, errors.Newf("invalid mime type %v", mimeType)
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return "", nil, errors.Newf("invalid mime type %v", contentType)
 	}
 
-	return parts[1], urlData, nil
+	return mediaType, urlData, nil
 }

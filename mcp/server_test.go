@@ -335,6 +335,14 @@ func TestResponseSent_MarshalJSON(t *testing.T) {
 		assert.JSONEq(t, `{"content":[{"type":"text","text":"boom"}],"isError":true}`, string(b))
 	})
 
+	t.Run("tool result flagged as error", func(t *testing.T) {
+		resp := NewToolResponse(NewTextContent(errNope))
+		resp.IsError = true
+		b, err := json.Marshal(newToolResponseSent(resp))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"content":[{"type":"text","text":"nope"}],"isError":true}`, string(b))
+	})
+
 	t.Run("prompt success", func(t *testing.T) {
 		b, err := json.Marshal(newPromptResponseSent(NewPromptResponse("d", NewPromptMessage(NewTextContent("m"), RoleAssistant))))
 		require.NoError(t, err)

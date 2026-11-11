@@ -53,15 +53,22 @@ func (t *StdioServerTransport) Start(ctx context.Context) error {
 	return nil
 }
 
-// Close stops the transport and cleans up resources
+// Close stops the transport and cleans up resources. The close handler runs
+// once per Start, after the transport lock is released, so it may call back
+// into the transport; closing a transport that is not started does nothing.
 func (t *StdioServerTransport) Close() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
+	if !t.started {
+		t.mu.Unlock()
+		return nil
+	}
 	t.started = false
+	handler := t.onClose
+	t.mu.Unlock()
+
 	t.readBuf.Clear()
-	if t.onClose != nil {
-		t.onClose()
+	if handler != nil {
+		handler()
 	}
 	return nil
 }

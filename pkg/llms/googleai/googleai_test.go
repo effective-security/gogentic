@@ -293,6 +293,8 @@ func TestGenerateContent_ImageURL(t *testing.T) {
 	inline, ok := parts[0].(map[string]any)["inlineData"].(map[string]any)
 	require.True(t, ok, "part %v", parts[0])
 	assert.Equal(t, base64.StdEncoding.EncodeToString(image), inline["data"])
+	// F-017: the full MIME type is sent, not only the subtype.
+	assert.Equal(t, pngType, inline["mimeType"])
 }
 
 // A conversation that cannot be converted fails before a request is sent.
@@ -578,8 +580,45 @@ func TestConvertCandidates(t *testing.T) {
 			},
 		}}
 		resp, err := convertCandidates(candidates, nil)
-		require.EqualError(t, err, "json: unsupported type: chan int")
+		require.EqualError(t, err, "googleai: failed to marshal arguments of tool call "+toolName+": json: unsupported type: chan int")
 		assert.Nil(t, resp)
+	})
+
+	// F-016: each choice carries only its own candidate's tool calls.
+	t.Run("tool calls stay with their candidate", func(t *testing.T) {
+		candidateWithCall := func(name string) *genai.Candidate {
+			return &genai.Candidate{
+				Content: &genai.Content{
+					Parts: []*genai.Part{{
+						FunctionCall: &genai.FunctionCall{
+							Name: name,
+							Args: map[string]any{},
+						},
+					}},
+				},
+			}
+		}
+		const secondTool = "second_tool"
+		candidates := []*genai.Candidate{
+			candidateWithCall(toolName),
+			candidateWithCall(secondTool),
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{{
+						Text: "no calls",
+					}},
+				},
+			},
+		}
+		resp, err := convertCandidates(candidates, nil)
+		require.NoError(t, err)
+		require.Len(t, resp.Choices, 3)
+		require.Len(t, resp.Choices[0].ToolCalls, 1)
+		assert.Equal(t, toolName, resp.Choices[0].ToolCalls[0].FunctionCall.Name)
+		require.Len(t, resp.Choices[1].ToolCalls, 1)
+		assert.Equal(t, secondTool, resp.Choices[1].ToolCalls[0].FunctionCall.Name)
+		assert.Nil(t, resp.Choices[2].ToolCalls)
+		assert.Equal(t, "no calls", resp.Choices[2].Content)
 	})
 
 	t.Run("candidate without content and usage", func(t *testing.T) {

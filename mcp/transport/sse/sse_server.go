@@ -59,7 +59,8 @@ func (s *SSEServerTransport) Send(msg *transport.BaseJsonRpcMessage) error {
 	return s.transport.Send(msg)
 }
 
-// Close closes the SSE connection
+// Close closes the SSE connection. The close handler runs once, after the
+// transport lock is released, so it may call back into the transport.
 func (s *SSEServerTransport) Close() error {
 	return s.transport.Close()
 }

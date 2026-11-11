@@ -822,6 +822,12 @@ func TestHTTPTransport_HandleRequest_ResponseAndErrorBodies(t *testing.T) {
 }
 
 func TestHTTPClientTransport_SendErrors(t *testing.T) {
+	// The decoder's wording for a non-object depends on the Go version.
+	const notAnObject = `"just a string"`
+	var members map[string]json.RawMessage
+	notAnObjectErr := json.Unmarshal([]byte(notAnObject), &members)
+	require.Error(t, notAnObjectErr)
+
 	tcs := []struct {
 		name    string
 		tr      *httptransport.HTTPClientTransport
@@ -867,9 +873,15 @@ func TestHTTPClientTransport_SendErrors(t *testing.T) {
 		},
 		{
 			name:    "invalid body",
-			tr:      httptransport.NewHTTPClientTransport(mcpPath).WithClient(okBody(`"just a string"`)),
+			tr:      httptransport.NewHTTPClientTransport(mcpPath).WithClient(okBody(notAnObject)),
 			msg:     pingRequest(),
-			wantErr: `received invalid response: "just a string"`,
+			wantErr: `received invalid response: "just a string": failed to unmarshal JSON-RPC message: ` + notAnObjectErr.Error(),
+		},
+		{
+			name:    "body with no method, result or error",
+			tr:      httptransport.NewHTTPClientTransport(mcpPath).WithClient(okBody(`{"jsonrpc":"2.0","id":1}`)),
+			msg:     pingRequest(),
+			wantErr: `received invalid response: {"jsonrpc":"2.0","id":1}: invalid JSON-RPC message: no method, result or error member`,
 		},
 	}
 	for _, tc := range tcs {
@@ -912,26 +924,44 @@ func TestHTTPClientTransport_SendSetsHeadersAndURL(t *testing.T) {
 	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"ping","id":1}`, string(seenBody))
 }
 
-// Any JSON object decodes as a BaseJSONRPCError, so the notification and
-// request fallbacks are only reached when "error" is not an object.
-func TestHTTPClientTransport_SendDispatchFallbacks(t *testing.T) {
+// F-034: a notification or a request in a response body is dispatched as its
+// own type; both used to arrive as an error with ID 0.
+func TestHTTPClientTransport_SendDispatchesByMessageType(t *testing.T) {
 	tcs := []struct {
-		name       string
-		body       string
-		wantType   transport.BaseMessageType
-		wantMethod string
+		name string
+		body string
+		want *transport.BaseJsonRpcMessage
 	}{
 		{
-			name:       "notification",
-			body:       `{"jsonrpc":"2.0","method":"notifications/progress","error":"x"}`,
-			wantType:   transport.BaseMessageTypeJSONRPCNotificationType,
-			wantMethod: "notifications/progress",
+			name: "notification",
+			body: `{"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":1}}`,
+			want: transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+				Jsonrpc: "2.0",
+				Method:  "notifications/progress",
+				Params:  json.RawMessage(`{"progress":1}`),
+			}),
 		},
 		{
-			name:       "request",
-			body:       `{"jsonrpc":"2.0","method":"sampling/createMessage","id":3,"error":"x"}`,
-			wantType:   transport.BaseMessageTypeJSONRPCRequestType,
-			wantMethod: "sampling/createMessage",
+			name: "request",
+			body: `{"jsonrpc":"2.0","id":3,"method":"sampling/createMessage","params":{}}`,
+			want: transport.NewBaseMessageRequest(&transport.BaseJSONRPCRequest{
+				Jsonrpc: "2.0",
+				Id:      3,
+				Method:  "sampling/createMessage",
+				Params:  json.RawMessage(`{}`),
+			}),
+		},
+		{
+			name: "error response",
+			body: `{"jsonrpc":"2.0","id":4,"error":{"code":-32601,"message":"Method not found"}}`,
+			want: transport.NewBaseMessageError(&transport.BaseJSONRPCError{
+				Jsonrpc: "2.0",
+				Id:      4,
+				Error: transport.BaseJSONRPCErrorInner{
+					Code:    -32601,
+					Message: "Method not found",
+				},
+			}),
 		},
 	}
 	for _, tc := range tcs {
@@ -940,19 +970,12 @@ func TestHTTPClientTransport_SendDispatchFallbacks(t *testing.T) {
 			// Without a message handler the body is accepted and dropped.
 			require.NoError(t, tr.Send(context.Background(), pingRequest()))
 
-			var got *transport.BaseJsonRpcMessage
+			var got []*transport.BaseJsonRpcMessage
 			tr.SetMessageHandler(func(_ context.Context, msg *transport.BaseJsonRpcMessage) {
-				got = msg
+				got = append(got, msg)
 			})
 			require.NoError(t, tr.Send(context.Background(), pingRequest()))
-			require.NotNil(t, got)
-			require.Equal(t, tc.wantType, got.Type)
-			if got.JsonRpcRequest != nil {
-				assert.Equal(t, tc.wantMethod, got.JsonRpcRequest.Method)
-				assert.Equal(t, transport.RequestId(3), got.JsonRpcRequest.Id)
-			} else {
-				assert.Equal(t, tc.wantMethod, got.JsonRpcNotification.Method)
-			}
+			assert.Equal(t, []*transport.BaseJsonRpcMessage{tc.want}, got)
 		})
 	}
 }

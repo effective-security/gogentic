@@ -409,6 +409,45 @@ func TestSSEServerTransport_Close(t *testing.T) {
 	})
 }
 
+// F-035: the close handler runs after the transport lock is released, so it
+// may call back into the transport, and concurrent closes run it once.
+func TestSSEServerTransport_CloseHandlerMayCallBack(t *testing.T) {
+	const (
+		closeTimeout = 2 * time.Second
+		closers      = 8
+	)
+	sseTransport, err := sse.NewSSEServerTransport("/messages", httptest.NewRecorder())
+	require.NoError(t, err)
+	require.NoError(t, sseTransport.Start(context.Background()))
+
+	sendErrs := make(chan error, closers)
+	sseTransport.SetCloseHandler(func() {
+		sseTransport.SetErrorHandler(nil)
+		sendErrs <- sseTransport.Send(transport.NewBaseMessageNotification(&transport.BaseJSONRPCNotification{
+			Jsonrpc: "2.0",
+			Method:  "notifications/closing",
+		}))
+	})
+
+	done := make(chan error, closers)
+	for range closers {
+		go func() {
+			done <- sseTransport.Close()
+		}()
+	}
+	for range closers {
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(closeTimeout):
+			require.FailNow(t, "Close deadlocked")
+		}
+	}
+
+	require.Len(t, sendErrs, 1, "the close handler must run exactly once")
+	assert.EqualError(t, <-sendErrs, "not connected")
+}
+
 func TestSSEServerTransport_Handlers(t *testing.T) {
 	t.Run("set close handler", func(t *testing.T) {
 		w := httptest.NewRecorder()

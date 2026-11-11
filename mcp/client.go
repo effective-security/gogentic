@@ -113,7 +113,10 @@ func (c *Client) ListTools(ctx context.Context, cursor *string) (*ToolsResponse,
 	return &toolsResponse, nil
 }
 
-// CallTool calls a specific tool on the server with the provided arguments
+// CallTool calls a specific tool on the server with the provided arguments.
+// A tool that fails is not a call error: it returns a response with IsError
+// set and the error described in its content. The returned error covers
+// failures to reach the server or to route the call, such as an unknown tool.
 func (c *Client) CallTool(ctx context.Context, name string, arguments any) (*ToolResponse, error) {
 	if !c.initialized {
 		return nil, errors.New("client not initialized")

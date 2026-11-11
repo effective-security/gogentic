@@ -1452,6 +1452,56 @@ func TestGenerateContent_Streaming(t *testing.T) {
 	}`, sentBody(t, api))
 }
 
+// F-021: a streamed tool_use block without input deltas gets "{}" arguments,
+// as in the non-streaming path, and the call can be sent back in the history.
+func TestGenerateContent_StreamingToolUseWithoutInput(t *testing.T) {
+	t.Parallel()
+
+	streamToolUseNoInput := sseEvent("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_2","name":"get_weather","input":{}}}`) +
+		sseEvent("content_block_stop", `{"type":"content_block_stop","index":0}`)
+	_, llm := newMessagesAPI(t, http.StatusOK, contentTypeSSE, streamStart+streamToolUseNoInput+streamEnd)
+
+	resp, err := llm.GenerateContent(context.Background(), hiMessages(), llms.WithStreamingFunc(func(context.Context, []byte) error {
+		return nil
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Choices, 1)
+	wantCall := llms.ToolCall{
+		ID:   "toolu_2",
+		Type: llms.ToolTypeFunction,
+		FunctionCall: &llms.FunctionCall{
+			Name:      weatherToolName,
+			Arguments: "{}",
+		},
+	}
+	assert.Equal(t, []llms.ToolCall{wantCall}, resp.Choices[0].ToolCalls)
+
+	param, err := anthropic.HandleAIMessage(llms.MessageFromToolCalls(llms.RoleAI, wantCall))
+	require.NoError(t, err)
+	require.Len(t, param.Content, 1)
+	require.NotNil(t, param.Content[0].OfToolUse)
+	assert.Equal(t, json.RawMessage("{}"), param.Content[0].OfToolUse.Input)
+}
+
+// A tool call stored with empty arguments, as streamed calls without input
+// were before F-021 was fixed, is sent as "{}".
+func TestHandleAIMessage_EmptyToolArguments(t *testing.T) {
+	t.Parallel()
+
+	call := llms.ToolCall{
+		ID:   "toolu_3",
+		Type: llms.ToolTypeFunction,
+		FunctionCall: &llms.FunctionCall{
+			Name: weatherToolName,
+		},
+	}
+	param, err := anthropic.HandleAIMessage(llms.MessageFromToolCalls(llms.RoleAI, call))
+	require.NoError(t, err)
+	require.Len(t, param.Content, 1)
+	require.NotNil(t, param.Content[0].OfToolUse)
+	assert.Equal(t, json.RawMessage("{}"), param.Content[0].OfToolUse.Input)
+}
+
 func TestGenerateContent_StreamingErrors(t *testing.T) {
 	t.Parallel()
 
