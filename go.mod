@@ -3,7 +3,7 @@ module github.com/effective-security/gogentic
 go 1.27.3
 
 require (
-	cloud.google.com/go/auth v0.24.3
+	cloud.google.com/go/auth v0.24.4
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/anthropics/anthropic-sdk-go v1.84.0
