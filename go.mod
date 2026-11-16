@@ -19,9 +19,9 @@ require (
 	github.com/diverged/tavily-go v1.0.0
 	github.com/effective-security/metrics v0.10.158
 	github.com/effective-security/porto v1.1.455
-	github.com/effective-security/x v1.0.111
-	github.com/effective-security/xdb v1.0.169
-	github.com/effective-security/xlog v1.0.70
+	github.com/effective-security/x v1.0.112
+	github.com/effective-security/xdb v1.0.170
+	github.com/effective-security/xlog v1.0.71
 	github.com/go-playground/validator/v10 v10.30.6
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
@@ -162,12 +162,12 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
-	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/api v0.311.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261104224025-d1e00e9f33ab // indirect
 	google.golang.org/grpc v1.86.0-dev // indirect
