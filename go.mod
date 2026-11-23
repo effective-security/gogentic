@@ -26,7 +26,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.14.0
-	github.com/moby/moby/api v1.56.1
+	github.com/moby/moby/api v1.57.0
 	github.com/nikolalohinski/gonja/v2 v2.9.1
 	github.com/openai/openai-go/v3 v3.105.0
 	github.com/pb33f/ordered-map/v2 v2.3.2
