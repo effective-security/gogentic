@@ -479,7 +479,7 @@ func TestInferControls(t *testing.T) {
 		},
 	}
 	assert.Equal(t, want, generation(f.requests[0]))
-	assert.Equal(t, []string{"/v1beta/models/fixture:generateContent"}, f.paths)
+	assert.Equal(t, []string{generatePath}, f.paths)
 
 	modes := map[llms.ToolChoiceMode]string{
 		llms.ToolChoiceNone:     "NONE",

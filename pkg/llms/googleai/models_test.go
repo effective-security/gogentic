@@ -20,6 +20,8 @@ const (
 	// offline.
 	googleTokenEnvVarName = "GOOGLEAI_TOKEN" //nolint:gosec
 
+	// modelsPath is the path of a ListModels request.
+	modelsPath = "/v1/models"
 	// queryPageToken is the cursor parameter of the model list request.
 	queryPageToken = "pageToken"
 	// tokenOfPage1 is the cursor the first recorded page ends with.
@@ -78,6 +80,7 @@ func TestListModels_Pages(t *testing.T) {
 	// The key given by option must reach the wire even when the environment
 	// holds another one (F-009).
 	t.Setenv(envGoogleAPIKey, envKey)
+	t.Setenv(envGeminiAPIKey, "")
 	ctx := context.Background()
 	list := &modelList{
 		pages: map[string]listReply{
@@ -108,7 +111,7 @@ func TestListModels_Pages(t *testing.T) {
 	for i, req := range list.requests {
 		assert.Equal(t, http.MethodGet, req.Method, "request %d", i)
 		assert.Equal(t, "generativelanguage.googleapis.com", req.URL.Host, "request %d", i)
-		assert.Equal(t, "/v1beta/models", req.URL.Path, "request %d", i)
+		assert.Equal(t, modelsPath, req.URL.Path, "request %d", i)
 		assert.Equal(t, "fixture", req.Header.Get("X-Goog-Api-Key"), "request %d", i)
 	}
 	assert.False(t, list.requests[0].URL.Query().Has(queryPageToken))

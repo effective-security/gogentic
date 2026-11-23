@@ -51,3 +51,13 @@ func TestNew_ClientErrors(t *testing.T) {
 		})
 	}
 }
+
+// New falls back to GEMINI_API_KEY when no explicit key or GOOGLE_API_KEY is set.
+func TestNew_GeminiAPIKeyFromEnv(t *testing.T) {
+	t.Setenv(envGoogleAPIKey, "")
+	t.Setenv(envGeminiAPIKey, envKey)
+
+	m, err := New(t.Context(), WithDefaultModel("fixture"))
+	require.NoError(t, err)
+	assert.Equal(t, envKey, m.client.ClientConfig().APIKey)
+}
