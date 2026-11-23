@@ -17,7 +17,7 @@ import (
 const (
 	// generatePath is the path of a GenerateContent request for the fixture
 	// model.
-	generatePath = "/v1beta/models/fixture:generateContent"
+	generatePath = "/v1/models/fixture:generateContent"
 	// toolName is the function the model is offered and calls.
 	toolName = "lookup"
 	// pngType is the MIME type of the image fixtures.
